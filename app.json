@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Quick karya",
+    "slug": "quick-karya",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.sultan.quickkarya"
+    }
+  }
+}
