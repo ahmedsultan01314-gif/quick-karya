@@ -10,7 +10,10 @@
     "preview": {
       "distribution": "internal"
     },
-    "production": {}
+    "production": {
+      "node": "18.x",
+      "yarn": "1.22.19"
+    }
   },
   "submit": {
     "production": {}
