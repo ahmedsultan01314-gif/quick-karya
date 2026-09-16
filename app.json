@@ -8,11 +8,6 @@
     "owner": "sultanquickkarya",
     "android": {
       "package": "com.sultan.quickkarya"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "2916b887-2f1d-41fa-926f-ffd685769c8c"
-      }
     }
   }
 }
