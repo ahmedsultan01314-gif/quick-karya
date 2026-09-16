@@ -1,0 +1,16 @@
+{
+  "name": "Quick Karya",
+  "short_name": "QuickKarya",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "description": "Quick Karya connects you with nearby verified workers and emergency assistance.",
+  "icons": [
+    {
+      "src": "https://quick-karya.ai.studio/favicon.ico",
+      "sizes": "192x192 512x512",
+      "type": "image/x-icon"
+    }
+  ]
+}
