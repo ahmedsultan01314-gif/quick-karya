@@ -5,8 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "owner": "sultanquickkarya",
     "android": {
       "package": "com.sultan.quickkarya"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e81d7f45-0d22-4a0b-8d9e-1087b2ca1234"
+      }
     }
   }
 }
