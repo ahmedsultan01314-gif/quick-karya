@@ -5,15 +5,27 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EAS_NO_FROZEN_LOCKFILE": "1",
+        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false"
+      }
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EAS_NO_FROZEN_LOCKFILE": "1",
+        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "EAS_NO_FROZEN_LOCKFILE": "1",
+        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false"
+      },
       "android": {
         "buildType": "app-bundle"
       }
