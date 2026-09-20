@@ -13,6 +13,16 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     rate: 300,
     pricingType: 'per_hour',
     rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 300,
+      per_day: 750,
+      fixed_job: 150
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 300, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 750, unit: '/day', label: 'Full Day' },
+      { pricingType: 'fixed_job', amount: 150, unit: '/job', label: 'Inspection' }
+    ],
     phone: '+91 98621 54321',
     city: 'Agartala',
     state: 'Tripura',
@@ -37,6 +47,14 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     rate: 250,
     pricingType: 'per_hour',
     rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 250,
+      per_day: 700
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 250, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 700, unit: '/day', label: 'Full Day' }
+    ],
     lateNightAvailable: true,
     nightRates: {
       enabled: true,
@@ -111,23 +129,99 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     skills: ['NH-8 Highway breakdown rescue', 'Flat tyre fix', 'Battery boost', 'Hydraulic tow van']
   },
   {
+    id: 'w-ag-weld-1',
+    name: 'Pranab Karmakar (Master Welder)',
+    category: 'Welder',
+    experience: 8,
+    rating: 4.9,
+    reviewCount: 96,
+    hourlyRate: 350,
+    rate: 350,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 350,
+      per_day: 950,
+      per_month: 24000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 350, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 950, unit: '/day', label: 'Daily Shift' },
+      { pricingType: 'per_month', amount: 24000, unit: '/month', label: 'Monthly Contract' }
+    ],
+    phone: '+91 94361 77290',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799001',
+    latitude: 23.834,
+    longitude: 91.282,
+    verified: true,
+    available: true,
+    completedJobs: 345,
+    languages: ['Bengali', 'Hindi', 'English'],
+    skills: ['Gate welding', 'Structural fabrication', 'Repair work', 'Window safety grills', 'ARC & MIG welding']
+  },
+  {
+    id: 'w-ag-weld-2',
+    name: 'Biswajit Debnath (Fabrication & Repairs)',
+    category: 'Welder',
+    experience: 5,
+    rating: 4.8,
+    reviewCount: 64,
+    hourlyRate: 300,
+    rate: 300,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 300,
+      per_day: 850,
+      per_month: 22000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 300, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 850, unit: '/day', label: 'Daily' },
+      { pricingType: 'per_month', amount: 22000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98630 45129',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799002',
+    latitude: 23.845,
+    longitude: 91.291,
+    verified: true,
+    available: true,
+    completedJobs: 198,
+    languages: ['Bengali', 'Hindi'],
+    skills: ['Gate welding', 'Repair work', 'Iron railing fixing', 'Tin shed metal frame fabrication']
+  },
+  {
     id: 'w-ag-5',
     name: 'Kabir Hossain',
     category: 'Driver',
-    vehicleType: '2-Wheeler (Bike / Rapido Style)',
-    experience: 4,
+    vehicleType: 'Private Car Driver (Family, Outstation, Local Trips)',
+    experience: 6,
     rating: 4.9,
-    reviewCount: 86,
-    hourlyRate: 10,
-    rate: 10,
-    pricingType: 'per_km',
-    rateUnit: '/km',
+    reviewCount: 94,
+    hourlyRate: 850,
+    rate: 850,
+    pricingType: 'per_day',
+    rateUnit: '/day',
+    pricingRates: {
+      per_day: 850,
+      per_month: 20000,
+      per_hour: 150
+    },
+    rateOptions: [
+      { pricingType: 'per_day', amount: 850, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 20000, unit: '/month', label: 'Monthly Salary' },
+      { pricingType: 'per_hour', amount: 150, unit: '/hr', label: 'Hourly Outstation' }
+    ],
     lateNightAvailable: true,
     nightRates: {
       enabled: true,
       type: 'fixed',
-      extraValue: 4,
-      effectiveNightRate: 14
+      extraValue: 200,
+      effectiveNightRate: 1050
     },
     phone: '+91 98622 33445',
     city: 'Agartala',
@@ -137,22 +231,32 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     longitude: 91.285,
     verified: true,
     available: true,
-    completedJobs: 390,
-    languages: ['Bengali', 'Hindi'],
-    skills: ['Rapid 2-wheeler commute', 'Parcel delivery', 'City fast navigation']
+    completedJobs: 410,
+    languages: ['Bengali', 'Hindi', 'English'],
+    skills: ['Family outstation trips', 'Airport transfers', 'Automatic & manual luxury cars']
   },
   {
     id: 'w-ag-6',
     name: 'Gopal Paul',
     category: 'Driver',
-    vehicleType: '3-Wheeler (Auto / E-Rickshaw)',
-    experience: 7,
+    vehicleType: '6-Wheeler Medium Commercial Truck',
+    experience: 8,
     rating: 4.8,
-    reviewCount: 64,
-    hourlyRate: 14,
-    rate: 14,
-    pricingType: 'per_km',
-    rateUnit: '/km',
+    reviewCount: 78,
+    hourlyRate: 1100,
+    rate: 1100,
+    pricingType: 'per_day',
+    rateUnit: '/day',
+    pricingRates: {
+      per_day: 1100,
+      per_month: 25000,
+      per_hour: 200
+    },
+    rateOptions: [
+      { pricingType: 'per_day', amount: 1100, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 25000, unit: '/month', label: 'Monthly Salary' },
+      { pricingType: 'per_hour', amount: 200, unit: '/hr', label: 'Hourly Trip' }
+    ],
     phone: '+91 94364 55667',
     city: 'Agartala',
     state: 'Tripura',
@@ -161,9 +265,43 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     longitude: 91.281,
     verified: true,
     available: true,
-    completedJobs: 512,
+    completedJobs: 540,
     languages: ['Bengali', 'Hindi'],
-    skills: ['Local passenger transport', 'Railway station pickup', 'Heavy luggage carry']
+    skills: ['Commercial goods delivery', 'Interstate cargo', 'Night highway permit']
+  },
+  {
+    id: 'w-ag-jcb',
+    name: 'Bikash Debbarma',
+    category: 'Driver',
+    vehicleType: 'JCB Machine Operator',
+    experience: 9,
+    rating: 4.9,
+    reviewCount: 52,
+    hourlyRate: 2600,
+    rate: 2600,
+    pricingType: 'day_shift',
+    rateUnit: '/day',
+    pricingRates: {
+      day_shift: 2600,
+      night_shift: 3200,
+      per_hour: 450
+    },
+    rateOptions: [
+      { pricingType: 'day_shift', amount: 2600, unit: '/day', label: 'Day Shift' },
+      { pricingType: 'night_shift', amount: 3200, unit: '/night', label: 'Night Shift' },
+      { pricingType: 'per_hour', amount: 450, unit: '/hr', label: 'Hourly Work' }
+    ],
+    phone: '+91 97740 66789',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799003',
+    latitude: 23.841,
+    longitude: 91.278,
+    verified: true,
+    available: true,
+    completedJobs: 310,
+    languages: ['Kokborok', 'Bengali', 'Hindi'],
+    skills: ['Precision trench excavation', 'Foundation digging', 'Site leveling & clearing']
   },
 
   // Bengaluru workers
@@ -178,6 +316,14 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     rate: 350,
     pricingType: 'per_hour',
     rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 350,
+      per_day: 900
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 350, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 900, unit: '/day', label: 'Full Day' }
+    ],
     phone: '+91 98450 12345',
     city: 'Bengaluru',
     state: 'Karnataka',
@@ -202,6 +348,16 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     rate: 300,
     pricingType: 'per_hour',
     rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 300,
+      per_day: 850,
+      per_month: 18000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 300, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 850, unit: '/day', label: 'Full Day' },
+      { pricingType: 'per_month', amount: 18000, unit: '/month', label: 'Monthly AMC' }
+    ],
     lateNightAvailable: true,
     nightRates: {
       enabled: true,
@@ -294,20 +450,30 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     id: 'w-blr-6',
     name: 'Anand Kumar',
     category: 'Driver',
-    vehicleType: '4-Wheeler (Car / Commercial Vehicle)',
+    vehicleType: 'Private Car Driver (Family, Outstation, Local Trips)',
     experience: 11,
     rating: 4.9,
     reviewCount: 153,
-    hourlyRate: 18,
-    rate: 18,
-    pricingType: 'per_km',
-    rateUnit: '/km',
+    hourlyRate: 1100,
+    rate: 1100,
+    pricingType: 'per_day',
+    rateUnit: '/day',
+    pricingRates: {
+      per_day: 1100,
+      per_month: 24000,
+      per_hour: 200
+    },
+    rateOptions: [
+      { pricingType: 'per_day', amount: 1100, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 24000, unit: '/month', label: 'Monthly Salary' },
+      { pricingType: 'per_hour', amount: 200, unit: '/hr', label: 'Hourly' }
+    ],
     lateNightAvailable: true,
     nightRates: {
       enabled: true,
       type: 'percentage',
       extraValue: 25,
-      effectiveNightRate: 23
+      effectiveNightRate: 1375
     },
     phone: '+91 99450 11987',
     city: 'Bengaluru',
@@ -323,23 +489,26 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
   },
   {
     id: 'w-blr-10',
-    name: 'Kiran Rao (Rapido Captain)',
+    name: 'Kiran Rao',
     category: 'Driver',
-    vehicleType: '2-Wheeler (Bike / Rapido Style)',
-    experience: 4,
+    vehicleType: '10-Wheeler Heavy Goods Truck',
+    experience: 9,
     rating: 4.9,
     reviewCount: 118,
-    hourlyRate: 11,
-    rate: 11,
-    pricingType: 'per_km',
-    rateUnit: '/km',
-    lateNightAvailable: true,
-    nightRates: {
-      enabled: true,
-      type: 'fixed',
-      extraValue: 4,
-      effectiveNightRate: 15
+    hourlyRate: 32000,
+    rate: 32000,
+    pricingType: 'per_month',
+    rateUnit: '/month',
+    pricingRates: {
+      per_month: 32000,
+      per_day: 1400,
+      per_hour: 250
     },
+    rateOptions: [
+      { pricingType: 'per_month', amount: 32000, unit: '/month', label: 'Monthly Salary' },
+      { pricingType: 'per_day', amount: 1400, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_hour', amount: 250, unit: '/hr', label: 'Hourly Run' }
+    ],
     phone: '+91 97412 55998',
     city: 'Bengaluru',
     state: 'Karnataka',
@@ -350,7 +519,41 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     available: true,
     completedJobs: 430,
     languages: ['Kannada', 'English', 'Hindi'],
-    skills: ['Rapido style bike rides', 'Instant traffic bypass', 'Helmet provided']
+    skills: ['Heavy goods logistics', 'Interstate container freight', 'Safe highway transit']
+  },
+  {
+    id: 'w-blr-jcb',
+    name: 'Manjunath Gowda',
+    category: 'Driver',
+    vehicleType: 'Bulldozer / Heavy Loader Operator',
+    experience: 12,
+    rating: 4.9,
+    reviewCount: 88,
+    hourlyRate: 3500,
+    rate: 3500,
+    pricingType: 'night_shift',
+    rateUnit: '/night',
+    pricingRates: {
+      night_shift: 3500,
+      day_shift: 3000,
+      per_hour: 550
+    },
+    rateOptions: [
+      { pricingType: 'day_shift', amount: 3000, unit: '/day', label: 'Day Shift' },
+      { pricingType: 'night_shift', amount: 3500, unit: '/night', label: 'Night Shift' },
+      { pricingType: 'per_hour', amount: 550, unit: '/hr', label: 'Hourly Operation' }
+    ],
+    phone: '+91 98455 33211',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560068',
+    latitude: 12.895,
+    longitude: 77.625,
+    verified: true,
+    available: true,
+    completedJobs: 470,
+    languages: ['Kannada', 'Telugu', 'Hindi'],
+    skills: ['Bulldozer grading', 'Quarry loading', 'Highway site preparation']
   },
   {
     id: 'w-blr-7',
@@ -442,6 +645,14 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     rate: 300,
     pricingType: 'per_hour',
     rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 300,
+      per_day: 800
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 300, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 800, unit: '/day', label: 'Full Day' }
+    ],
     phone: '+91 98110 43210',
     city: 'Delhi',
     state: 'Delhi',
@@ -544,6 +755,14 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     rate: 400,
     pricingType: 'per_hour',
     rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 400,
+      per_day: 1000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 400, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1000, unit: '/day', label: 'Full Day' }
+    ],
     phone: '+91 98200 65432',
     city: 'Mumbai',
     state: 'Maharashtra',
@@ -586,5 +805,71 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     completedJobs: 780,
     languages: ['Marathi', 'Hindi', 'English'],
     skills: ['Western Express Highway assistance', 'Tyre puncture repair', 'Coolant leak fix', 'Towing']
+  },
+  {
+    id: 'w-blr-weld-1',
+    name: 'Gopal Reddy Welding & Steel Works',
+    category: 'Welder',
+    experience: 11,
+    rating: 4.8,
+    reviewCount: 124,
+    hourlyRate: 400,
+    rate: 400,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 400,
+      per_day: 1100,
+      per_month: 28000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 400, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1100, unit: '/day', label: 'Full Day' },
+      { pricingType: 'per_month', amount: 28000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98450 33812',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560001',
+    latitude: 12.975,
+    longitude: 77.598,
+    verified: true,
+    available: true,
+    completedJobs: 490,
+    languages: ['Kannada', 'Hindi', 'English', 'Telugu'],
+    skills: ['Structural fabrication', 'Gate welding', 'Repair work', 'Heavy metal crack repair', 'TIG / ARC welding']
+  },
+  {
+    id: 'w-del-weld-1',
+    name: 'Harpreet Singh (Precision Welder)',
+    category: 'Welder',
+    experience: 9,
+    rating: 4.9,
+    reviewCount: 110,
+    hourlyRate: 350,
+    rate: 350,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 350,
+      per_day: 1000,
+      per_month: 26000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 350, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1000, unit: '/day', label: 'Full Day' },
+      { pricingType: 'per_month', amount: 26000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98118 76543',
+    city: 'Delhi',
+    state: 'Delhi',
+    pincode: '110015',
+    latitude: 28.65,
+    longitude: 77.13,
+    verified: true,
+    available: true,
+    completedJobs: 380,
+    languages: ['Hindi', 'Punjabi', 'English'],
+    skills: ['Gate welding', 'Structural fabrication', 'Repair work', 'Iron railing fixing', 'Pipe welding']
   }
 ];

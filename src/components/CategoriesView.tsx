@@ -11,6 +11,7 @@ import {
   HardHat,
   Users,
   ShieldAlert,
+  Flame,
   ArrowRight,
   Sparkles,
   PhoneCall
@@ -43,6 +44,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         return <HardHat className="w-6 h-6 text-emerald-800" />;
       case 'Users':
         return <Users className="w-6 h-6 text-emerald-800" />;
+      case 'Flame':
+        return <Flame className="w-6 h-6 text-amber-600" />;
       case 'ShieldAlert':
         return <ShieldAlert className="w-6 h-6 text-amber-600" />;
       default:

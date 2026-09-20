@@ -1,6 +1,6 @@
 import React from 'react';
 import { WorkerProfile } from '../types';
-import { Phone, Star, ShieldCheck, MapPin, Briefcase, Zap, Moon, Bike, Car } from 'lucide-react';
+import { Phone, Star, ShieldCheck, MapPin, Briefcase, Zap, Moon, Bike, Car, Truck, HardHat, IndianRupee } from 'lucide-react';
 import { formatDistance } from '../utils/geo';
 import { formatWorkerPricing, isLateNightNow } from '../utils/pricing';
 
@@ -110,10 +110,15 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
                 <>
                   <span className="text-gray-300">•</span>
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100/80 text-emerald-900 font-bold text-[10px] rounded-md">
-                    {pricing.vehicleBadge.includes('2-Wheeler') ? (
+                    {pricing.vehicleBadge.includes('JCB') || pricing.vehicleBadge.includes('Bulldozer') ? (
+                      <HardHat className="w-3 h-3 text-amber-700" />
+                    ) : pricing.vehicleBadge.includes('Truck') ||
+                      pricing.vehicleBadge.includes('Freight') ||
+                      pricing.vehicleBadge.includes('Trailer') ||
+                      pricing.vehicleBadge.includes('Pickup') ? (
+                      <Truck className="w-3 h-3 text-emerald-700" />
+                    ) : pricing.vehicleBadge.includes('2-Wheeler') ? (
                       <Bike className="w-3 h-3 text-emerald-700" />
-                    ) : pricing.vehicleBadge.includes('3-Wheeler') ? (
-                      <span>🛺</span>
                     ) : (
                       <Car className="w-3 h-3 text-emerald-700" />
                     )}
@@ -155,9 +160,9 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
           </div>
         </div>
 
-        {/* Middle Stats: Rating & Dynamic Rate Type Display */}
+        {/* Middle Stats: Rating & Availability */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-          {/* Rating */}
+          {/* Rating & Reviews */}
           <div className="flex items-center gap-1.5">
             <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-200/70 rounded-lg text-amber-900 text-xs font-bold">
               <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
@@ -168,33 +173,51 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
             </span>
           </div>
 
-          {/* Dynamic Rate Badge */}
-          <div className="text-right">
-            {pricing.pricingType === 'fixed_job' && worker.category !== 'Emergency Highway Assistance' ? (
-              <div>
-                <span
-                  id={`worker-rate-${worker.id}`}
-                  className="text-xs font-bold text-emerald-900 block leading-tight"
-                >
-                  {pricing.baseAmount > 0
-                    ? `Visiting: ₹${pricing.baseAmount}`
-                    : 'Inspection'}
-                </span>
-                <span className="text-[10px] text-emerald-700 font-medium">Rates Negotiable</span>
-              </div>
+          {/* Availability Status */}
+          <div>
+            {worker.available ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Available Now
+              </span>
             ) : (
-              <div>
-                <span className="text-xs text-gray-500">Rate: </span>
-                <span
-                  id={`worker-rate-${worker.id}`}
-                  className="text-base font-extrabold text-emerald-900"
-                >
-                  ₹{pricing.baseAmount}
-                </span>
-                <span className="text-xs font-semibold text-emerald-700">{pricing.unit}</span>
-              </div>
+              <span className="text-[11px] font-medium text-gray-400">Next available soon</span>
             )}
           </div>
+        </div>
+
+        {/* Comprehensive Multi-Rate Display Section */}
+        <div
+          id={`worker-rates-container-${worker.id}`}
+          className="mt-2.5 py-2 px-3 bg-emerald-50/70 border border-emerald-200/70 rounded-xl space-y-1.5"
+        >
+          <div className="flex items-baseline justify-between gap-1 flex-wrap">
+            <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider shrink-0 flex items-center gap-1">
+              <IndianRupee className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Rates:</span>
+            </span>
+            <span
+              id={`worker-rate-${worker.id}`}
+              className="text-xs sm:text-[13px] font-extrabold text-emerald-900 text-right leading-snug tracking-tight"
+            >
+              {pricing.allRatesFormatted}
+            </span>
+          </div>
+
+          {/* If multiple rates, render distinct badge pills for maximum clarity */}
+          {pricing.hasMultipleRates && (
+            <div className="pt-1.5 border-t border-emerald-200/50 flex items-center gap-1.5 flex-wrap">
+              {pricing.allRates.map((r, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-white text-emerald-900 border border-emerald-200 text-[10px] font-semibold shadow-2xs"
+                >
+                  <span className="text-gray-500 mr-1">{r.label}:</span>
+                  <strong className="text-emerald-950 font-extrabold">{r.displayRate}</strong>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Night Rate Badge Display if configured */}

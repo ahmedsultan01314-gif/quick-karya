@@ -77,6 +77,14 @@ export const CATEGORIES: CategoryInfo[] = [
     avgRate: '₹350 - ₹550/day'
   },
   {
+    id: 'Welder',
+    name: 'Welder',
+    hindiName: 'वेल्डर / वेल्डिंग कारीगर',
+    description: 'Iron gate welding, window grills, structural steel fabrication, metal frame repairs & ARC/MIG welding.',
+    iconName: 'Flame',
+    avgRate: '₹350 - ₹500/hr'
+  },
+  {
     id: 'Emergency Highway Assistance',
     name: 'Emergency Highway Assistance',
     hindiName: 'आपातकालीन हाईवे सहायता',

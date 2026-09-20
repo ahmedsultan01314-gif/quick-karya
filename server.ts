@@ -152,6 +152,7 @@ app.get('/api/workers', (req, res) => {
         w.category.toLowerCase().includes(q) ||
         w.city.toLowerCase().includes(q) ||
         w.pincode.includes(q) ||
+        (w.vehicleType && w.vehicleType.toLowerCase().includes(q)) ||
         (w.skills && w.skills.some((s) => s.toLowerCase().includes(q))) ||
         (w.languages && w.languages.some((l) => l.toLowerCase().includes(q)))
     );
@@ -209,6 +210,8 @@ app.post('/api/workers', (req, res) => {
     rate,
     pricingType,
     rateUnit,
+    pricingRates,
+    rateOptions,
     vehicleType,
     lateNightAvailable,
     nightRates,
@@ -264,6 +267,8 @@ app.post('/api/workers', (req, res) => {
     rate: numericRate,
     pricingType: pricingType || (category === 'Driver' && vehicleType ? 'per_km' : category === 'Emergency Highway Assistance' ? 'fixed_job' : 'per_hour'),
     rateUnit: unit,
+    pricingRates: pricingRates && typeof pricingRates === 'object' ? pricingRates : undefined,
+    rateOptions: Array.isArray(rateOptions) ? rateOptions : undefined,
     vehicleType: category === 'Driver' ? vehicleType : undefined,
     lateNightAvailable: Boolean(lateNightAvailable),
     nightRates: nightRates?.enabled ? nightRates : undefined,

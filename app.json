@@ -1,13 +1,34 @@
 {
   "expo": {
-    "name": "Quick karya",
+    "name": "Quick Karya",
     "slug": "quick-karya",
+    "owner": "sultanquickkarya",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "owner": "sultanquickkarya",
+    "splash": {
+      "backgroundColor": "#064e3b",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
-      "package": "com.sultan.quickkarya"
+      "package": "com.quickkarya.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#064e3b"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CALL_PHONE"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8d4e9070-a57f-4d06-8aeb-64ed1b0d7856"
+      }
     }
   }
 }

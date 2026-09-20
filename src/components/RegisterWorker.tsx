@@ -3,17 +3,19 @@ import { CATEGORIES } from '../data/categories';
 import { INDIAN_STATES } from '../data/indianStates';
 import {
   DriverVehicleType,
-  NightRateConfig,
   PricingType,
   ServiceCategory,
   UserLocation,
-  WorkerProfile
+  WorkerProfile,
+  WorkerRateOption
 } from '../types';
 import {
-  calculateNightRate,
+  DRIVER_SPECIALIZATION_GROUPS,
   DRIVER_VEHICLE_OPTIONS,
+  formatSingleRate,
   formatWorkerPricing,
   getDefaultPricingForCategory,
+  isHeavyMachineryDriver,
   PRICING_TYPE_LABELS
 } from '../utils/pricing';
 import {
@@ -36,7 +38,8 @@ import {
   Clock,
   Bike,
   Car,
-  Percent,
+  Truck,
+  HardHat,
   Zap,
   Info
 } from 'lucide-react';
@@ -75,19 +78,132 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   const selectedCategory = category;
   const [experience, setExperience] = useState('4');
 
-  // Dynamic Pricing State
-  const [pricingType, setPricingType] = useState<PricingType>('per_hour');
-  const [rateAmount, setRateAmount] = useState('300');
+  // Helper to compute initial rate defaults
+  const getDefaultRateForType = (
+    type: PricingType,
+    cat: ServiceCategory,
+    vType?: DriverVehicleType
+  ): string => {
+    if (cat === 'Driver') {
+      const isHeavy = vType ? isHeavyMachineryDriver(vType) : false;
+      if (isHeavy) {
+        if (type === 'day_shift') return vType === 'JCB Machine Operator' ? '2500' : '3000';
+        if (type === 'night_shift') return vType === 'JCB Machine Operator' ? '3000' : '3500';
+        if (type === 'per_hour') return vType === 'JCB Machine Operator' ? '450' : '550';
+        if (type === 'fixed_job') return '150';
+        return '2500';
+      }
+      if (type === 'per_month') {
+        if (vType?.includes('16-Wheeler')) return '38000';
+        if (vType?.includes('14-Wheeler')) return '35000';
+        if (vType?.includes('12-Wheeler')) return '32000';
+        if (vType?.includes('10-Wheeler')) return '28000';
+        if (vType?.includes('6-Wheeler')) return '25000';
+        if (vType?.includes('4-Wheeler')) return '22000';
+        return '20000';
+      }
+      if (type === 'per_day') {
+        if (vType?.includes('16-Wheeler') || vType?.includes('14-Wheeler')) return '1800';
+        if (vType?.includes('12-Wheeler') || vType?.includes('10-Wheeler')) return '1400';
+        if (vType?.includes('6-Wheeler') || vType?.includes('4-Wheeler')) return '1000';
+        return '850';
+      }
+      if (type === 'per_hour') {
+        return vType?.includes('Truck') || vType?.includes('Freight') || vType?.includes('Trailer')
+          ? '250'
+          : '150';
+      }
+      if (type === 'fixed_job') return '150';
+      return '850';
+    }
+
+    if (type === 'per_hour') {
+      if (cat === 'Emergency Highway Assistance') return '500';
+      if (cat === 'Welder') return '350';
+      if (cat === 'Plumber' || cat === 'Electrician') return '350';
+      if (cat === 'Carpenter' || cat === 'Painter') return '400';
+      if (cat === 'Rajmistri / Mason') return '450';
+      if (cat === 'Labour / Helper') return '250';
+      if (cat === 'Cook') return '300';
+      return '300';
+    }
+    if (type === 'per_day') {
+      if (cat === 'Welder') return '950';
+      if (cat === 'Rajmistri / Mason') return '900';
+      if (cat === 'Painter') return '850';
+      if (cat === 'Carpenter') return '850';
+      if (cat === 'Plumber' || cat === 'Electrician') return '800';
+      if (cat === 'Labour / Helper') return '600';
+      if (cat === 'Cook') return '700';
+      return '700';
+    }
+    if (type === 'per_month') {
+      if (cat === 'Welder') return '24000';
+      if (cat === 'Cook') return '15000';
+      if (cat === 'Labour / Helper') return '14000';
+      return '20000';
+    }
+    if (type === 'fixed_job') {
+      if (cat === 'Emergency Highway Assistance') return '500';
+      return '150';
+    }
+    return '300';
+  };
+
+  const getAvailablePricingTypes = (cat: ServiceCategory, vType: DriverVehicleType): PricingType[] => {
+    if (cat === 'Driver') {
+      if (isHeavyMachineryDriver(vType)) {
+        return ['day_shift', 'night_shift', 'per_hour', 'fixed_job'];
+      }
+      return ['per_day', 'per_month', 'per_hour', 'fixed_job'];
+    }
+    if (cat === 'Emergency Highway Assistance') {
+      return ['fixed_job', 'per_hour'];
+    }
+    return ['per_hour', 'per_day', 'per_month', 'fixed_job'];
+  };
+
+  // Dynamic Multi-Select Pricing State
+  const [selectedPricingTypes, setSelectedPricingTypes] = useState<PricingType[]>(['per_hour', 'per_day']);
+  const [ratesMap, setRatesMap] = useState<Record<string, string>>({
+    per_hour: '350',
+    per_day: '800',
+    per_month: '20000',
+    day_shift: '2500',
+    night_shift: '3000',
+    fixed_job: '150'
+  });
+
+  const primaryPricingType = selectedPricingTypes[0] || 'per_hour';
+  const pricingType = primaryPricingType;
+  const rateAmount = ratesMap[primaryPricingType] || '350';
+  const setPricingType = (pt: PricingType) => {
+    if (!selectedPricingTypes.includes(pt)) {
+      setSelectedPricingTypes([pt, ...selectedPricingTypes]);
+    }
+  };
+  const setRateAmount = (val: string) => {
+    setRatesMap((prev) => ({ ...prev, [primaryPricingType]: val }));
+  };
+
+  const togglePricingType = (typeKey: PricingType) => {
+    if (selectedPricingTypes.includes(typeKey)) {
+      if (selectedPricingTypes.length > 1) {
+        setSelectedPricingTypes((prev) => prev.filter((t) => t !== typeKey));
+      }
+    } else {
+      setSelectedPricingTypes((prev) => [...prev, typeKey]);
+      if (!ratesMap[typeKey] || ratesMap[typeKey] === '0') {
+        const def = getDefaultRateForType(typeKey, category, vehicleType);
+        setRatesMap((prev) => ({ ...prev, [typeKey]: def }));
+      }
+    }
+  };
 
   // Driver Vehicle Type State
   const [vehicleType, setVehicleType] = useState<DriverVehicleType>(
-    '2-Wheeler (Bike / Rapido Style)'
+    'Private Car Driver (Family, Outstation, Local Trips)'
   );
-
-  // Late Night Charges State
-  const [lateNightAvailable, setLateNightAvailable] = useState(false);
-  const [nightChargeType, setNightChargeType] = useState<'percentage' | 'fixed'>('percentage');
-  const [nightExtraCharge, setNightExtraCharge] = useState('20'); // 20% or ₹100
 
   // Contact and Location
   const [phone, setPhone] = useState('');
@@ -104,47 +220,98 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successWorker, setSuccessWorker] = useState<WorkerProfile | null>(null);
 
-  // Handle Category Change with Intelligent Pricing & Vehicle Defaults
+  // Handle Category Change with Intelligent Multi-Pricing & Vehicle Defaults
   const handleCategoryChange = (newCategory: ServiceCategory) => {
     setCategory(newCategory);
 
     if (newCategory === 'Driver') {
-      const defaultVehicle = '2-Wheeler (Bike / Rapido Style)';
+      const defaultVehicle: DriverVehicleType =
+        'Private Car Driver (Family, Outstation, Local Trips)';
       setVehicleType(defaultVehicle);
-      setPricingType('per_km');
-      setRateAmount('10');
+      setSelectedPricingTypes(['per_day', 'per_month', 'per_hour']);
+      setRatesMap((prev) => ({
+        ...prev,
+        per_day: '850',
+        per_month: '20000',
+        per_hour: '150'
+      }));
+    } else if (newCategory === 'Emergency Highway Assistance') {
+      setSelectedPricingTypes(['fixed_job', 'per_hour']);
+      setRatesMap((prev) => ({
+        ...prev,
+        fixed_job: '500',
+        per_hour: '500'
+      }));
     } else {
-      setLateNightAvailable(false);
       const { pricingType: defPricing, defaultRate } = getDefaultPricingForCategory(newCategory);
-      const safePricing = defPricing === 'per_km' ? 'per_hour' : defPricing;
-      setPricingType(safePricing);
-      setRateAmount(defaultRate.toString());
+      const secondType: PricingType = defPricing === 'per_day' ? 'per_hour' : 'per_day';
+      setSelectedPricingTypes([defPricing, secondType]);
+      setRatesMap((prev) => ({
+        ...prev,
+        [defPricing]: defaultRate.toString(),
+        [secondType]: getDefaultRateForType(secondType, newCategory)
+      }));
     }
   };
 
-  // Safety guard: ensure pricingType is never 'per_km' for non-driver categories
+  // Safety guard: ensure selectedPricingTypes align strictly with available options
   useEffect(() => {
-    if (category !== 'Driver' && pricingType === 'per_km') {
-      setPricingType('per_hour');
-      setRateAmount('350');
+    const valid = getAvailablePricingTypes(category, vehicleType);
+    const filtered = selectedPricingTypes.filter((t) => valid.includes(t));
+    if (filtered.length === 0) {
+      setSelectedPricingTypes([valid[0]]);
+    } else if (filtered.length !== selectedPricingTypes.length) {
+      setSelectedPricingTypes(filtered);
     }
-  }, [category, pricingType]);
+  }, [category, vehicleType]);
 
   // Handle Vehicle Type Change for Drivers
   const handleVehicleTypeChange = (newVehicle: DriverVehicleType) => {
     setVehicleType(newVehicle);
-    if (newVehicle === '2-Wheeler (Bike / Rapido Style)') {
-      setPricingType('per_km');
-      setRateAmount('10');
-    } else if (newVehicle === '3-Wheeler (Auto / E-Rickshaw)') {
-      setPricingType('per_km');
-      setRateAmount('15');
-    } else if (newVehicle === '4-Wheeler (Car / Commercial Vehicle)') {
-      // 4-Wheeler can be per_km or per_day
-      if (pricingType !== 'per_km' && pricingType !== 'per_day') {
-        setPricingType('per_km');
-      }
-      setRateAmount(pricingType === 'per_day' ? '1200' : '18');
+    const isHeavy = isHeavyMachineryDriver(newVehicle);
+
+    if (isHeavy) {
+      setSelectedPricingTypes(['day_shift', 'night_shift', 'per_hour']);
+      const dayRate = newVehicle === 'JCB Machine Operator' ? '2500' : '3000';
+      const nightRate = newVehicle === 'JCB Machine Operator' ? '3000' : '3500';
+      const hrRate = newVehicle === 'JCB Machine Operator' ? '450' : '550';
+      setRatesMap((prev) => ({
+        ...prev,
+        day_shift: dayRate,
+        night_shift: nightRate,
+        per_hour: hrRate
+      }));
+    } else {
+      setSelectedPricingTypes(['per_day', 'per_month', 'per_hour']);
+      const monthRate = newVehicle.includes('16-Wheeler')
+        ? '38000'
+        : newVehicle.includes('14-Wheeler')
+        ? '35000'
+        : newVehicle.includes('12-Wheeler')
+        ? '32000'
+        : newVehicle.includes('10-Wheeler')
+        ? '28000'
+        : newVehicle.includes('6-Wheeler')
+        ? '25000'
+        : newVehicle.includes('4-Wheeler')
+        ? '22000'
+        : '20000';
+      const dayRate = newVehicle.includes('16-Wheeler') || newVehicle.includes('14-Wheeler')
+        ? '1800'
+        : newVehicle.includes('10-Wheeler') || newVehicle.includes('12-Wheeler')
+        ? '1400'
+        : newVehicle.includes('6-Wheeler') || newVehicle.includes('4-Wheeler')
+        ? '1000'
+        : '850';
+      const hrRate = newVehicle.includes('Truck') || newVehicle.includes('Freight') || newVehicle.includes('Trailer')
+        ? '250'
+        : '150';
+      setRatesMap((prev) => ({
+        ...prev,
+        per_day: dayRate,
+        per_month: monthRate,
+        per_hour: hrRate
+      }));
     }
   };
 
@@ -236,15 +403,16 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
     }
   };
 
-  // Calculate live preview of night rate
+  // Live preview base rate and unit calculation
   const numericBaseRate = parseFloat(rateAmount) || 0;
-  const numericNightExtra = parseFloat(nightExtraCharge) || 0;
-  const calculatedNightRate = calculateNightRate(
-    numericBaseRate,
-    nightChargeType,
-    numericNightExtra
-  );
-  const currentUnit = PRICING_TYPE_LABELS[pricingType]?.unit || '/hr';
+  const currentUnit =
+    pricingType === 'day_shift'
+      ? '/day'
+      : pricingType === 'night_shift'
+      ? '/night'
+      : pricingType === 'per_month'
+      ? '/month'
+      : PRICING_TYPE_LABELS[pricingType]?.unit || '/hr';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,43 +446,40 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       return;
     }
 
-    const rateNum = rateAmount.trim() ? parseInt(rateAmount, 10) : 0;
-    if (pricingType === 'fixed_job') {
-      if (isNaN(rateNum) || rateNum < 0) {
-        setError('Please enter a valid visiting / inspection fee (₹0 or more).');
-        return;
-      }
-    } else {
-      const minRate = pricingType === 'per_km' ? 5 : 50;
-      if (isNaN(rateNum) || rateNum < minRate) {
-        setError(
-          pricingType === 'per_km'
-            ? 'Please enter a valid rate per kilometer (minimum ₹5/km).'
-            : 'Please enter a realistic service rate (minimum ₹50).'
-        );
-        return;
+    if (selectedPricingTypes.length === 0) {
+      setError('Please select at least one pricing option.');
+      return;
+    }
+
+    // Validate each selected pricing option
+    for (const pt of selectedPricingTypes) {
+      const valStr = ratesMap[pt] || '';
+      const valNum = valStr.trim() ? parseInt(valStr, 10) : 0;
+      if (pt === 'fixed_job') {
+        if (isNaN(valNum) || valNum < 0) {
+          setError('Please enter a valid visiting / inspection fee (₹0 or more).');
+          return;
+        }
+      } else {
+        const minRate = pt === 'per_month' ? 1000 : 50;
+        if (isNaN(valNum) || valNum < minRate) {
+          setError(
+            pt === 'per_month'
+              ? 'Please enter a valid monthly rate (minimum ₹1,000/month).'
+              : `Please enter a realistic rate for ${
+                  pt === 'per_day' && category === 'Driver'
+                    ? 'Daily Allowance'
+                    : PRICING_TYPE_LABELS[pt]?.shortLabel || pt
+                } (minimum ₹50).`
+          );
+          return;
+        }
       }
     }
 
     if (category === 'Driver' && !vehicleType) {
-      setError('Please select your vehicle category (2-Wheeler, 3-Wheeler, or 4-Wheeler).');
+      setError('Please select your driver specialization / vehicle type.');
       return;
-    }
-
-    let nightConfig: NightRateConfig | undefined;
-    const isLateNightForDriver = selectedCategory === 'Driver' && lateNightAvailable;
-    if (isLateNightForDriver) {
-      const extraVal = parseFloat(nightExtraCharge) || 0;
-      if (extraVal <= 0) {
-        setError('Please enter a valid late-night extra charge amount or percentage.');
-        return;
-      }
-      nightConfig = {
-        enabled: true,
-        type: nightChargeType,
-        extraValue: extraVal,
-        effectiveNightRate: calculatedNightRate
-      };
     }
 
     setLoading(true);
@@ -324,17 +489,46 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         ? `+${cleanPhone}`
         : `+91 ${cleanPhone.slice(-10, -5)} ${cleanPhone.slice(-5)}`;
 
+      const primaryType = selectedPricingTypes[0] || 'per_hour';
+      const primaryRate = parseInt(ratesMap[primaryType] || '350', 10);
+
+      const pricingRates: Partial<Record<PricingType, number>> = {};
+      selectedPricingTypes.forEach((pt) => {
+        const amt = parseInt(ratesMap[pt] || '0', 10);
+        if (!isNaN(amt)) {
+          pricingRates[pt] = amt;
+        }
+      });
+
+      const rateOptions: WorkerRateOption[] = selectedPricingTypes.map((pt) => {
+        const amount = parseInt(ratesMap[pt] || '0', 10);
+        const info = PRICING_TYPE_LABELS[pt];
+        let unit = info?.unit || '/hr';
+        if (pt === 'day_shift') unit = '/day';
+        if (pt === 'night_shift') unit = '/night';
+        if (pt === 'per_month') unit = '/month';
+        if (pt === 'per_day') unit = '/day';
+        return {
+          pricingType: pt,
+          amount,
+          unit,
+          label: pt === 'per_day' && category === 'Driver' ? 'Daily Allowance' : (info?.shortLabel || pt)
+        };
+      });
+
       const payload = {
         name: name.trim(),
         category,
         experience: expNum,
-        hourlyRate: rateNum, // backwards compatibility
-        rate: rateNum,
-        pricingType,
+        hourlyRate: pricingRates['per_hour'] || primaryRate, // backwards compatibility
+        rate: primaryRate,
+        pricingType: primaryType,
         rateUnit: currentUnit,
+        pricingRates,
+        rateOptions,
         vehicleType: category === 'Driver' ? vehicleType : undefined,
-        lateNightAvailable: isLateNightForDriver,
-        nightRates: isLateNightForDriver ? nightConfig : undefined,
+        lateNightAvailable: false,
+        nightRates: undefined,
         phone: formattedPhone,
         city: city.trim(),
         state: state.trim(),
@@ -483,7 +677,6 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 setPhone('');
                 setSkills('');
                 setPhoto('');
-                setLateNightAvailable(false);
               }}
               className="w-full py-2.5 px-4 text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
             >
@@ -683,358 +876,390 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
           )}
         </div>
 
-        {/* DRIVER VEHICLE TYPE SELECTION (MANDATORY WHEN CATEGORY IS 'Driver') */}
+        {/* DRIVER SPECIALIZATION / VEHICLE TYPE SELECTION (MANDATORY WHEN CATEGORY IS 'Driver') */}
         {category === 'Driver' && (
-          <div className="p-3.5 bg-emerald-50/80 rounded-2xl border border-emerald-200 space-y-2.5 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
+          <div
+            id="driver-specialization-section"
+            className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-3.5 animate-in fade-in duration-200"
+          >
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="block text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                <Bike className="w-4 h-4 text-emerald-700" />
-                Select Vehicle Category <span className="text-red-500">*</span>
+                <Truck className="w-4 h-4 text-emerald-700" />
+                Driver Specialization / Vehicle Type <span className="text-red-500">*</span>
               </label>
-              <span className="text-[10px] font-semibold text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-300">
-                Rapido / Transit Mode
+              <span className="text-[10px] font-bold text-emerald-900 bg-white px-2.5 py-1 rounded-md border border-emerald-300 shadow-xs">
+                Selected: {vehicleType.split('(')[0].trim()}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {DRIVER_VEHICLE_OPTIONS.map((opt) => {
-                const isSelected = vehicleType === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => handleVehicleTypeChange(opt.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-emerald-700 bg-emerald-800 text-white shadow-sm'
-                        : 'border-emerald-200 bg-white hover:border-emerald-400 text-gray-800'
+            {/* Categorized Driver Specializations */}
+            <div className="space-y-3.5">
+              {DRIVER_SPECIALIZATION_GROUPS.map((grp) => (
+                <div key={grp.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs px-0.5">
+                    <span className="font-bold text-gray-800 flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-emerald-800 text-white text-[10px] font-extrabold flex items-center justify-center">
+                        {grp.key}
+                      </span>
+                      <span>{grp.name}</span>
+                    </span>
+                    <span className="text-[10px] text-gray-500 hidden sm:inline">
+                      {grp.options.length} {grp.options.length === 1 ? 'Option' : 'Options'}
+                    </span>
+                  </div>
+
+                  <div
+                    className={`grid gap-2 ${
+                      grp.options.length === 1
+                        ? 'grid-cols-1'
+                        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
                     }`}
                   >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold">{opt.title}</span>
-                        {opt.id.includes('2-Wheeler') ? (
-                          <Bike className={`w-3.5 h-3.5 ${isSelected ? 'text-emerald-200' : 'text-emerald-700'}`} />
-                        ) : opt.id.includes('3-Wheeler') ? (
-                          <span className={`text-[11px] font-bold ${isSelected ? 'text-emerald-200' : 'text-emerald-700'}`}>🛺</span>
-                        ) : (
-                          <Car className={`w-3.5 h-3.5 ${isSelected ? 'text-emerald-200' : 'text-emerald-700'}`} />
-                        )}
-                      </div>
-                      <p className={`text-[10px] mt-0.5 line-clamp-2 ${isSelected ? 'text-emerald-100' : 'text-gray-500'}`}>
-                        {opt.subtitle}
-                      </p>
-                    </div>
-                    <div className="mt-2 pt-1.5 border-t border-white/20 flex items-center justify-between text-[10px] font-semibold">
-                      <span className={isSelected ? 'text-emerald-200' : 'text-emerald-800'}>
-                        {opt.id.includes('4-Wheeler') ? '₹/km or ₹/day' : 'Per-KM (₹/km)'}
-                      </span>
-                      {isSelected && <CheckCircle2 className="w-3 h-3 text-white" />}
-                    </div>
-                  </button>
-                );
-              })}
+                    {grp.options.map((opt) => {
+                      const isSelected = vehicleType === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          id={`driver-spec-btn-${opt.id.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+                          type="button"
+                          onClick={() => handleVehicleTypeChange(opt.id)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-emerald-700 bg-emerald-800 text-white shadow-sm ring-1 ring-emerald-700'
+                              : 'border-emerald-200 bg-white hover:border-emerald-400 text-gray-800'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-bold leading-tight">{opt.title}</span>
+                              {opt.iconType === 'car' ? (
+                                <Car
+                                  className={`w-3.5 h-3.5 shrink-0 ${
+                                    isSelected ? 'text-emerald-200' : 'text-emerald-700'
+                                  }`}
+                                />
+                              ) : opt.iconType === 'truck' ? (
+                                <Truck
+                                  className={`w-3.5 h-3.5 shrink-0 ${
+                                    isSelected ? 'text-emerald-200' : 'text-emerald-700'
+                                  }`}
+                                />
+                              ) : (
+                                <HardHat
+                                  className={`w-3.5 h-3.5 shrink-0 ${
+                                    isSelected ? 'text-emerald-200' : 'text-emerald-700'
+                                  }`}
+                                />
+                              )}
+                            </div>
+                            <p
+                              className={`text-[10px] mt-1 line-clamp-2 ${
+                                isSelected ? 'text-emerald-100' : 'text-gray-500'
+                              }`}
+                            >
+                              {opt.subtitle}
+                            </p>
+                          </div>
+
+                          <div className="mt-2.5 pt-1.5 border-t border-white/20 flex items-center justify-between text-[10px] font-semibold">
+                            <span className={isSelected ? 'text-emerald-200' : 'text-emerald-800'}>
+                              {opt.categoryGroup === 'C'
+                                ? 'Hourly / Day & Night Shift'
+                                : 'Daily / Monthly / Hourly'}
+                            </span>
+                            {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <p className="text-[11px] text-emerald-900/80 bg-emerald-100/50 p-2 rounded-lg flex items-start gap-1">
-              <Info className="w-3.5 h-3.5 text-emerald-700 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-emerald-950/85 bg-emerald-100/60 p-2.5 rounded-xl flex items-start gap-1.5 border border-emerald-200">
+              <Info className="w-3.5 h-3.5 text-emerald-800 shrink-0 mt-0.5" />
               <span>
-                {vehicleType.includes('2-Wheeler')
-                  ? 'Rapido-style 2-Wheeler rides calculate charges per kilometer (₹/km). Default: ₹10/km.'
-                  : vehicleType.includes('3-Wheeler')
-                  ? 'Auto & E-Rickshaws operate on per-kilometer billing (₹/km). Default: ₹15/km.'
-                  : '4-Wheelers can be booked on per-kilometer (₹/km) or daily hire (₹/day).'}
+                {isHeavyMachineryDriver(vehicleType)
+                  ? 'Heavy machinery operators (JCB, Bulldozer, Heavy Loader) bill based on Hourly operations, Day Shift (/day), or Night Shift (/night).'
+                  : 'Personal car and commercial freight truck drivers can bill either Monthly (/month), Per Day (Daily Allowance), Per Hour, or Negotiable.'}
               </span>
             </p>
           </div>
         )}
 
-        {/* DYNAMIC PRICING SYSTEM */}
-        <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-              <IndianRupee className="w-3.5 h-3.5 text-emerald-700" />
-              Pricing Structure &amp; Rate Type <span className="text-red-500">*</span>
-            </span>
-            <span className="text-[10px] text-gray-500">
-              Auto-configured for {category}
-            </span>
-          </div>
-
-          {/* Pricing Type Selector Tabs */}
-          <div
-            id="reg-pricing-type-selector"
-            className={`grid gap-1.5 ${
-              category === 'Driver'
-                ? 'grid-cols-2 sm:grid-cols-4'
-                : 'grid-cols-1 sm:grid-cols-3'
-            }`}
-          >
-            {(Object.keys(PRICING_TYPE_LABELS) as PricingType[])
-              .filter((typeKey) => typeKey !== 'per_km' || category === 'Driver')
-              .map((typeKey) => {
-                const info = PRICING_TYPE_LABELS[typeKey];
-                const isSelected = pricingType === typeKey;
-                // If driver 2-wheeler or 3-wheeler, disable non-km options
-                const isDriverLocked =
-                  category === 'Driver' &&
-                  (vehicleType.includes('2-Wheeler') || vehicleType.includes('3-Wheeler')) &&
-                  typeKey !== 'per_km';
-
-                return (
-                  <button
-                    key={typeKey}
-                    id={`reg-pricing-tab-${typeKey}`}
-                    type="button"
-                    disabled={isDriverLocked}
-                    onClick={() => {
-                      setPricingType(typeKey);
-                      // Update recommended rate
-                      if (typeKey === 'per_km') setRateAmount('12');
-                      else if (typeKey === 'per_day') setRateAmount('700');
-                      else if (typeKey === 'fixed_job') setRateAmount('150');
-                      else setRateAmount('350');
-                    }}
-                    className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer text-center ${
-                      isSelected
-                        ? 'bg-emerald-800 text-white border-emerald-900 shadow-xs'
-                        : isDriverLocked
-                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-600'
-                    }`}
-                  >
-                    {typeKey === 'fixed_job' ? (
-                      <div>
-                        <div className="font-bold text-[11px] leading-tight">
-                          On Inspection / Negotiable
-                        </div>
-                        <div
-                          className={`text-[10px] mt-0.5 ${
-                            isSelected ? 'text-emerald-200' : 'text-gray-500'
-                          }`}
-                        >
-                          (काम देखकर तय होगा)
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="font-bold text-[11px]">{info.shortLabel}</div>
-                        <div
-                          className={`text-[10px] ${
-                            isSelected ? 'text-emerald-200' : 'text-gray-500'
-                          }`}
-                        >
-                          ({info.unit})
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-          </div>
-
-          {/* Experience & Rate Amount in 2 Columns */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                Experience (Years) <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  id="reg-input-experience"
-                  type="number"
-                  min="0"
-                  max="50"
-                  required
-                  value={experience}
-                  onChange={(e) => setExperience(e.target.value)}
-                  placeholder="4"
-                  className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white"
-                />
-                <Briefcase className="w-4 h-4 text-gray-400 absolute left-2.5 top-3" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
-                <span>
-                  {pricingType === 'fixed_job' ? (
-                    <>Visiting / Inspection Fee (Optional ₹)</>
-                  ) : (
-                    <>Base Rate <span className="text-red-500">*</span></>
-                  )}
-                </span>
-                <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
-                  {pricingType === 'fixed_job' ? 'Optional' : currentUnit}
-                </span>
-              </label>
-              <div className="relative">
-                <input
-                  id="reg-input-rate-amount"
-                  type="number"
-                  min={pricingType === 'fixed_job' ? 0 : pricingType === 'per_km' ? 5 : 50}
-                  step={pricingType === 'per_km' ? 1 : 25}
-                  required={pricingType !== 'fixed_job'}
-                  value={rateAmount}
-                  onChange={(e) => setRateAmount(e.target.value)}
-                  placeholder={
-                    pricingType === 'fixed_job'
-                      ? '0 (or e.g. 150)'
-                      : PRICING_TYPE_LABELS[pricingType]?.placeholder || '300'
-                  }
-                  className="w-full pl-8 pr-16 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-extrabold text-emerald-950 bg-white"
-                />
-                <IndianRupee className="w-4 h-4 text-gray-400 absolute left-2.5 top-3" />
-                <span className="text-xs font-bold text-gray-500 absolute right-3 top-3">
-                  {pricingType === 'fixed_job' ? '₹ visit' : currentUnit}
-                </span>
-              </div>
-              {pricingType === 'fixed_job' && (
-                <p className="text-[10px] text-gray-500 mt-1">
-                  Optional: enter ₹0 or leave blank if you do not charge a visiting fee.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div
-            id="reg-customer-display-preview"
-            className="text-[11px] text-gray-600 bg-white p-2.5 rounded-lg border border-gray-200 flex items-center justify-between flex-wrap gap-1"
-          >
-            <span className="font-semibold text-gray-700">Customer Display Preview:</span>
-            <span className="font-extrabold text-xs text-emerald-900">
-              {pricingType === 'fixed_job'
-                ? numericBaseRate > 0
-                  ? `Rates Negotiable (Visiting Charge: ₹${numericBaseRate})`
-                  : 'Final Rate After Work Inspection'
-                : `₹${rateAmount || '0'}${currentUnit}`}
-            </span>
+        {/* Experience (Years) */}
+        <div>
+          <label className="block text-xs font-bold text-gray-700 mb-1">
+            Experience (Years) <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <input
+              id="reg-input-experience"
+              type="number"
+              min="0"
+              max="50"
+              required
+              value={experience}
+              onChange={(e) => setExperience(e.target.value)}
+              placeholder="4"
+              className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white"
+            />
+            <Briefcase className="w-4 h-4 text-gray-400 absolute left-2.5 top-3" />
           </div>
         </div>
 
-        {/* LATE NIGHT CHARGES (8 PM - 6 AM) - Strictly for Driver only */}
-        {selectedCategory === 'Driver' && (
-          <div className={`p-3.5 rounded-2xl border transition-all ${
-            lateNightAvailable
-              ? 'bg-purple-50/70 border-purple-300 shadow-xs'
-              : 'bg-gray-50/80 border-gray-200'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  lateNightAvailable ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-500'
-                }`}>
-                  <Moon className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-gray-900 block">
-                    Late Night Availability (8 PM - 6 AM)
-                  </span>
-                  <span className="text-[11px] text-gray-500">
-                    Earn extra surcharge on emergency &amp; late callouts
-                  </span>
-                </div>
-              </div>
+        {/* MULTI-SELECT PRICING SYSTEM */}
+        <div className="p-3.5 sm:p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3.5">
+          <div className="flex items-center justify-between flex-wrap gap-1.5">
+            <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+              <IndianRupee className="w-4 h-4 text-emerald-700" />
+              Pricing Structure &amp; Rate Options <span className="text-red-500">*</span>
+            </span>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300">
+              Multi-Select Allowed (Choose 1 or more)
+            </span>
+          </div>
 
-              {/* Switch Toggle */}
-              <button
-                type="button"
-                id="toggle-late-night-btn"
-                onClick={() => setLateNightAvailable(!lateNightAvailable)}
-                className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 ease-in-out ${
-                  lateNightAvailable ? 'bg-purple-700 justify-end' : 'bg-gray-300 justify-start'
-                }`}
-              >
-                <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition-transform" />
-              </button>
+          <p className="text-[11px] text-gray-600">
+            Select all the payment methods you accept. You can enter specific rates for each chosen option (e.g. daily allowance, monthly salary, and hourly charge).
+          </p>
+
+          {/* Pricing Type Selector Multi-Choice Tabs */}
+          <div
+            id="reg-pricing-type-selector"
+            className={`grid gap-2 ${
+              category === 'Driver'
+                ? 'grid-cols-2 sm:grid-cols-4'
+                : 'grid-cols-2 sm:grid-cols-4'
+            }`}
+          >
+            {getAvailablePricingTypes(category, vehicleType).map((typeKey) => {
+              const info = PRICING_TYPE_LABELS[typeKey];
+              const isSelected = selectedPricingTypes.includes(typeKey);
+
+              const labelName =
+                typeKey === 'day_shift'
+                  ? 'Day Shift'
+                  : typeKey === 'night_shift'
+                  ? 'Night Shift'
+                  : typeKey === 'per_month'
+                  ? 'Monthly'
+                  : typeKey === 'per_day' && category === 'Driver'
+                  ? 'Per Day (Allowance)'
+                  : info?.shortLabel || typeKey;
+
+              const unitDisplay =
+                typeKey === 'day_shift'
+                  ? '/day'
+                  : typeKey === 'night_shift'
+                  ? '/night'
+                  : typeKey === 'per_month'
+                  ? '/month'
+                  : info?.unit || '/hr';
+
+              return (
+                <button
+                  key={typeKey}
+                  id={`reg-pricing-tab-${typeKey}`}
+                  type="button"
+                  onClick={() => togglePricingType(typeKey)}
+                  className={`p-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex flex-col justify-between text-left relative ${
+                    isSelected
+                      ? 'bg-emerald-800 text-white border-emerald-900 shadow-xs ring-1 ring-emerald-700'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                      {unitDisplay}
+                    </span>
+                    {isSelected ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                    ) : (
+                      <div className="w-3.5 h-3.5 rounded-full border border-gray-300" />
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-[11px] leading-snug">
+                      {labelName}
+                    </div>
+                    <div
+                      className={`text-[10px] mt-0.5 ${
+                        isSelected ? 'text-emerald-200' : 'text-gray-500'
+                      }`}
+                    >
+                      {typeKey === 'fixed_job' ? 'Inspection/Negotiable' : `₹${ratesMap[typeKey] || '—'}${unitDisplay}`}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* DYNAMICALLY RENDERED INPUT FIELDS FOR EACH SELECTED PRICING OPTION */}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-gray-800">
+                Set Your Rates ({selectedPricingTypes.length} Active {selectedPricingTypes.length === 1 ? 'Option' : 'Options'}):
+              </span>
+              <span className="text-[10px] text-gray-500">
+                Enter pricing for each selected option
+              </span>
             </div>
 
-            {lateNightAvailable && (
-              <div className="mt-3.5 pt-3 border-t border-purple-200/80 space-y-3 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-purple-950">
-                    Late Night Extra Charge Type
-                  </span>
-                  <div className="inline-flex rounded-lg border border-purple-300 bg-white p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNightChargeType('percentage');
-                        setNightExtraCharge('20');
-                      }}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer ${
-                        nightChargeType === 'percentage'
-                          ? 'bg-purple-700 text-white'
-                          : 'text-purple-800 hover:bg-purple-50'
-                      }`}
-                    >
-                      + Percentage (%)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNightChargeType('fixed');
-                        setNightExtraCharge(pricingType === 'per_km' ? '5' : '100');
-                      }}
-                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer ${
-                        nightChargeType === 'fixed'
-                          ? 'bg-purple-700 text-white'
-                          : 'text-purple-800 hover:bg-purple-50'
-                      }`}
-                    >
-                      + Fixed Extra (₹)
-                    </button>
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {selectedPricingTypes.map((typeKey, idx) => {
+                const isPrimary = idx === 0;
+                const isFixed = typeKey === 'fixed_job';
+                const labelText =
+                  typeKey === 'per_hour'
+                    ? 'Hourly Rate'
+                    : typeKey === 'per_day'
+                    ? category === 'Driver'
+                      ? 'Daily Allowance Rate'
+                      : 'Per Day Rate'
+                    : typeKey === 'per_month'
+                    ? 'Monthly Salary / Remuneration'
+                    : typeKey === 'day_shift'
+                    ? 'Day Shift Rate'
+                    : typeKey === 'night_shift'
+                    ? 'Night Shift Rate'
+                    : 'Visiting / Inspection Fee (Optional)';
 
-                {/* Night Charge Input */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-purple-900 mb-1">
-                    {nightChargeType === 'percentage'
-                      ? 'Extra Percentage (e.g., 20% extra at night)'
-                      : `Fixed Extra Amount in ₹ (added ${currentUnit})`}
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="reg-input-night-charge"
-                      type="number"
-                      min="1"
-                      required={lateNightAvailable}
-                      value={nightExtraCharge}
-                      onChange={(e) => setNightExtraCharge(e.target.value)}
-                      placeholder={nightChargeType === 'percentage' ? '20' : '100'}
-                      className="w-full pl-8 pr-12 py-2 rounded-lg border border-purple-300 bg-white text-xs font-bold text-purple-950 focus:outline-none focus:ring-1 focus:ring-purple-600"
-                    />
-                    {nightChargeType === 'percentage' ? (
-                      <Percent className="w-3.5 h-3.5 text-purple-600 absolute left-2.5 top-2.5" />
+                const unitText =
+                  typeKey === 'day_shift'
+                    ? '/day'
+                    : typeKey === 'night_shift'
+                    ? '/night'
+                    : typeKey === 'per_month'
+                    ? '/month'
+                    : PRICING_TYPE_LABELS[typeKey]?.unit || '/hr';
+
+                return (
+                  <div
+                    key={typeKey}
+                    id={`reg-rate-input-card-${typeKey}`}
+                    className="p-3 bg-white rounded-xl border border-emerald-200/90 shadow-2xs space-y-1.5 transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <label
+                        htmlFor={`reg-input-rate-${typeKey}`}
+                        className="text-xs font-bold text-emerald-950 flex items-center gap-1.5"
+                      >
+                        <span>{labelText}</span>
+                        {!isFixed && <span className="text-red-500">*</span>}
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {isFixed ? 'Optional' : `₹${unitText}`}
+                        </span>
+                        {selectedPricingTypes.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => togglePricingType(typeKey)}
+                            className="text-[10px] text-red-500 hover:text-red-700 hover:underline cursor-pointer ml-1"
+                            title="Remove rate option"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        id={isPrimary ? 'reg-input-rate-amount' : `reg-input-rate-${typeKey}`}
+                        data-rate-type={typeKey}
+                        type="number"
+                        min={isFixed ? 0 : typeKey === 'per_month' ? 1000 : 50}
+                        step={typeKey === 'per_month' ? 500 : 25}
+                        required={!isFixed}
+                        value={ratesMap[typeKey] ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setRatesMap((prev) => ({ ...prev, [typeKey]: val }));
+                        }}
+                        placeholder={
+                          isFixed
+                            ? '0 (or e.g. 150)'
+                            : typeKey === 'per_month'
+                            ? '22000'
+                            : typeKey === 'day_shift'
+                            ? '2500'
+                            : typeKey === 'night_shift'
+                            ? '3000'
+                            : typeKey === 'per_day'
+                            ? '850'
+                            : '350'
+                        }
+                        className="w-full pl-8 pr-16 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-extrabold text-emerald-950 bg-white"
+                      />
+                      <IndianRupee className="w-4 h-4 text-gray-400 absolute left-2.5 top-3" />
+                      <span className="text-xs font-bold text-gray-500 absolute right-3 top-3">
+                        {isFixed ? '₹ visit' : `₹${unitText}`}
+                      </span>
+                    </div>
+
+                    {isFixed ? (
+                      <p className="text-[10px] text-gray-500">
+                        Enter ₹0 if charges are determined after inspecting work.
+                      </p>
                     ) : (
-                      <IndianRupee className="w-3.5 h-3.5 text-purple-600 absolute left-2.5 top-2.5" />
+                      <p className="text-[10px] text-gray-400">
+                        {typeKey === 'per_month'
+                          ? 'Estimated monthly compensation for continuous booking.'
+                          : typeKey === 'per_day'
+                          ? 'Per day wage/allowance for full shift.'
+                          : 'Per hour service rate.'}
+                      </p>
                     )}
-                    <span className="text-xs font-bold text-purple-700 absolute right-3 top-2">
-                      {nightChargeType === 'percentage' ? '%' : `₹${currentUnit}`}
-                    </span>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          </div>
 
-                {/* Night Rate Calculation Banner */}
-                <div className="p-2.5 bg-purple-100/70 rounded-xl border border-purple-200 text-xs text-purple-950 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] text-purple-800 block">Recalculated Night Rate:</span>
-                    <span className="font-extrabold text-sm text-purple-950">
-                      ₹{calculatedNightRate}{currentUnit}
+          {/* COMPREHENSIVE LIVE PREVIEW */}
+          <div
+            id="reg-customer-display-preview"
+            className="text-xs bg-white p-3 rounded-xl border border-gray-200 space-y-2 shadow-2xs"
+          >
+            <div className="flex items-baseline justify-between gap-1 flex-wrap">
+              <span className="font-semibold text-gray-600 text-[11px]">
+                Customer Card Display Preview:
+              </span>
+              <span className="font-extrabold text-xs sm:text-sm text-emerald-900">
+                Rates:{' '}
+                {selectedPricingTypes
+                  .map((pt) => {
+                    const val = parseInt(ratesMap[pt] || '0', 10);
+                    return formatSingleRate(pt, val, category).displayRate;
+                  })
+                  .join(' • ')}
+              </span>
+            </div>
+
+            {selectedPricingTypes.length > 1 && (
+              <div className="pt-2 border-t border-gray-100 flex items-center gap-1.5 flex-wrap">
+                {selectedPricingTypes.map((pt) => {
+                  const val = parseInt(ratesMap[pt] || '0', 10);
+                  const item = formatSingleRate(pt, val, category);
+                  return (
+                    <span
+                      key={pt}
+                      className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200 text-[10px] font-semibold"
+                    >
+                      <span className="text-gray-500 mr-1">{item.label}:</span>
+                      <strong className="text-emerald-950">{item.displayRate}</strong>
                     </span>
-                  </div>
-                  <div className="text-right text-[11px] font-semibold text-purple-800">
-                    <span>Day: ₹{numericBaseRate}{currentUnit}</span>
-                    <span className="block text-[10px] text-purple-600">
-                      (+{nightChargeType === 'percentage' ? `${nightExtraCharge}%` : `₹${nightExtraCharge}`})
-                    </span>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             )}
           </div>
-        )}
+        </div>
 
         {/* Phone Number */}
         <div>
@@ -1145,6 +1370,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
             placeholder={
               category === 'Driver'
                 ? 'e.g., Fast city commute, Helmet provided, Parcel drop'
+                : category === 'Welder'
+                ? 'e.g., Gate welding, structural fabrication, repair work'
                 : 'e.g., Water motor repair, Leakage fix, CPVC piping'
             }
             className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-xs"

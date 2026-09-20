@@ -11,6 +11,8 @@ import {
   Moon,
   Bike,
   Car,
+  Truck,
+  HardHat,
   Zap,
   Navigation,
   LocateFixed,
@@ -123,7 +125,9 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
 
   // Build message with exact location details
   const buildWhatsAppMessage = (): string => {
-    const rateText = isNightActive ? pricing.displayNightRate : pricing.displayRate;
+    const rateText = isNightActive
+      ? `${pricing.displayNightRate} (Night Rate) • Standard: ${pricing.allRatesFormatted}`
+      : pricing.allRatesFormatted;
     if (isDriver) {
       const vehicleDesc = pricing.vehicleBadge || 'Driver Service';
       const pickupText = pickupLocation.trim() || 'To be specified';
@@ -135,13 +139,13 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
         `🚖 Vehicle: ${vehicleDesc}`,
         `📍 Pickup Location: ${pickupText}`,
         `🎯 Drop Location: ${dropText}`,
-        `💰 Quoted Rate: ${rateText}`,
+        `💰 Quoted Rates: ${rateText}`,
         ``,
         `Please confirm your availability and arrival time. Thank you!`
       ].join('\n');
     } else {
       const addressLine = pickupLocation.trim() ? `\n📍 Service Address: ${pickupLocation.trim()}` : '';
-      return `Hello ${worker.name}, I found your profile on Quick Karya for ${worker.category} service (${rateText}).${addressLine}\nPlease confirm if you are available. Thank you!`;
+      return `Hello ${worker.name}, I found your profile on Quick Karya for ${worker.category} service (Rates: ${rateText}).${addressLine}\nPlease confirm if you are available. Thank you!`;
     }
   };
 
@@ -265,10 +269,15 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
                 <p className="text-xs text-emerald-200 font-medium">{worker.category}</p>
                 {pricing.vehicleBadge && (
                   <span className="text-[10px] bg-emerald-700/90 text-emerald-100 px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
-                    {pricing.vehicleBadge.includes('2-Wheeler') ? (
+                    {pricing.vehicleBadge.includes('JCB') || pricing.vehicleBadge.includes('Bulldozer') ? (
+                      <HardHat className="w-3 h-3 text-amber-200" />
+                    ) : pricing.vehicleBadge.includes('Truck') ||
+                      pricing.vehicleBadge.includes('Freight') ||
+                      pricing.vehicleBadge.includes('Trailer') ||
+                      pricing.vehicleBadge.includes('Pickup') ? (
+                      <Truck className="w-3 h-3 text-emerald-200" />
+                    ) : pricing.vehicleBadge.includes('2-Wheeler') ? (
                       <Bike className="w-3 h-3 text-emerald-200" />
-                    ) : pricing.vehicleBadge.includes('3-Wheeler') ? (
-                      <span>🛺</span>
                     ) : (
                       <Car className="w-3 h-3 text-emerald-200" />
                     )}
@@ -291,12 +300,26 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
 
         {/* Pricing Banner */}
         <div className="bg-emerald-50 px-4 sm:px-5 py-2.5 border-b border-emerald-100 space-y-1.5 text-xs shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600 font-medium">Standard Service Rate</span>
-            <span className="text-sm sm:text-base font-extrabold text-emerald-900">
-              {pricing.displayRate}
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <span className="text-gray-600 font-bold uppercase tracking-wider text-[11px] shrink-0">Configured Rates:</span>
+            <span className="text-xs sm:text-sm font-extrabold text-emerald-900 text-right">
+              {pricing.allRatesFormatted}
             </span>
           </div>
+
+          {pricing.hasMultipleRates && (
+            <div className="pt-1 border-t border-emerald-200/50 flex items-center gap-1.5 flex-wrap">
+              {pricing.allRates.map((r, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-white text-emerald-900 border border-emerald-200 text-[10px] font-semibold shadow-2xs"
+                >
+                  <span className="text-gray-500 mr-1">{r.label}:</span>
+                  <strong className="text-emerald-950 font-extrabold">{r.displayRate}</strong>
+                </span>
+              ))}
+            </div>
+          )}
 
           {pricing.hasNightRate && (
             <div
