@@ -2,7 +2,7 @@ module.exports = ({ config }) => {
   const projectId =
     process.env.EAS_PROJECT_ID ||
     config?.extra?.eas?.projectId ||
-    "8d4e9070-a57f-4d06-8aeb-64ed1b0d7856";
+    "2914b687-2f1d-41fa-926f-ffd085769c8c";
 
   return {
     ...config,
