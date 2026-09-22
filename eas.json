@@ -8,14 +8,16 @@
       "distribution": "internal",
       "env": {
         "EAS_NO_FROZEN_LOCKFILE": "1",
-        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false"
+        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
+        "EAS_PROJECT_ID": "2914b087-2f1d-41fa-926f-ffd085769c8c"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EAS_NO_FROZEN_LOCKFILE": "1",
-        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false"
+        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
+        "EAS_PROJECT_ID": "2914b087-2f1d-41fa-926f-ffd085769c8c"
       },
       "android": {
         "buildType": "apk"
@@ -24,7 +26,8 @@
     "production": {
       "env": {
         "EAS_NO_FROZEN_LOCKFILE": "1",
-        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false"
+        "YARN_ENABLE_IMMUTABLE_INSTALLS": "false",
+        "EAS_PROJECT_ID": "2914b087-2f1d-41fa-926f-ffd085769c8c"
       },
       "android": {
         "buildType": "app-bundle"
