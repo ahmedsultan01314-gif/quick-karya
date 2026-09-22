@@ -1,14 +1,10 @@
 module.exports = ({ config }) => {
-  const projectId =
-    process.env.EAS_PROJECT_ID ||
-    config?.extra?.eas?.projectId;
-
   return {
     ...config,
-    name: config?.name || "Quick Karya",
-    slug: config?.slug || "quick-karya",
-    owner: config?.owner || "sultanquickkarya",
-    version: config?.version || "1.0.0",
+    name: "Quick Karya",
+    slug: "quick-karya",
+    owner: "sultanquickkarya",
+    version: "1.0.0",
     android: {
       package: "com.quickkarya.app",
       versionCode: 1,
@@ -16,14 +12,11 @@ module.exports = ({ config }) => {
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CALL_PHONE"
-      ],
-      ...(config?.android || {})
+      ]
     },
     extra: {
-      ...(config?.extra || {}),
       eas: {
-        ...(config?.extra?.eas || {}),
-        ...(projectId ? { projectId } : {})
+        projectId: "2914b087-2f1d-41fa-926f-ffd085769c8c"
       }
     }
   };
