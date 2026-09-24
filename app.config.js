@@ -3,7 +3,7 @@ module.exports = ({ config }) => {
     ...config,
     name: "Quick Karya",
     slug: "quick-karya",
-    owner: "sultanquickkarya",
+    owner: config?.owner || "sultanquickkaryas-team",
     version: "1.0.0",
     android: {
       package: "com.quickkarya.app",
