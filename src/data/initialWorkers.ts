@@ -871,5 +871,282 @@ export const INITIAL_WORKERS: WorkerProfile[] = [
     completedJobs: 380,
     languages: ['Hindi', 'Punjabi', 'English'],
     skills: ['Gate welding', 'Structural fabrication', 'Repair work', 'Iron railing fixing', 'Pipe welding']
+  },
+  // Pest Control verified providers (Cockroach Control, Termite Treatment, Bed Bug Control, Disinfection Services)
+  {
+    id: 'w-ag-pest-1',
+    name: 'Subhashis Roy (Herbal Cockroach Specialist)',
+    category: 'Pest Control',
+    experience: 8,
+    rating: 4.9,
+    reviewCount: 84,
+    hourlyRate: 350,
+    rate: 350,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 350,
+      per_day: 1100,
+      per_month: 24000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 350, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1100, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 24000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98621 33456',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799001',
+    latitude: 23.8325,
+    longitude: 91.284,
+    verified: true,
+    available: true,
+    completedJobs: 245,
+    languages: ['Bengali', 'Hindi', 'English'],
+    skills: [
+      'Herbal Cockroach Gel Baiting',
+      'Kitchen & Modular Cabinet Extermination',
+      'Odorless Chemical Spray',
+      'Drain Fly & Nymph Control'
+    ],
+    photo: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'w-ag-pest-2',
+    name: 'Pranab Banik (Anti-Termite Drilling Squad)',
+    category: 'Pest Control',
+    experience: 12,
+    rating: 4.8,
+    reviewCount: 116,
+    hourlyRate: 450,
+    rate: 450,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 450,
+      per_day: 1400,
+      per_month: 30000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 450, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1400, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 30000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 94361 77210',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799002',
+    latitude: 23.836,
+    longitude: 91.287,
+    verified: true,
+    available: true,
+    completedJobs: 410,
+    languages: ['Bengali', 'Hindi'],
+    skills: [
+      'Anti-Termite Wall Drilling',
+      'Pre & Post Construction Termite Barrier',
+      'Wood Borer Chemical Injection',
+      'Govt-Approved Imidacloprid Piping'
+    ],
+    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'w-ag-pest-3',
+    name: 'Animesh Saha (Bed Bug Steam & Eradication)',
+    category: 'Pest Control',
+    experience: 6,
+    rating: 4.9,
+    reviewCount: 72,
+    hourlyRate: 400,
+    rate: 400,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 400,
+      per_day: 1200,
+      per_month: 26000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 400, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1200, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 26000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 97744 88192',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799003',
+    latitude: 23.84,
+    longitude: 91.291,
+    verified: true,
+    available: true,
+    completedJobs: 185,
+    languages: ['Bengali', 'Hindi', 'Kokborok'],
+    skills: [
+      'Superheated Dry Steam Bed Bug Kill',
+      'Mattress & Headboard Deep Disinfestation',
+      '2-Stage Nymph Knockdown Spray',
+      'Non-Toxic Child-Safe Treatment'
+    ],
+    photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'w-ag-pest-4',
+    name: 'Tripura Bio-Shield Disinfection & Commercial Pest Squad',
+    category: 'Pest Control',
+    experience: 9,
+    rating: 5.0,
+    reviewCount: 130,
+    hourlyRate: 500,
+    rate: 500,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 500,
+      per_day: 1500,
+      per_month: 35000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 500, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1500, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 35000, unit: '/month', label: 'Monthly' }
+    ],
+    lateNightAvailable: true,
+    nightRates: {
+      enabled: true,
+      type: 'percentage',
+      extraValue: 20,
+      effectiveNightRate: 600
+    },
+    phone: '+91 98625 44090',
+    city: 'Agartala',
+    state: 'Tripura',
+    pincode: '799001',
+    latitude: 23.834,
+    longitude: 91.279,
+    verified: true,
+    available: true,
+    completedJobs: 520,
+    languages: ['Bengali', 'Hindi', 'English'],
+    skills: [
+      'Hospital-Grade ULV Cold Fogging',
+      'Commercial Warehouse Sanitization',
+      'Rodent Bait Station & Trap Grid',
+      'Mosquito Larvicide & Vector Control Fogging'
+    ]
+  },
+  {
+    id: 'w-blr-pest-1',
+    name: 'Kiran Gowda (SafeNest Pest & Termite Solutions)',
+    category: 'Pest Control',
+    experience: 10,
+    rating: 4.8,
+    reviewCount: 95,
+    hourlyRate: 400,
+    rate: 400,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 400,
+      per_day: 1300,
+      per_month: 28000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 400, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1300, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 28000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98450 78211',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560001',
+    latitude: 12.973,
+    longitude: 77.592,
+    verified: true,
+    available: true,
+    completedJobs: 340,
+    languages: ['Kannada', 'Hindi', 'English'],
+    skills: [
+      'Termite Reticulation System',
+      'Cockroach Herbal Gel',
+      'Bed Bug Heat Treatment',
+      'Apartment Complex Monthly AMC'
+    ]
+  },
+  {
+    id: 'w-del-pest-1',
+    name: 'Rameshwar Verma (Apex Bed Bug & Termite Doctors)',
+    category: 'Pest Control',
+    experience: 8,
+    rating: 4.9,
+    reviewCount: 108,
+    hourlyRate: 450,
+    rate: 450,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 450,
+      per_day: 1400,
+      per_month: 32000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 450, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1400, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 32000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98112 55431',
+    city: 'Delhi',
+    state: 'Delhi',
+    pincode: '110001',
+    latitude: 28.618,
+    longitude: 77.215,
+    verified: true,
+    available: true,
+    completedJobs: 460,
+    languages: ['Hindi', 'English', 'Punjabi'],
+    skills: [
+      'Anti-Termite Drilling Treatment',
+      'Bed Bug Nymph Spray',
+      'Commercial Office Sanitization',
+      'Rodent Bait Proofing'
+    ]
+  },
+  {
+    id: 'w-mum-pest-1',
+    name: 'Santosh Kadam (Metro Mumbai Pest & Disinfection Services)',
+    category: 'Pest Control',
+    experience: 11,
+    rating: 4.9,
+    reviewCount: 142,
+    hourlyRate: 450,
+    rate: 450,
+    pricingType: 'per_hour',
+    rateUnit: '/hr',
+    pricingRates: {
+      per_hour: 450,
+      per_day: 1500,
+      per_month: 34000
+    },
+    rateOptions: [
+      { pricingType: 'per_hour', amount: 450, unit: '/hr', label: 'Hourly' },
+      { pricingType: 'per_day', amount: 1500, unit: '/day', label: 'Daily Allowance' },
+      { pricingType: 'per_month', amount: 34000, unit: '/month', label: 'Monthly' }
+    ],
+    phone: '+91 98200 66542',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    pincode: '400001',
+    latitude: 19.078,
+    longitude: 72.88,
+    verified: true,
+    available: true,
+    completedJobs: 610,
+    languages: ['Marathi', 'Hindi', 'English'],
+    skills: [
+      'Restaurant Pest AMC',
+      'Cockroach Herbal Gel',
+      'ULV Cold Fogging Disinfection',
+      'Bed Bug Thermal Eradication'
+    ]
   }
 ];

@@ -3,7 +3,23 @@ import { WorkerProfile, ServiceCategory, DriverSubCategory } from '../types';
 import { WorkerCard } from './WorkerCard';
 import { CATEGORIES } from '../data/categories';
 import { getDriverSubCategory } from '../utils/pricing';
-import { Filter, Users, ShieldAlert, Sparkles, RefreshCw, Car, Truck, HardHat } from 'lucide-react';
+import {
+  Filter,
+  Users,
+  ShieldAlert,
+  Sparkles,
+  RefreshCw,
+  Car,
+  Truck,
+  HardHat,
+  Wrench,
+  Zap,
+  Hammer,
+  UtensilsCrossed,
+  Paintbrush,
+  Flame,
+  Bug
+} from 'lucide-react';
 
 interface WorkerListProps {
   workers: WorkerProfile[];
@@ -25,6 +41,33 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   isLoading
 }) => {
   const [driverSubFilter, setDriverSubFilter] = useState<DriverSubCategory>('all');
+
+  const getCategoryIcon = (catName: string) => {
+    switch (catName) {
+      case 'Plumber':
+        return <Wrench className="w-3.5 h-3.5 shrink-0" />;
+      case 'Electrician':
+        return <Zap className="w-3.5 h-3.5 shrink-0" />;
+      case 'Carpenter':
+        return <Hammer className="w-3.5 h-3.5 shrink-0" />;
+      case 'Cook':
+        return <UtensilsCrossed className="w-3.5 h-3.5 shrink-0" />;
+      case 'Painter':
+        return <Paintbrush className="w-3.5 h-3.5 shrink-0" />;
+      case 'Driver':
+        return <Car className="w-3.5 h-3.5 shrink-0" />;
+      case 'Rajmistri / Mason':
+        return <HardHat className="w-3.5 h-3.5 shrink-0" />;
+      case 'Labour / Helper':
+        return <Users className="w-3.5 h-3.5 shrink-0" />;
+      case 'Welder':
+        return <Flame className="w-3.5 h-3.5 shrink-0" />;
+      case 'Pest Control':
+        return <Bug className="w-3.5 h-3.5 shrink-0" />;
+      default:
+        return <Sparkles className="w-3.5 h-3.5 shrink-0" />;
+    }
+  };
 
   // Compute counts for driver sub-categories
   const driverWorkers = workers.filter((w) => w.category === 'Driver');
@@ -113,13 +156,14 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                   onSelectCategory(cat.name);
                   if (cat.name !== 'Driver') setDriverSubFilter('all');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                   selectedCategory === cat.name
                     ? 'bg-emerald-800 text-white font-semibold shadow-xs'
                     : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50 hover:text-emerald-900'
                 }`}
               >
-                {cat.name}
+                {getCategoryIcon(cat.name)}
+                <span>{cat.name}</span>
               </button>
             )
           )}

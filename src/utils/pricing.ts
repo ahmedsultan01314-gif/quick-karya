@@ -230,6 +230,8 @@ export function getDefaultPricingForCategory(
       return { pricingType: 'per_day', defaultRate: 700 };
     case 'Emergency Highway Assistance':
       return { pricingType: 'fixed_job', defaultRate: 750 };
+    case 'Pest Control':
+      return { pricingType: 'per_hour', defaultRate: 400 };
     case 'Welder':
     case 'Carpenter':
     case 'Cook':

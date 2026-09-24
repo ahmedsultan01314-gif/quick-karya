@@ -8,6 +8,7 @@ export type ServiceCategory =
   | 'Rajmistri / Mason'
   | 'Labour / Helper'
   | 'Welder'
+  | 'Pest Control'
   | 'Emergency Highway Assistance';
 
 export type PricingType =

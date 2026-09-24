@@ -85,6 +85,14 @@ export const CATEGORIES: CategoryInfo[] = [
     avgRate: '₹350 - ₹500/hr'
   },
   {
+    id: 'Pest Control',
+    name: 'Pest Control',
+    hindiName: 'कीट नियंत्रण / पेस्ट कंट्रोल',
+    description: 'Cockroach control, anti-termite drilling treatment, bed bug eradication, rodent & sanitization disinfection services.',
+    iconName: 'Bug',
+    avgRate: '₹350 - ₹500/hr • ₹1,200/day'
+  },
+  {
     id: 'Emergency Highway Assistance',
     name: 'Emergency Highway Assistance',
     hindiName: 'आपातकालीन हाईवे सहायता',

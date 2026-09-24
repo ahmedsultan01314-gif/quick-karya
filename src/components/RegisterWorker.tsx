@@ -119,6 +119,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
 
     if (type === 'per_hour') {
       if (cat === 'Emergency Highway Assistance') return '500';
+      if (cat === 'Pest Control') return '400';
       if (cat === 'Welder') return '350';
       if (cat === 'Plumber' || cat === 'Electrician') return '350';
       if (cat === 'Carpenter' || cat === 'Painter') return '400';
@@ -128,6 +129,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       return '300';
     }
     if (type === 'per_day') {
+      if (cat === 'Pest Control') return '1200';
       if (cat === 'Welder') return '950';
       if (cat === 'Rajmistri / Mason') return '900';
       if (cat === 'Painter') return '850';
@@ -138,6 +140,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       return '700';
     }
     if (type === 'per_month') {
+      if (cat === 'Pest Control') return '26000';
       if (cat === 'Welder') return '24000';
       if (cat === 'Cook') return '15000';
       if (cat === 'Labour / Helper') return '14000';
@@ -145,6 +148,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
     }
     if (type === 'fixed_job') {
       if (cat === 'Emergency Highway Assistance') return '500';
+      if (cat === 'Pest Control') return '150';
       return '150';
     }
     return '300';
