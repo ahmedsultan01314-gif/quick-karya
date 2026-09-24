@@ -3,7 +3,7 @@ module.exports = ({ config }) => {
     ...config,
     name: "Quick Karya",
     slug: "quick-karya",
-    owner: config?.owner || "sultanquickkaryas-team",
+    owner: "sultanquickkaryas-team",
     version: "1.0.0",
     android: {
       package: "com.quickkarya.app",
@@ -18,10 +18,7 @@ module.exports = ({ config }) => {
       ...(config?.extra || {}),
       eas: {
         ...(config?.extra?.eas || {}),
-        projectId:
-          process.env.EAS_PROJECT_ID ||
-          config?.extra?.eas?.projectId ||
-          "2914b087-2f1d-41fa-926f-ffd005769c8c"
+        projectId: "2914b087-2f1d-41fa-926f-ffd005769c8c"
       }
     }
   };
