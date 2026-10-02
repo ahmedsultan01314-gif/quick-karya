@@ -1,11 +1,13 @@
-module.exports = ({ config }) => {
+export default ({ config } = {}) => {
+  const baseConfig = config || {};
   return {
-    ...config,
+    ...baseConfig,
     name: "Quick Karya",
     slug: "quick-karya",
     owner: "sultanquickkaryas-team",
     version: "1.0.0",
     android: {
+      ...(baseConfig.android || {}),
       package: "com.quickkarya.app",
       versionCode: 1,
       permissions: [
@@ -15,9 +17,9 @@ module.exports = ({ config }) => {
       ]
     },
     extra: {
-      ...(config?.extra || {}),
+      ...(baseConfig.extra || {}),
       eas: {
-        ...(config?.extra?.eas || {}),
+        ...(baseConfig.extra?.eas || {}),
         projectId: "2914b087-2f1d-41fa-926f-ffd005769c8c"
       }
     }
