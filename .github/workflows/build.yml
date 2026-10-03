@@ -15,32 +15,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 22
 
-      - name: Setup Java JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Install Dependencies
+        run: npm install
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install dependencies
-        run: npm ci || npm install
-
-      - name: Prebuild Expo Native Files
-        run: npx expo prebuild --platform android
-
-      - name: Build Android APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: QuickKarya-APK
-          path: android/app/build/outputs/apk/release/*.apk
+      - name: Build Android APK with Expo
+        run: npx expo export --platform android
