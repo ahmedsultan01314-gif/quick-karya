@@ -30,15 +30,15 @@ jobs:
       - name: Prebuild Native Android Folder
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Upgrade Gradle Wrapper
+      - name: Force Compatible Gradle Version
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew wrapper --gradle-version 9.4.1
+          sed -i 's/gradle-.*-bin.zip/gradle-8.7-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
 
       - name: Build APK via Gradle
         run: |
           cd android
+          chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
       - name: Upload Installable APK
