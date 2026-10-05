@@ -24,25 +24,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup EAS CLI
+        run: npm install -g eas-cli
+
       - name: Install Dependencies
         run: npm install
 
-      - name: Prebuild Native Android
-        run: npx expo prebuild --platform android --clean --no-install
-
-      - name: Set Correct Gradle Version
-        run: |
-          cd android
-          sed -i 's/gradle-.*-bin.zip/gradle-9.4.1-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
-
-      - name: Build APK via Gradle
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+      - name: Build APK via EAS
+        run: npx eas-cli build --platform android --profile preview --local --non-interactive
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: QuickKarya-Release-APK
-          path: android/app/build/outputs/apk/release/*.apk
+          path: '*.apk'
