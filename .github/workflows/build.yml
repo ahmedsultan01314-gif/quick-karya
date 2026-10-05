@@ -25,24 +25,27 @@ jobs:
           distribution: 'temurin'
 
       - name: Install Dependencies
-        run: npm install
-
-      - name: Prebuild Native Android
-        run: npx expo prebuild --platform android --clean --no-install
-
-      - name: Set Compatible Gradle Version
         run: |
-          cd android
-          sed -i 's/gradle-.*-bin.zip/gradle-9.4.1-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
+          npm install
+          npm install -g @capacitor/cli @capacitor/core
 
-      - name: Build APK via Gradle
+      - name: Export Web Application
+        run: npx expo export --platform web
+
+      - name: Initialize Capacitor and Add Android
+        run: |
+          npx cap init QuickKarya com.quickkarya.app --web-dir dist
+          npx cap add android
+          npx cap copy android
+
+      - name: Build APK with Capacitor Android
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -x test -Dorg.gradle.kotlin.dsl.precompiled.script.plugins=false
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: QuickKarya-Release-APK
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/debug/*.apk
