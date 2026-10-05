@@ -30,6 +30,11 @@ jobs:
       - name: Prebuild Native Android
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Set Correct Gradle Version
+        run: |
+          cd android
+          sed -i 's/gradle-.*-bin.zip/gradle-9.4.1-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
+
       - name: Build APK via Gradle
         run: |
           cd android
