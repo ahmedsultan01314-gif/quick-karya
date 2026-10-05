@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: 'npm'
 
       - name: Setup Java JDK 17
@@ -29,6 +29,17 @@ jobs:
 
       - name: Prebuild Native Android
         run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Fix SDK and Gradle Compatibility
+        run: |
+          cd android
+          # Set Stable Gradle Wrapper
+          sed -i 's/gradle-.*-bin.zip/gradle-8.10.2-bin.zip/g' gradle/wrapper/gradle-wrapper.properties
+          
+          # Force Stable Compile SDK Versions in root build.gradle
+          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 35/g' build.gradle
+          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 35/g' build.gradle
+          sed -i 's/buildToolsVersion = .*/buildToolsVersion = "35.0.0"/g' build.gradle
 
       - name: Build APK via Gradle
         run: |
