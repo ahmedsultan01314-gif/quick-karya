@@ -6,10 +6,20 @@ export default ({ config } = {}) => {
     slug: "quick-karya",
     owner: "sultanquickkaryas-team",
     version: "1.0.0",
+    icon: "./assets/icon.png",
+    splash: {
+      image: "./assets/splash.png",
+      resizeMode: "contain",
+      backgroundColor: "#064e3b"
+    },
     android: {
       ...(baseConfig.android || {}),
       package: "com.quickkarya.app",
       versionCode: 1,
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#064e3b"
+      },
       permissions: [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
