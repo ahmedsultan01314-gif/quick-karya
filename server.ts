@@ -224,11 +224,11 @@ app.post('/api/workers', (req, res) => {
     latitude,
     longitude,
     photo,
-    photoUrl
+    photoUrl,
+    subRole
   } = req.body;
 
-  const numericRate = parseInt(rate ?? hourlyRate, 10);
-  if (!name || !category || !experience || isNaN(numericRate) || !phone || !city) {
+  if (!name || !category || !experience || !phone || !city) {
     return res.status(400).json({ error: 'Missing required worker onboarding fields' });
   }
 
@@ -263,13 +263,14 @@ app.post('/api/workers', (req, res) => {
     experience: parseInt(experience, 10) || 1,
     rating: 5.0,
     reviewCount: 1,
-    hourlyRate: numericRate,
-    rate: numericRate,
+    hourlyRate: 0,
+    rate: 0,
     pricingType: pricingType || (category === 'Driver' && vehicleType ? 'per_km' : category === 'Emergency Highway Assistance' ? 'fixed_job' : 'per_hour'),
     rateUnit: unit,
     pricingRates: pricingRates && typeof pricingRates === 'object' ? pricingRates : undefined,
     rateOptions: Array.isArray(rateOptions) ? rateOptions : undefined,
     vehicleType: category === 'Driver' ? vehicleType : undefined,
+    subRole: subRole ? subRole.trim() : undefined,
     lateNightAvailable: Boolean(lateNightAvailable),
     nightRates: nightRates?.enabled ? nightRates : undefined,
     phone: phone.trim(),
@@ -287,7 +288,7 @@ app.post('/api/workers', (req, res) => {
       : ['Hindi', 'Local'],
     skills: skills
       ? (Array.isArray(skills) ? skills : skills.split(',')).map((s: string) => s.trim()).filter(Boolean)
-      : [`Verified ${category}`],
+      : subRole ? [subRole.trim(), `Verified ${category}`] : [`Verified ${category}`],
     emergencyAvailable: category === 'Emergency Highway Assistance'
   };
 

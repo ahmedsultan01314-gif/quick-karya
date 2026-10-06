@@ -18,7 +18,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'प्लंबर / नलसाज',
     description: 'Pipe fittings, water leakage, tap repair, bathroom sanitary installations, motor servicing.',
     iconName: 'Wrench',
-    avgRate: '₹250 - ₹450/hr'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Electrician',
@@ -26,7 +26,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'इलेक्ट्रीशियन / बिजली मिस्त्री',
     description: 'Wiring, MCB tripping, fan repair, inverter connection, appliance installation & fixes.',
     iconName: 'Zap',
-    avgRate: '₹200 - ₹400/hr'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Carpenter',
@@ -34,7 +34,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'बढ़ई / कारपेंटर',
     description: 'Door & lock repairs, modular furniture fitting, wooden cabinetry, polishing & restoration.',
     iconName: 'Hammer',
-    avgRate: '₹300 - ₹500/hr'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Cook',
@@ -42,7 +42,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'रसोइया / कुक',
     description: 'Home food preparation, party catering, North & South Indian meals, hygienic cook services.',
     iconName: 'UtensilsCrossed',
-    avgRate: '₹350 - ₹600/meal'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Painter',
@@ -50,7 +50,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'पेंटर / पुताई कारीगर',
     description: 'Interior & exterior wall painting, waterproof putty, texture designs, touch-up painting.',
     iconName: 'Paintbrush',
-    avgRate: '₹250 - ₹450/hr'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Driver',
@@ -58,7 +58,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'ड्राइवर / वाहन चालक',
     description: 'Commercial & personal car drivers, outstation travel, hourly city transit, verified license holders.',
     iconName: 'Car',
-    avgRate: '₹250 - ₹450/hr'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Rajmistri / Mason',
@@ -66,7 +66,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'राजमिस्त्री / चिनाई कारीगर',
     description: 'Brickwork, tile setting, concrete plastering, slab casting, structural repair & masonry.',
     iconName: 'HardHat',
-    avgRate: '₹500 - ₹800/day'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Labour / Helper',
@@ -74,7 +74,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'मजदूर / सहायक हेल्पर',
     description: 'Loading & unloading, shifting assistance, construction site help, gardening & manual work.',
     iconName: 'Users',
-    avgRate: '₹350 - ₹550/day'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Welder',
@@ -82,7 +82,7 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'वेल्डर / वेल्डिंग कारीगर',
     description: 'Iron gate welding, window grills, structural steel fabrication, metal frame repairs & ARC/MIG welding.',
     iconName: 'Flame',
-    avgRate: '₹350 - ₹500/hr'
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Pest Control',
@@ -90,7 +90,31 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'कीट नियंत्रण / पेस्ट कंट्रोल',
     description: 'Cockroach control, anti-termite drilling treatment, bed bug eradication, rodent & sanitization disinfection services.',
     iconName: 'Bug',
-    avgRate: '₹350 - ₹500/hr • ₹1,200/day'
+    avgRate: 'Direct Dial Contact'
+  },
+  {
+    id: 'Laundry / Clothes Wash',
+    name: 'Laundry / Clothes Wash',
+    hindiName: 'धोबी / कपड़े धुलाई व इस्त्री',
+    description: 'Washing machine laundry, clothes wash, steam ironing, dry cleaning drop-off & doorstep pickup.',
+    iconName: 'Shirt',
+    avgRate: 'Direct Dial Contact'
+  },
+  {
+    id: 'Hotel Staff',
+    name: 'Hotel Staff',
+    hindiName: 'होटल स्टाफ / रूम सर्विस',
+    description: 'Hotel receptionists, room housekeeping, hospitality helpers, cleaning & bell desk support.',
+    iconName: 'Building2',
+    avgRate: 'Direct Dial Contact'
+  },
+  {
+    id: 'Restaurant Staff',
+    name: 'Restaurant Staff',
+    hindiName: 'रेस्टोरेंट स्टाफ / वेटर व रसोइया',
+    description: 'Restaurant waiters, chefs, commercial cooks, table servers, kitchen helpers & pantry staff.',
+    iconName: 'Utensils',
+    avgRate: 'Direct Dial Contact'
   },
   {
     id: 'Emergency Highway Assistance',
@@ -98,8 +122,14 @@ export const CATEGORIES: CategoryInfo[] = [
     hindiName: 'आपातकालीन हाईवे सहायता',
     description: '24/7 on-spot highway rescue: flat tyre repair, jump start, fuel delivery, towing support & winching.',
     iconName: 'ShieldAlert',
-    avgRate: '₹500 - ₹1200/callout',
+    avgRate: 'Direct Dial Contact',
     badge: '24/7 Urgent',
     emergencyPriority: true
   }
 ];
+
+export const CATEGORY_SUB_ROLES: Partial<Record<ServiceCategory, string[]>> = {
+  'Laundry / Clothes Wash': ['Laundry Person', 'Ironing', 'Helper'],
+  'Hotel Staff': ['Receptionist', 'Housekeeping', 'Helper'],
+  'Restaurant Staff': ['Waiter', 'Chef/Cook', 'Helper']
+};

@@ -18,24 +18,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import WebApp from './src/App';
-import { CATEGORIES } from './src/data/categories';
+import { CATEGORIES, CATEGORY_SUB_ROLES } from './src/data/categories';
 import { INDIAN_STATES } from './src/data/indianStates';
 import {
   ActiveTab,
-  DriverVehicleType,
-  PricingType,
   ServiceCategory,
   WorkerProfile
 } from './src/types';
-import {
-  DRIVER_SPECIALIZATION_GROUPS,
-  PRICING_TYPE_LABELS,
-  formatWorkerPricing,
-  isHeavyMachineryDriver,
-  isLateNightNow
-} from './src/utils/pricing';
 
-const STORAGE_KEY = '@quickkarya_workers_v2';
+const STORAGE_KEY = '@quickkarya_workers_v3';
 
 const SAMPLE_AVATARS = [
   'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=200&auto=format&fit=crop&q=80',
@@ -80,7 +71,7 @@ function NativeApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('workers');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  // Workers starts empty - no dummy / fake initial data
+  // Workers starts empty - pure directory with real registrations only
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
 
   // User GPS Coordinates
@@ -94,31 +85,16 @@ function NativeApp() {
   const [userLocationName, setUserLocationName] = useState('Agartala, Tripura');
   const [gpsLoading, setGpsLoading] = useState(false);
 
-  // Registration Form State
+  // Registration Form State (Strictly: Profile Photo, Full Name, Service Category, Experience, Mobile, City, State, Pincode)
   const [regName, setRegName] = useState('');
   const [regCategory, setRegCategory] = useState<ServiceCategory>('Plumber');
+  const [regSubRole, setRegSubRole] = useState<string>('');
   const [regExperience, setRegExperience] = useState('4');
   const [regPhone, setRegPhone] = useState('');
   const [regCity, setRegCity] = useState('Agartala');
   const [regState, setRegState] = useState('Tripura');
   const [regPincode, setRegPincode] = useState('799001');
-  const [regSkills, setRegSkills] = useState('');
   const [regPhoto, setRegPhoto] = useState<string>('');
-  const [regVehicleType, setRegVehicleType] = useState<DriverVehicleType>(
-    'Private Car Driver (Family, Outstation, Local Trips)'
-  );
-  const [regPricingTypes, setRegPricingTypes] = useState<PricingType[]>([
-    'per_hour',
-    'per_day'
-  ]);
-  const [regRates, setRegRates] = useState<Record<string, string>>({
-    per_hour: '350',
-    per_day: '850',
-    per_month: '22000',
-    day_shift: '2500',
-    night_shift: '3000',
-    fixed_job: '150'
-  });
   const [regSuccessWorker, setRegSuccessWorker] = useState<WorkerProfile | null>(null);
 
   // State & City Selector Modals
@@ -275,17 +251,6 @@ function NativeApp() {
     return matchesCategory && matchesSearch;
   });
 
-  // Pricing type toggle
-  const togglePricingType = (pt: PricingType) => {
-    if (regPricingTypes.includes(pt)) {
-      if (regPricingTypes.length > 1) {
-        setRegPricingTypes(regPricingTypes.filter((t) => t !== pt));
-      }
-    } else {
-      setRegPricingTypes([...regPricingTypes, pt]);
-    }
-  };
-
   // Submit registration: persist to AsyncStorage & update local state
   const handleRegisterSubmit = async () => {
     if (!regName.trim()) {
@@ -298,73 +263,21 @@ function NativeApp() {
       return;
     }
     const expNum = parseInt(regExperience, 10) || 1;
-    const primaryType = regPricingTypes[0] || 'per_hour';
-    const primaryRate = parseInt(regRates[primaryType] || '350', 10);
 
     const formattedPhone = cleanPhone.startsWith('91')
       ? `+${cleanPhone}`
       : `+91 ${cleanPhone.slice(-10, -5)} ${cleanPhone.slice(-5)}`;
 
-    const pricingRates: Partial<Record<PricingType, number>> = {};
-    regPricingTypes.forEach((pt) => {
-      pricingRates[pt] = parseInt(regRates[pt] || '0', 10);
-    });
-
-    const rateOptions = regPricingTypes.map((pt) => {
-      const amt = parseInt(regRates[pt] || '0', 10);
-      const label =
-        pt === 'per_hour'
-          ? 'Hourly'
-          : pt === 'per_day'
-          ? 'Full Day'
-          : pt === 'per_month'
-          ? 'Monthly'
-          : pt === 'day_shift'
-          ? 'Day Shift'
-          : pt === 'night_shift'
-          ? 'Night Shift'
-          : 'Inspection';
-      const unit =
-        pt === 'per_month'
-          ? '/month'
-          : pt === 'per_day' || pt === 'day_shift'
-          ? '/day'
-          : pt === 'night_shift'
-          ? '/night'
-          : pt === 'fixed_job'
-          ? '/job'
-          : '/hr';
-      return {
-        pricingType: pt,
-        amount: amt,
-        unit,
-        label
-      };
-    });
-
     const newWorker: WorkerProfile = {
       id: `w-local-${Date.now()}`,
       name: regName.trim(),
       category: regCategory,
+      subRole: regSubRole ? regSubRole.trim() : undefined,
       experience: expNum,
       rating: 5.0,
       reviewCount: 1,
-      hourlyRate: parseInt(regRates['per_hour'] || `${primaryRate}`, 10),
-      rate: primaryRate,
-      pricingType: primaryType,
-      rateUnit:
-        primaryType === 'per_month'
-          ? '/month'
-          : primaryType === 'per_day' || primaryType === 'day_shift'
-          ? '/day'
-          : primaryType === 'night_shift'
-          ? '/night'
-          : primaryType === 'fixed_job'
-          ? '/job'
-          : '/hr',
-      pricingRates,
-      rateOptions,
-      vehicleType: regCategory === 'Driver' ? regVehicleType : undefined,
+      hourlyRate: 0,
+      rate: 0,
       phone: formattedPhone,
       city: regCity.trim() || 'Agartala',
       state: regState.trim() || 'Tripura',
@@ -375,13 +288,7 @@ function NativeApp() {
       available: true,
       completedJobs: 1,
       languages: ['Bengali', 'Hindi', 'English'],
-      skills: regSkills.trim()
-        ? regSkills.split(',').map((s) => s.trim())
-        : [
-            regCategory === 'Driver'
-              ? `${regVehicleType}`
-              : `${regCategory} professional`
-          ],
+      skills: regSubRole ? [regSubRole.trim(), `Verified ${regCategory}`] : [`Verified ${regCategory}`],
       photo: regPhoto || undefined,
       emergencyAvailable: regCategory === 'Emergency Highway Assistance'
     };
@@ -406,7 +313,7 @@ function NativeApp() {
       <View style={styles.topEmergencyStrip}>
         <View style={styles.dotRow}>
           <View style={styles.greenDot} />
-          <Text style={styles.topStripText}>Verified Local Artisans</Text>
+          <Text style={styles.topStripText}>Free Proximity Contact Directory</Text>
         </View>
         <TouchableOpacity
           onPress={() => {
@@ -427,7 +334,7 @@ function NativeApp() {
           </View>
           <View>
             <Text style={styles.brandTitle}>Quick Karya</Text>
-            <Text style={styles.brandSubtitle}>PROXIMITY ARTISAN NETWORK</Text>
+            <Text style={styles.brandSubtitle}>DIRECT ARTISAN CALL DIRECTORY</Text>
           </View>
         </View>
         <TouchableOpacity
@@ -449,7 +356,7 @@ function NativeApp() {
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search artisan, skill, area, or rate..."
+              placeholder="Search artisan, trade, area, or phone..."
               placeholderTextColor="#6ee7b7"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -535,7 +442,7 @@ function NativeApp() {
                 </Text>
                 <Text style={styles.emptySubtitle}>
                   {workers.length === 0
-                    ? 'The directory currently has no registered workers. Be the first artisan to onboard or register a profile with custom service rates!'
+                    ? 'The directory currently has no registered workers. Be the first local worker to register your profile for direct phone calls!'
                     : 'No service providers found matching your current filter. Try resetting the category or search keyword.'}
                 </Text>
                 <TouchableOpacity
@@ -557,12 +464,10 @@ function NativeApp() {
                 </TouchableOpacity>
               </View>
             ) : (
-              /* EXACT WORKER CARD UI MATCHING THE PREVIEW */
+              /* CLEAN WORKER CARD UI WITHOUT ANY PRICES OR RATES */
               filteredWorkers.map((worker) => {
                 const isEmergency =
                   worker.category === 'Emergency Highway Assistance';
-                const pricing = formatWorkerPricing(worker);
-                const isNight = isLateNightNow() && pricing.hasNightRate;
                 const initials = worker.name
                   .split(' ')
                   .map((n) => n[0])
@@ -590,18 +495,6 @@ function NativeApp() {
                             ON CALL
                           </Text>
                         </View>
-                      </View>
-                    )}
-
-                    {/* Night rate banner if active */}
-                    {isNight && !isEmergency && (
-                      <View style={styles.cardNightTopBanner}>
-                        <Text style={styles.cardNightBannerText}>
-                          🌙 LATE NIGHT RATES ACTIVE (8 PM - 6 AM)
-                        </Text>
-                        <Text style={styles.cardNightRateText}>
-                          {pricing.displayNightRate}
-                        </Text>
                       </View>
                     )}
 
@@ -642,21 +535,19 @@ function NativeApp() {
                             )}
                           </View>
 
-                          {/* Profession, Driver Vehicle & Experience */}
+                          {/* Profession & Experience */}
                           <View style={styles.cardSubDetailsRow}>
                             <Text style={styles.cardCategoryText}>
                               {worker.category}
                             </Text>
-                            {worker.vehicleType && (
+                            {worker.subRole ? (
                               <>
                                 <Text style={styles.cardDot}>•</Text>
-                                <View style={styles.cardVehiclePill}>
-                                  <Text style={styles.cardVehiclePillText}>
-                                    🚗 {worker.vehicleType.split('(')[0].trim()}
-                                  </Text>
-                                </View>
+                                <Text style={styles.cardSubRoleText}>
+                                  {worker.subRole}
+                                </Text>
                               </>
-                            )}
+                            ) : null}
                             <Text style={styles.cardDot}>•</Text>
                             <Text style={styles.cardExpText}>
                               💼 {worker.experience} yrs exp
@@ -700,32 +591,6 @@ function NativeApp() {
                         </View>
                       </View>
 
-                      {/* Multi-Tier Rate Display Section */}
-                      <View style={styles.cardRatesContainer}>
-                        <View style={styles.cardRatesHeaderLine}>
-                          <Text style={styles.cardRatesTitle}>RATES:</Text>
-                          <Text style={styles.cardRatesSummaryText}>
-                            {pricing.allRatesFormatted}
-                          </Text>
-                        </View>
-
-                        {/* Distinct rate badge pills */}
-                        {pricing.hasMultipleRates && (
-                          <View style={styles.ratePillsRow}>
-                            {pricing.allRates.map((r, idx) => (
-                              <View key={idx} style={styles.ratePillBadge}>
-                                <Text style={styles.ratePillLabel}>
-                                  {r.label}:
-                                </Text>
-                                <Text style={styles.ratePillAmount}>
-                                  {' '}{r.displayRate}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                      </View>
-
                       {/* Skills Tags */}
                       {worker.skills && worker.skills.length > 0 && (
                         <View style={styles.skillsRow}>
@@ -744,7 +609,7 @@ function NativeApp() {
                         </View>
                       )}
 
-                      {/* Prominent Dark Green Call Now Button */}
+                      {/* Prominent Dark Green Call Button (Pure Directory: "Call Worker") */}
                       <TouchableOpacity
                         style={[
                           styles.callNowButton,
@@ -754,7 +619,7 @@ function NativeApp() {
                       >
                         <Text style={styles.callNowButtonIcon}>📞</Text>
                         <Text style={styles.callNowButtonText}>
-                          Call Now ({pricing.displayRate})
+                          Call Worker
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -858,6 +723,12 @@ function NativeApp() {
                         ? '🔥'
                         : cat.name === 'Pest Control'
                         ? '🐜'
+                        : cat.name === 'Laundry / Clothes Wash'
+                        ? '🧺'
+                        : cat.name === 'Hotel Staff'
+                        ? '🏨'
+                        : cat.name === 'Restaurant Staff'
+                        ? '🍽️'
                         : '🛠️'}
                     </Text>
                   </View>
@@ -877,7 +748,7 @@ function NativeApp() {
                 </Text>
 
                 <View style={styles.categoryCardBottom}>
-                  <Text style={styles.categoryAvgRate}>Avg: {cat.avgRate}</Text>
+                  <Text style={styles.categoryAvgRate}>Direct Dial Contact</Text>
                   <Text style={styles.categoryCardAction}>
                     View Artisans →
                   </Text>
@@ -888,7 +759,7 @@ function NativeApp() {
         </ScrollView>
       )}
 
-      {/* TAB 3: WORKER ONBOARDING / REGISTRATION */}
+      {/* TAB 3: WORKER ONBOARDING / REGISTRATION (PURE DIRECTORY FIELDS ONLY) */}
       {activeTab === 'register' && (
         <ScrollView
           style={styles.listContainer}
@@ -902,7 +773,7 @@ function NativeApp() {
               </View>
               <Text style={styles.successTitle}>Welcome to Quick Karya!</Text>
               <Text style={styles.successSubtitle}>
-                Your profile for <Text style={styles.boldText}>{regSuccessWorker.name}</Text> has been saved locally and published to the live directory!
+                Your profile for <Text style={styles.boldText}>{regSuccessWorker.name}</Text> has been saved locally and published to the free contact directory!
               </Text>
 
               <View style={styles.summaryBox}>
@@ -910,20 +781,13 @@ function NativeApp() {
                   <Text style={styles.summaryLabel}>Category: </Text>
                   {regSuccessWorker.category}
                 </Text>
-                {regSuccessWorker.vehicleType && (
-                  <Text style={styles.summaryLine}>
-                    <Text style={styles.summaryLabel}>Vehicle: </Text>
-                    {regSuccessWorker.vehicleType.split('(')[0].trim()}
-                  </Text>
-                )}
-                <Text style={styles.summaryLine}>
-                  <Text style={styles.summaryLabel}>Service Rate: </Text>₹
-                  {regSuccessWorker.rate}
-                  {regSuccessWorker.rateUnit}
-                </Text>
                 <Text style={styles.summaryLine}>
                   <Text style={styles.summaryLabel}>Direct Phone: </Text>
                   {regSuccessWorker.phone}
+                </Text>
+                <Text style={styles.summaryLine}>
+                  <Text style={styles.summaryLabel}>Experience: </Text>
+                  {regSuccessWorker.experience} years
                 </Text>
                 <Text style={styles.summaryLine}>
                   <Text style={styles.summaryLabel}>Location: </Text>
@@ -941,7 +805,7 @@ function NativeApp() {
                 }}
               >
                 <Text style={styles.primaryActionButtonText}>
-                  View Your Profile in Workers Tab →
+                  View Your Profile in Directory →
                 </Text>
               </TouchableOpacity>
 
@@ -951,26 +815,25 @@ function NativeApp() {
                   setRegSuccessWorker(null);
                   setRegName('');
                   setRegPhone('');
-                  setRegSkills('');
                   setRegPhoto('');
                 }}
               >
                 <Text style={styles.secondaryActionButtonText}>
-                  Register Another Artisan
+                  Register Another Worker
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
-            /* ONBOARDING FORM */
+            /* ONBOARDING FORM: Profile Photo, Full Name, Category, Experience, Mobile, City, State, Pincode */
             <View style={styles.formCard}>
               <View style={styles.formHeader}>
-                <Text style={styles.formHeaderTitle}>Worker Onboarding</Text>
+                <Text style={styles.formHeaderTitle}>Worker Registration</Text>
                 <Text style={styles.formHeaderSubtitle}>
-                  Join the proximity artisan network with flexible hourly, daily, or monthly rates.
+                  100% free proximity contact directory — clients call you directly.
                 </Text>
               </View>
 
-              {/* Photo Upload: Expo Image Picker & Camera */}
+              {/* 1. Profile Avatar Photo */}
               <Text style={styles.inputLabel}>Profile Avatar Photo</Text>
               {regPhoto ? (
                 <View style={styles.photoPreviewRow}>
@@ -1024,7 +887,7 @@ function NativeApp() {
                 </View>
               )}
 
-              {/* Full Name */}
+              {/* 2. Full Name */}
               <Text style={styles.inputLabel}>Full Name or Team Name *</Text>
               <TextInput
                 style={styles.formInput}
@@ -1034,7 +897,7 @@ function NativeApp() {
                 onChangeText={setRegName}
               />
 
-              {/* Service Category */}
+              {/* 3. Service Category */}
               <Text style={styles.inputLabel}>Service Category *</Text>
               <ScrollView
                 horizontal
@@ -1044,7 +907,10 @@ function NativeApp() {
                 {CATEGORIES.map((c) => (
                   <TouchableOpacity
                     key={c.id}
-                    onPress={() => setRegCategory(c.name)}
+                    onPress={() => {
+                      setRegCategory(c.name);
+                      setRegSubRole('');
+                    }}
                     style={[
                       styles.categoryChip,
                       regCategory === c.name && styles.categoryChipActive
@@ -1062,42 +928,35 @@ function NativeApp() {
                 ))}
               </ScrollView>
 
-              {/* Driver Specialization if Driver */}
-              {regCategory === 'Driver' && (
-                <View style={styles.driverSection}>
-                  <Text style={styles.inputLabel}>
-                    Driver Vehicle Specialization *
-                  </Text>
-                  {DRIVER_SPECIALIZATION_GROUPS.map((grp) => (
-                    <View key={grp.key} style={styles.specGroup}>
-                      <Text style={styles.specGroupTitle}>{grp.name}</Text>
-                      {grp.options.map((opt) => (
-                        <TouchableOpacity
-                          key={opt.id}
+              {/* Sub-Role Selector for Categories with Specialized Sub-Roles */}
+              {CATEGORY_SUB_ROLES[regCategory] && (
+                <View style={styles.subRoleContainer}>
+                  <Text style={styles.inputLabel}>Select Specific Role / Specialty</Text>
+                  <View style={styles.subRoleRow}>
+                    {CATEGORY_SUB_ROLES[regCategory]!.map((role) => (
+                      <TouchableOpacity
+                        key={role}
+                        onPress={() => setRegSubRole(regSubRole === role ? '' : role)}
+                        style={[
+                          styles.subRoleBtn,
+                          regSubRole === role && styles.subRoleBtnActive
+                        ]}
+                      >
+                        <Text
                           style={[
-                            styles.specOptionPill,
-                            regVehicleType === opt.id &&
-                              styles.specOptionPillActive
+                            styles.subRoleBtnText,
+                            regSubRole === role && styles.subRoleBtnTextActive
                           ]}
-                          onPress={() => setRegVehicleType(opt.id)}
                         >
-                          <Text
-                            style={[
-                              styles.specOptionText,
-                              regVehicleType === opt.id &&
-                                styles.specOptionTextActive
-                            ]}
-                          >
-                            {opt.title} ({opt.subtitle})
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ))}
+                          {regSubRole === role ? `✓ ${role}` : role}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               )}
 
-              {/* Experience */}
+              {/* 4. Experience (Years) */}
               <Text style={styles.inputLabel}>Experience (Years) *</Text>
               <TextInput
                 style={styles.formInput}
@@ -1108,117 +967,18 @@ function NativeApp() {
                 onChangeText={setRegExperience}
               />
 
-              {/* Multi-Tier Pricing Structure */}
-              <Text style={styles.inputLabel}>
-                Pricing Structure & Rate Options *
-              </Text>
-              <View style={styles.pricingTabsRow}>
-                {(['per_hour', 'per_day', 'per_month', 'fixed_job'] as PricingType[]).map(
-                  (pt) => (
-                    <TouchableOpacity
-                      key={pt}
-                      onPress={() => togglePricingType(pt)}
-                      style={[
-                        styles.pricingTabPill,
-                        regPricingTypes.includes(pt) &&
-                          styles.pricingTabPillActive
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.pricingTabText,
-                          regPricingTypes.includes(pt) &&
-                            styles.pricingTabTextActive
-                        ]}
-                      >
-                        {pt === 'per_hour'
-                          ? 'Per Hour'
-                          : pt === 'per_day'
-                          ? 'Per Day'
-                          : pt === 'per_month'
-                          ? 'Monthly'
-                          : 'Inspection / Fixed'}
-                      </Text>
-                    </TouchableOpacity>
-                  )
-                )}
-              </View>
-
-              {/* Rate Inputs */}
-              {regPricingTypes.includes('per_hour') && (
-                <View style={styles.rateRow}>
-                  <Text style={styles.rateFieldLabel}>Rate Per Hour (₹/hr):</Text>
-                  <TextInput
-                    style={styles.rateFieldInput}
-                    keyboardType="numeric"
-                    value={regRates['per_hour']}
-                    onChangeText={(val) =>
-                      setRegRates({ ...regRates, per_hour: val })
-                    }
-                  />
-                </View>
-              )}
-
-              {regPricingTypes.includes('per_day') && (
-                <View style={styles.rateRow}>
-                  <Text style={styles.rateFieldLabel}>
-                    Rate Per Day / Allowance (₹/day):
-                  </Text>
-                  <TextInput
-                    style={styles.rateFieldInput}
-                    keyboardType="numeric"
-                    value={regRates['per_day']}
-                    onChangeText={(val) =>
-                      setRegRates({ ...regRates, per_day: val })
-                    }
-                  />
-                </View>
-              )}
-
-              {regPricingTypes.includes('per_month') && (
-                <View style={styles.rateRow}>
-                  <Text style={styles.rateFieldLabel}>
-                    Monthly Salary (₹/month):
-                  </Text>
-                  <TextInput
-                    style={styles.rateFieldInput}
-                    keyboardType="numeric"
-                    value={regRates['per_month']}
-                    onChangeText={(val) =>
-                      setRegRates({ ...regRates, per_month: val })
-                    }
-                  />
-                </View>
-              )}
-
-              {regPricingTypes.includes('fixed_job') && (
-                <View style={styles.rateRow}>
-                  <Text style={styles.rateFieldLabel}>
-                    Visiting / Inspection Fee (₹):
-                  </Text>
-                  <TextInput
-                    style={styles.rateFieldInput}
-                    keyboardType="numeric"
-                    value={regRates['fixed_job']}
-                    onChangeText={(val) =>
-                      setRegRates({ ...regRates, fixed_job: val })
-                    }
-                  />
-                </View>
-              )}
-
-              {/* Mobile Phone Number */}
-              <Text style={styles.inputLabel}>Mobile Phone Number *</Text>
+              {/* 5. Mobile Number */}
+              <Text style={styles.inputLabel}>Mobile Number (Direct Calls) *</Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="10-digit mobile (e.g. 9862154321)"
+                placeholder="10-digit mobile number (e.g. 9862154321)"
                 placeholderTextColor="#9ca3af"
                 keyboardType="phone-pad"
                 value={regPhone}
                 onChangeText={setRegPhone}
               />
 
-              {/* State and City Dropdowns */}
+              {/* 6. City and State Dropdowns */}
               <View style={styles.twoColumnRow}>
                 {/* State Dropdown Trigger */}
                 <View style={styles.columnHalf}>
@@ -1247,25 +1007,14 @@ function NativeApp() {
                 </View>
               </View>
 
-              {/* Pincode */}
+              {/* 7. Pincode */}
               <Text style={styles.inputLabel}>Pincode *</Text>
               <TextInput
                 style={styles.formInput}
                 keyboardType="numeric"
+                maxLength={6}
                 value={regPincode}
                 onChangeText={setRegPincode}
-              />
-
-              {/* Skills */}
-              <Text style={styles.inputLabel}>
-                Specializations & Skills (Comma separated)
-              </Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="e.g. Pipe fittings, Motor repair, Leakage fix"
-                placeholderTextColor="#9ca3af"
-                value={regSkills}
-                onChangeText={setRegSkills}
               />
 
               {/* Submit Button */}
@@ -1274,7 +1023,7 @@ function NativeApp() {
                 onPress={handleRegisterSubmit}
               >
                 <Text style={styles.submitButtonText}>
-                  ✓ Register & Save Profile
+                  ✓ Publish Free Profile
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1691,7 +1440,7 @@ const styles = StyleSheet.create({
     fontSize: 13
   },
 
-  /* EXACT WORKER CARD STYLES */
+  /* WORKER CARD STYLES */
   workerCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -1733,24 +1482,6 @@ const styles = StyleSheet.create({
   cardEmergencyOnCallText: {
     color: '#ffffff',
     fontSize: 9,
-    fontWeight: 'bold'
-  },
-  cardNightTopBanner: {
-    backgroundColor: '#581c87',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 4
-  },
-  cardNightBannerText: {
-    color: '#e9d5ff',
-    fontSize: 10,
-    fontWeight: 'bold'
-  },
-  cardNightRateText: {
-    color: '#ffffff',
-    fontSize: 10,
     fontWeight: 'bold'
   },
   cardBody: {
@@ -1840,17 +1571,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 11
   },
-  cardVehiclePill: {
-    backgroundColor: '#ecfdf5',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6
-  },
-  cardVehiclePillText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#064e3b'
-  },
   cardExpText: {
     fontSize: 11,
     color: '#4b5563'
@@ -1926,58 +1646,6 @@ const styles = StyleSheet.create({
   cardAvailabilityText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#064e3b'
-  },
-  cardRatesContainer: {
-    backgroundColor: '#ecfdf5',
-    borderWidth: 1,
-    borderColor: '#a7f3d0',
-    borderRadius: 12,
-    padding: 10,
-    gap: 6
-  },
-  cardRatesHeaderLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap'
-  },
-  cardRatesTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#064e3b',
-    letterSpacing: 0.5
-  },
-  cardRatesSummaryText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#064e3b'
-  },
-  ratePillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(5, 150, 105, 0.2)'
-  },
-  ratePillBadge: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#a7f3d0',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  ratePillLabel: {
-    fontSize: 10,
-    color: '#6b7280'
-  },
-  ratePillAmount: {
-    fontSize: 10,
-    fontWeight: 'bold',
     color: '#064e3b'
   },
   skillsRow: {
@@ -2364,97 +2032,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: 'bold'
   },
-  driverSection: {
-    backgroundColor: '#ecfdf5',
-    padding: 12,
-    borderRadius: 12,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#a7f3d0'
-  },
-  specGroup: {
-    marginTop: 6
-  },
-  specGroupTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#064e3b',
-    marginBottom: 4
-  },
-  specOptionPill: {
-    backgroundColor: '#ffffff',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: '#d1d5db'
-  },
-  specOptionPillActive: {
-    backgroundColor: '#064e3b',
-    borderColor: '#064e3b'
-  },
-  specOptionText: {
-    fontSize: 11,
-    color: '#374151'
-  },
-  specOptionTextActive: {
-    color: '#ffffff',
-    fontWeight: 'bold'
-  },
-  pricingTabsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8
-  },
-  pricingTabPill: {
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#d1d5db'
-  },
-  pricingTabPillActive: {
-    backgroundColor: '#064e3b',
-    borderColor: '#064e3b'
-  },
-  pricingTabText: {
-    fontSize: 11,
-    color: '#374151'
-  },
-  pricingTabTextActive: {
-    color: '#ffffff',
-    fontWeight: 'bold'
-  },
-  rateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f9fafb',
-    padding: 8,
-    borderRadius: 8,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: '#e5e7eb'
-  },
-  rateFieldLabel: {
-    fontSize: 11,
-    color: '#4b5563',
-    fontWeight: '600'
-  },
-  rateFieldInput: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    fontSize: 13,
-    fontWeight: 'bold',
-    width: 90,
-    textAlign: 'right'
-  },
   twoColumnRow: {
     flexDirection: 'row',
     gap: 10
@@ -2701,5 +2278,45 @@ const styles = StyleSheet.create({
     borderRadius: 1.5,
     backgroundColor: '#059669',
     marginTop: 2
+  },
+  cardSubRoleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#065f46',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4
+  },
+  subRoleContainer: {
+    marginTop: 8,
+    marginBottom: 6
+  },
+  subRoleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4
+  },
+  subRoleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff'
+  },
+  subRoleBtnActive: {
+    backgroundColor: '#064e3b',
+    borderColor: '#064e3b'
+  },
+  subRoleBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151'
+  },
+  subRoleBtnTextActive: {
+    color: '#ffffff',
+    fontWeight: 'bold'
   }
 });

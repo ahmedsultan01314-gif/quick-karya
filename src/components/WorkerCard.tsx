@@ -1,8 +1,8 @@
 import React from 'react';
 import { WorkerProfile } from '../types';
-import { Phone, Star, ShieldCheck, MapPin, Briefcase, Zap, Moon, Bike, Car, Truck, HardHat, IndianRupee } from 'lucide-react';
+import { Phone, Star, ShieldCheck, MapPin, Briefcase, Zap, Bike, Car, Truck, HardHat } from 'lucide-react';
 import { formatDistance } from '../utils/geo';
-import { formatWorkerPricing, isLateNightNow } from '../utils/pricing';
+import { formatWorkerPricing } from '../utils/pricing';
 
 interface WorkerCardProps {
   worker: WorkerProfile;
@@ -12,7 +12,6 @@ interface WorkerCardProps {
 export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => {
   const isEmergency = worker.category === 'Emergency Highway Assistance';
   const pricing = formatWorkerPricing(worker);
-  const isNightActive = isLateNightNow() && pricing.hasNightRate;
 
   const initials = worker.name
     .split(' ')
@@ -28,8 +27,6 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
       className={`rounded-2xl bg-white border transition-all duration-200 overflow-hidden shadow-xs hover:shadow-md ${
         isEmergency
           ? 'border-amber-400/80 ring-1 ring-amber-300/40 bg-gradient-to-b from-amber-50/20 to-white'
-          : isNightActive
-          ? 'border-purple-300/80 ring-1 ring-purple-200/50'
           : 'border-emerald-900/10 hover:border-emerald-700/40'
       }`}
     >
@@ -41,19 +38,6 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
             24/7 RAPID HIGHWAY RESPONSE
           </span>
           <span className="bg-white/20 text-white px-1.5 py-0.2 rounded text-[10px]">ON CALL</span>
-        </div>
-      )}
-
-      {/* Real-time Night Rate Active Banner */}
-      {isNightActive && !isEmergency && (
-        <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white text-[11px] font-bold px-3 py-1 flex items-center justify-between tracking-wide">
-          <span className="flex items-center gap-1">
-            <Moon className="w-3.5 h-3.5 fill-purple-200 text-purple-200" />
-            LATE NIGHT RATES ACTIVE (8 PM - 6 AM)
-          </span>
-          <span className="bg-white/20 text-purple-100 px-1.5 py-0.2 rounded text-[10px]">
-            {pricing.displayNightRate}
-          </span>
         </div>
       )}
 
@@ -105,6 +89,15 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
             {/* Profession, Driver Vehicle Badge & Experience */}
             <div className="flex items-center gap-1.5 mt-0.5 text-xs text-gray-600 flex-wrap">
               <span className="font-semibold text-emerald-800">{worker.category}</span>
+
+              {worker.subRole && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <span className="font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[11px]">
+                    {worker.subRole}
+                  </span>
+                </>
+              )}
 
               {pricing.vehicleBadge && (
                 <>
@@ -186,67 +179,6 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
           </div>
         </div>
 
-        {/* Comprehensive Multi-Rate Display Section */}
-        <div
-          id={`worker-rates-container-${worker.id}`}
-          className="mt-2.5 py-2 px-3 bg-emerald-50/70 border border-emerald-200/70 rounded-xl space-y-1.5"
-        >
-          <div className="flex items-baseline justify-between gap-1 flex-wrap">
-            <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider shrink-0 flex items-center gap-1">
-              <IndianRupee className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Rates:</span>
-            </span>
-            <span
-              id={`worker-rate-${worker.id}`}
-              className="text-xs sm:text-[13px] font-extrabold text-emerald-900 text-right leading-snug tracking-tight"
-            >
-              {pricing.allRatesFormatted}
-            </span>
-          </div>
-
-          {/* If multiple rates, render distinct badge pills for maximum clarity */}
-          {pricing.hasMultipleRates && (
-            <div className="pt-1.5 border-t border-emerald-200/50 flex items-center gap-1.5 flex-wrap">
-              {pricing.allRates.map((r, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-white text-emerald-900 border border-emerald-200 text-[10px] font-semibold shadow-2xs"
-                >
-                  <span className="text-gray-500 mr-1">{r.label}:</span>
-                  <strong className="text-emerald-950 font-extrabold">{r.displayRate}</strong>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Night Rate Badge Display if configured */}
-        {pricing.hasNightRate && (
-          <div
-            id={`worker-night-rate-${worker.id}`}
-            className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between border ${
-              isNightActive
-                ? 'bg-purple-100/90 border-purple-300 text-purple-950 font-semibold'
-                : 'bg-purple-50/80 border-purple-200 text-purple-900'
-            }`}
-          >
-            <div className="flex items-center gap-1.5">
-              <Moon className="w-3.5 h-3.5 text-purple-700 shrink-0" />
-              <span className="font-semibold text-[11px]">
-                {isNightActive ? 'Active Night Rate:' : 'Late Night (8 PM - 6 AM):'}
-              </span>
-            </div>
-            <div className="font-extrabold text-xs text-purple-950">
-              {pricing.displayNightRate}
-              {!isNightActive && (
-                <span className="text-[10px] text-purple-700 font-medium ml-1">
-                  (Day: {pricing.displayRate})
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Skills Pills */}
         {worker.skills && worker.skills.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-0.5">
@@ -266,7 +198,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
           </div>
         )}
 
-        {/* Prominent Call Now Button */}
+        {/* Prominent Call Button */}
         <div className="pt-1">
           <button
             id={`call-now-btn-${worker.id}`}
@@ -278,15 +210,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
             }`}
           >
             <Phone className="w-4 h-4 fill-current" />
-            <span>
-              Call Now (
-              {pricing.pricingType === 'fixed_job' && worker.category !== 'Emergency Highway Assistance'
-                ? pricing.baseAmount > 0
-                  ? `Visiting ₹${pricing.baseAmount}`
-                  : 'Negotiable'
-                : pricing.displayRate}
-              )
-            </span>
+            <span>Call Worker</span>
           </button>
         </div>
       </div>

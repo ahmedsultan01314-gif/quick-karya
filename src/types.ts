@@ -9,6 +9,9 @@ export type ServiceCategory =
   | 'Labour / Helper'
   | 'Welder'
   | 'Pest Control'
+  | 'Laundry / Clothes Wash'
+  | 'Hotel Staff'
+  | 'Restaurant Staff'
   | 'Emergency Highway Assistance';
 
 export type PricingType =
@@ -68,6 +71,7 @@ export interface WorkerProfile {
   pricingRates?: Partial<Record<PricingType, number>>; // Multi-select rates, e.g. { per_hour: 500, per_day: 1100, per_month: 25000 }
   rateOptions?: WorkerRateOption[];
   vehicleType?: DriverVehicleType; // mandatory when category is 'Driver'
+  subRole?: string; // sub-role e.g. 'Laundry Person', 'Ironing', 'Waiter', 'Housekeeping', 'Chef/Cook', 'Receptionist', 'Helper'
   lateNightAvailable?: boolean;
   nightRates?: NightRateConfig;
   phone: string;

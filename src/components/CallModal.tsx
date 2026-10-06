@@ -298,55 +298,10 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
           </div>
         </div>
 
-        {/* Pricing Banner */}
-        <div className="bg-emerald-50 px-4 sm:px-5 py-2.5 border-b border-emerald-100 space-y-1.5 text-xs shrink-0">
-          <div className="flex items-baseline justify-between gap-2 flex-wrap">
-            <span className="text-gray-600 font-bold uppercase tracking-wider text-[11px] shrink-0">Configured Rates:</span>
-            <span className="text-xs sm:text-sm font-extrabold text-emerald-900 text-right">
-              {pricing.allRatesFormatted}
-            </span>
-          </div>
-
-          {pricing.hasMultipleRates && (
-            <div className="pt-1 border-t border-emerald-200/50 flex items-center gap-1.5 flex-wrap">
-              {pricing.allRates.map((r, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-white text-emerald-900 border border-emerald-200 text-[10px] font-semibold shadow-2xs"
-                >
-                  <span className="text-gray-500 mr-1">{r.label}:</span>
-                  <strong className="text-emerald-950 font-extrabold">{r.displayRate}</strong>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {pricing.hasNightRate && (
-            <div
-              className={`p-2 rounded-xl border flex items-center justify-between ${
-                isNightActive
-                  ? 'bg-purple-100 border-purple-300 text-purple-950 font-semibold'
-                  : 'bg-white border-purple-200 text-purple-900'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <Moon className="w-3.5 h-3.5 text-purple-700 shrink-0" />
-                <span className="text-[11px]">
-                  {isNightActive ? '🌙 Active Night Rate (8 PM - 6 AM)' : '🌙 Late Night Rate (8 PM - 6 AM)'}
-                </span>
-              </div>
-              <span className="font-extrabold text-xs text-purple-950">
-                {pricing.displayNightRate}
-              </span>
-            </div>
-          )}
-
-          {isEmergency && (
-            <div className="text-[11px] text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200 flex items-center gap-1">
-              <Zap className="w-3 h-3 text-amber-600 shrink-0" />
-              <span>Priority 24/7 highway assistance on fixed dispatch fee</span>
-            </div>
-          )}
+        {/* Free Directory Banner */}
+        <div className="bg-emerald-50 px-4 sm:px-5 py-2.5 border-b border-emerald-100 flex items-center justify-between text-xs shrink-0">
+          <span className="text-emerald-900 font-bold">100% Free Proximity Directory</span>
+          <span className="text-emerald-700 font-medium">Direct Phone Connection</span>
         </div>
 
         {/* Scrollable Modal Content */}
@@ -576,9 +531,7 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
           >
             <Phone className="w-4 h-4 sm:w-5 sm:h-5 fill-white" />
             <span>
-              {isDriver
-                ? `Call Driver Now (${isNightActive ? pricing.displayNightRate : pricing.displayRate})`
-                : `Call ${worker.name.split(' ')[0]} Now (${isNightActive ? pricing.displayNightRate : pricing.displayRate})`}
+              {isDriver ? 'Call Driver Now' : `Call ${worker.name.split(' ')[0]} Now`}
             </span>
           </button>
 

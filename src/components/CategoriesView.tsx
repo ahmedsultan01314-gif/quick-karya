@@ -13,6 +13,9 @@ import {
   ShieldAlert,
   Flame,
   Bug,
+  Shirt,
+  Building2,
+  Utensils,
   ArrowRight,
   Sparkles,
   PhoneCall
@@ -49,6 +52,12 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         return <Flame className="w-6 h-6 text-amber-600" />;
       case 'Bug':
         return <Bug className="w-6 h-6 text-emerald-800" />;
+      case 'Shirt':
+        return <Shirt className="w-6 h-6 text-emerald-800" />;
+      case 'Building2':
+        return <Building2 className="w-6 h-6 text-emerald-800" />;
+      case 'Utensils':
+        return <Utensils className="w-6 h-6 text-emerald-800" />;
       case 'ShieldAlert':
         return <ShieldAlert className="w-6 h-6 text-amber-600" />;
       default:
@@ -186,7 +195,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
               </div>
 
               <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs">
-                <span className="text-gray-500 font-medium">Avg: {cat.avgRate}</span>
+                <span className="text-gray-500 font-medium">Direct Dial Contact</span>
                 <span className="text-emerald-800 font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
                   View <ArrowRight className="w-3.5 h-3.5" />
                 </span>

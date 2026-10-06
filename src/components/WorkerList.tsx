@@ -18,7 +18,10 @@ import {
   UtensilsCrossed,
   Paintbrush,
   Flame,
-  Bug
+  Bug,
+  Shirt,
+  Building2,
+  Utensils
 } from 'lucide-react';
 
 interface WorkerListProps {
@@ -64,6 +67,12 @@ export const WorkerList: React.FC<WorkerListProps> = ({
         return <Flame className="w-3.5 h-3.5 shrink-0" />;
       case 'Pest Control':
         return <Bug className="w-3.5 h-3.5 shrink-0" />;
+      case 'Laundry / Clothes Wash':
+        return <Shirt className="w-3.5 h-3.5 shrink-0" />;
+      case 'Hotel Staff':
+        return <Building2 className="w-3.5 h-3.5 shrink-0" />;
+      case 'Restaurant Staff':
+        return <Utensils className="w-3.5 h-3.5 shrink-0" />;
       default:
         return <Sparkles className="w-3.5 h-3.5 shrink-0" />;
     }
