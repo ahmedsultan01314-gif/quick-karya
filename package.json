@@ -14,10 +14,13 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@react-native-async-storage/async-storage": "^3.1.1",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "expo": "^57.0.24",
+    "expo-image-picker": "^57.0.20",
+    "expo-location": "^57.0.20",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

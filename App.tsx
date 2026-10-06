@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Platform,
   View,
@@ -11,11 +11,15 @@ import {
   StatusBar,
   Linking,
   Image,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import WebApp from './src/App';
-import { INITIAL_WORKERS } from './src/data/initialWorkers';
 import { CATEGORIES } from './src/data/categories';
+import { INDIAN_STATES } from './src/data/indianStates';
 import {
   ActiveTab,
   DriverVehicleType,
@@ -26,20 +30,69 @@ import {
 import {
   DRIVER_SPECIALIZATION_GROUPS,
   PRICING_TYPE_LABELS,
-  isHeavyMachineryDriver
+  formatWorkerPricing,
+  isHeavyMachineryDriver,
+  isLateNightNow
 } from './src/utils/pricing';
 
+const STORAGE_KEY = '@quickkarya_workers_v2';
+
 const SAMPLE_AVATARS = [
-  'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80'
+  'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80'
 ];
+
+const POPULAR_CITIES = [
+  'Agartala',
+  'Bengaluru',
+  'Delhi',
+  'Mumbai',
+  'Kolkata',
+  'Hyderabad',
+  'Chennai',
+  'Pune',
+  'Jaipur',
+  'Guwahati'
+];
+
+// Helper: Haversine distance in km
+function calculateDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
 
 function NativeApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('workers');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [workers, setWorkers] = useState<WorkerProfile[]>(INITIAL_WORKERS);
+  // Workers starts empty - no dummy / fake initial data
+  const [workers, setWorkers] = useState<WorkerProfile[]>([]);
+
+  // User GPS Coordinates
+  const [userCoords, setUserCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  }>({
+    latitude: 23.8315,
+    longitude: 91.2868
+  });
+  const [userLocationName, setUserLocationName] = useState('Agartala, Tripura');
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   // Registration Form State
   const [regName, setRegName] = useState('');
@@ -50,7 +103,7 @@ function NativeApp() {
   const [regState, setRegState] = useState('Tripura');
   const [regPincode, setRegPincode] = useState('799001');
   const [regSkills, setRegSkills] = useState('');
-  const [regPhoto, setRegPhoto] = useState(SAMPLE_AVATARS[0]);
+  const [regPhoto, setRegPhoto] = useState<string>('');
   const [regVehicleType, setRegVehicleType] = useState<DriverVehicleType>(
     'Private Car Driver (Family, Outstation, Local Trips)'
   );
@@ -68,29 +121,161 @@ function NativeApp() {
   });
   const [regSuccessWorker, setRegSuccessWorker] = useState<WorkerProfile | null>(null);
 
-  const filteredWorkers = workers.filter((w) => {
+  // State & City Selector Modals
+  const [isStateModalOpen, setIsStateModalOpen] = useState(false);
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+
+  // 1. Load persisted workers from AsyncStorage on mount
+  useEffect(() => {
+    const loadStoredWorkers = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            setWorkers(parsed);
+          }
+        }
+      } catch (err) {
+        console.warn('Error reading from AsyncStorage:', err);
+      }
+    };
+    loadStoredWorkers();
+  }, []);
+
+  // 2. Request Expo Location for device GPS
+  const requestDeviceLocation = useCallback(async () => {
+    setGpsLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setGpsLoading(false);
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
+      setUserCoords({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude
+      });
+
+      // Reverse geocode
+      try {
+        const [geo] = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude
+        });
+        if (geo) {
+          const c = geo.city || geo.subregion || 'Current Area';
+          const s = geo.region || '';
+          setUserLocationName(`${c}${s ? ', ' + s : ''}`);
+          if (geo.city) setRegCity(geo.city);
+          if (geo.region) setRegState(geo.region);
+          if (geo.postalCode) setRegPincode(geo.postalCode);
+        }
+      } catch {
+        // Fallback to coordinates
+      }
+    } catch (err) {
+      console.warn('Location retrieval error:', err);
+    } finally {
+      setGpsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    requestDeviceLocation();
+  }, [requestDeviceLocation]);
+
+  // 3. Expo Image Picker: Library & Camera
+  const handlePickFromGallery = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Camera roll access is needed to upload a profile photo.'
+        );
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        setRegPhoto(res.assets[0].uri);
+      }
+    } catch (err) {
+      console.warn('Image picker error:', err);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission Required',
+          'Camera access is needed to capture a profile photo.'
+        );
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8
+      });
+      if (!res.canceled && res.assets && res.assets.length > 0) {
+        setRegPhoto(res.assets[0].uri);
+      }
+    } catch (err) {
+      console.warn('Camera capture error:', err);
+    }
+  };
+
+  // Direct Phone Call handler using Expo Linking
+  const handleCall = (phone: string) => {
+    const cleanPhone = phone.replace(/[^0-9+]/g, '');
+    Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
+      console.warn('Could not trigger call:', err);
+      Alert.alert('Phone Call Error', `Could not initiate call to ${cleanPhone}`);
+    });
+  };
+
+  // Dynamic distance calculation for all workers based on user coords
+  const workersWithDistance = workers.map((w) => {
+    const distanceKm = calculateDistanceKm(
+      userCoords.latitude,
+      userCoords.longitude,
+      w.latitude || 23.8315,
+      w.longitude || 91.2868
+    );
+    return {
+      ...w,
+      distanceKm
+    };
+  });
+
+  // Filter workers by category and search keyword
+  const filteredWorkers = workersWithDistance.filter((w) => {
     const matchesCategory =
       selectedCategory === 'All' || w.category === selectedCategory;
     const matchesSearch =
       !searchQuery.trim() ||
       w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       w.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.city.toLowerCase().includes(searchQuery.toLowerCase());
+      w.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (w.skills &&
+        w.skills.some((s) =>
+          s.toLowerCase().includes(searchQuery.toLowerCase())
+        ));
     return matchesCategory && matchesSearch;
   });
 
-  const handleCall = (phone: string) => {
-    const cleanPhone = phone.replace(/[^0-9+]/g, '');
-    Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
-      console.warn('Could not trigger call:', err);
-    });
-  };
-
-  const handleCategorySelectFromCategories = (cat: string) => {
-    setSelectedCategory(cat);
-    setActiveTab('workers');
-  };
-
+  // Pricing type toggle
   const togglePricingType = (pt: PricingType) => {
     if (regPricingTypes.includes(pt)) {
       if (regPricingTypes.length > 1) {
@@ -101,7 +286,8 @@ function NativeApp() {
     }
   };
 
-  const handleRegisterSubmit = () => {
+  // Submit registration: persist to AsyncStorage & update local state
+  const handleRegisterSubmit = async () => {
     if (!regName.trim()) {
       Alert.alert('Required Field', 'Please enter your full name or artisan team name.');
       return;
@@ -119,8 +305,45 @@ function NativeApp() {
       ? `+${cleanPhone}`
       : `+91 ${cleanPhone.slice(-10, -5)} ${cleanPhone.slice(-5)}`;
 
+    const pricingRates: Partial<Record<PricingType, number>> = {};
+    regPricingTypes.forEach((pt) => {
+      pricingRates[pt] = parseInt(regRates[pt] || '0', 10);
+    });
+
+    const rateOptions = regPricingTypes.map((pt) => {
+      const amt = parseInt(regRates[pt] || '0', 10);
+      const label =
+        pt === 'per_hour'
+          ? 'Hourly'
+          : pt === 'per_day'
+          ? 'Full Day'
+          : pt === 'per_month'
+          ? 'Monthly'
+          : pt === 'day_shift'
+          ? 'Day Shift'
+          : pt === 'night_shift'
+          ? 'Night Shift'
+          : 'Inspection';
+      const unit =
+        pt === 'per_month'
+          ? '/month'
+          : pt === 'per_day' || pt === 'day_shift'
+          ? '/day'
+          : pt === 'night_shift'
+          ? '/night'
+          : pt === 'fixed_job'
+          ? '/job'
+          : '/hr';
+      return {
+        pricingType: pt,
+        amount: amt,
+        unit,
+        label
+      };
+    });
+
     const newWorker: WorkerProfile = {
-      id: `w-reg-${Date.now()}`,
+      id: `w-local-${Date.now()}`,
       name: regName.trim(),
       category: regCategory,
       experience: expNum,
@@ -132,37 +355,46 @@ function NativeApp() {
       rateUnit:
         primaryType === 'per_month'
           ? '/month'
-          : primaryType === 'per_day'
-          ? '/day'
-          : primaryType === 'day_shift'
+          : primaryType === 'per_day' || primaryType === 'day_shift'
           ? '/day'
           : primaryType === 'night_shift'
           ? '/night'
+          : primaryType === 'fixed_job'
+          ? '/job'
           : '/hr',
-      pricingRates: {
-        per_hour: parseInt(regRates['per_hour'] || '350', 10),
-        per_day: parseInt(regRates['per_day'] || '850', 10),
-        per_month: parseInt(regRates['per_month'] || '22000', 10),
-        fixed_job: parseInt(regRates['fixed_job'] || '150', 10)
-      },
+      pricingRates,
+      rateOptions,
       vehicleType: regCategory === 'Driver' ? regVehicleType : undefined,
       phone: formattedPhone,
       city: regCity.trim() || 'Agartala',
       state: regState.trim() || 'Tripura',
       pincode: regPincode.trim() || '799001',
-      latitude: 23.8315,
-      longitude: 91.2868,
+      latitude: userCoords.latitude,
+      longitude: userCoords.longitude,
       verified: true,
       available: true,
-      completedJobs: 0,
+      completedJobs: 1,
       languages: ['Bengali', 'Hindi', 'English'],
       skills: regSkills.trim()
         ? regSkills.split(',').map((s) => s.trim())
-        : [regCategory === 'Driver' ? `${regVehicleType}` : `${regCategory} services`],
-      photo: regPhoto
+        : [
+            regCategory === 'Driver'
+              ? `${regVehicleType}`
+              : `${regCategory} professional`
+          ],
+      photo: regPhoto || undefined,
+      emergencyAvailable: regCategory === 'Emergency Highway Assistance'
     };
 
-    setWorkers([newWorker, ...workers]);
+    const updated = [newWorker, ...workers];
+    setWorkers(updated);
+
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed saving to AsyncStorage:', e);
+    }
+
     setRegSuccessWorker(newWorker);
   };
 
@@ -170,7 +402,7 @@ function NativeApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#064e3b" />
 
-      {/* Top Emergency SOS Strip */}
+      {/* TOP EMERGENCY HIGHWAY SOS BAR */}
       <View style={styles.topEmergencyStrip}>
         <View style={styles.dotRow}>
           <View style={styles.greenDot} />
@@ -187,7 +419,7 @@ function NativeApp() {
         </TouchableOpacity>
       </View>
 
-      {/* Main Brand Header */}
+      {/* HEADER WITH BRAND & GPS LOCATION */}
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={styles.logoBadge}>
@@ -198,9 +430,14 @@ function NativeApp() {
             <Text style={styles.brandSubtitle}>PROXIMITY ARTISAN NETWORK</Text>
           </View>
         </View>
-        <View style={styles.locationPill}>
-          <Text style={styles.locationPillText}>📍 Agartala</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.locationPill}
+          onPress={requestDeviceLocation}
+        >
+          <Text style={styles.locationPillText}>
+            {gpsLoading ? '📍 Locating...' : `📍 ${userLocationName}`}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* BODY CONTENT BY ACTIVE TAB */}
@@ -212,7 +449,7 @@ function NativeApp() {
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search artisan, skill, or area..."
+              placeholder="Search artisan, skill, area, or rate..."
               placeholderTextColor="#6ee7b7"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -239,7 +476,7 @@ function NativeApp() {
                     selectedCategory === 'All' && styles.categoryPillTextActive
                   ]}
                 >
-                  All ({workers.length})
+                  All Trades ({workers.length})
                 </Text>
               </TouchableOpacity>
               {CATEGORIES.map((cat) => {
@@ -267,7 +504,7 @@ function NativeApp() {
             </ScrollView>
           </View>
 
-          {/* Workers List */}
+          {/* WORKERS LIST / MATCHING CARDS */}
           <ScrollView
             style={styles.listContainer}
             contentContainerStyle={styles.listContent}
@@ -280,84 +517,250 @@ function NativeApp() {
               </Text>
               {selectedCategory !== 'All' && (
                 <TouchableOpacity onPress={() => setSelectedCategory('All')}>
-                  <Text style={styles.resetFilterText}>Clear Filter</Text>
+                  <Text style={styles.resetFilterText}>Reset to All</Text>
                 </TouchableOpacity>
               )}
             </View>
 
+            {/* EMPTY STATE WHEN NO WORKERS REGISTERED */}
             {filteredWorkers.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>🔍</Text>
-                <Text style={styles.emptyTitle}>No artisans found</Text>
+                <View style={styles.emptyIconCircle}>
+                  <Text style={styles.emptyIconText}>👥</Text>
+                </View>
+                <Text style={styles.emptyTitle}>
+                  {workers.length === 0
+                    ? 'No Registered Workers Yet'
+                    : 'No Matching Artisans'}
+                </Text>
                 <Text style={styles.emptySubtitle}>
-                  Try clearing your search query or selecting another category.
+                  {workers.length === 0
+                    ? 'The directory currently has no registered workers. Be the first artisan to onboard or register a profile with custom service rates!'
+                    : 'No service providers found matching your current filter. Try resetting the category or search keyword.'}
                 </Text>
                 <TouchableOpacity
                   style={styles.emptyButton}
                   onPress={() => {
-                    setSelectedCategory('All');
-                    setSearchQuery('');
+                    if (workers.length === 0) {
+                      setActiveTab('register');
+                    } else {
+                      setSelectedCategory('All');
+                      setSearchQuery('');
+                    }
                   }}
                 >
-                  <Text style={styles.emptyButtonText}>View All Artisans</Text>
+                  <Text style={styles.emptyButtonText}>
+                    {workers.length === 0
+                      ? '➕ Register as First Artisan'
+                      : 'Show All Artisans'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              filteredWorkers.map((worker) => (
-                <View key={worker.id} style={styles.workerCard}>
-                  <View style={styles.workerHeader}>
-                    {worker.photo ? (
-                      <Image
-                        source={{ uri: worker.photo }}
-                        style={styles.avatarImage}
-                      />
-                    ) : (
-                      <View style={styles.avatarPlaceholder}>
-                        <Text style={styles.avatarText}>
-                          {worker.name.charAt(0)}
+              /* EXACT WORKER CARD UI MATCHING THE PREVIEW */
+              filteredWorkers.map((worker) => {
+                const isEmergency =
+                  worker.category === 'Emergency Highway Assistance';
+                const pricing = formatWorkerPricing(worker);
+                const isNight = isLateNightNow() && pricing.hasNightRate;
+                const initials = worker.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase() || 'WK';
+
+                return (
+                  <View
+                    key={worker.id}
+                    style={[
+                      styles.workerCard,
+                      isEmergency && styles.workerCardEmergency
+                    ]}
+                  >
+                    {/* Top Banner for Emergency Highway Assistance */}
+                    {isEmergency && (
+                      <View style={styles.cardEmergencyTopBanner}>
+                        <Text style={styles.cardEmergencyBannerText}>
+                          ⚡ 24/7 RAPID HIGHWAY RESPONSE
+                        </Text>
+                        <View style={styles.cardEmergencyOnCallBadge}>
+                          <Text style={styles.cardEmergencyOnCallText}>
+                            ON CALL
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Night rate banner if active */}
+                    {isNight && !isEmergency && (
+                      <View style={styles.cardNightTopBanner}>
+                        <Text style={styles.cardNightBannerText}>
+                          🌙 LATE NIGHT RATES ACTIVE (8 PM - 6 AM)
+                        </Text>
+                        <Text style={styles.cardNightRateText}>
+                          {pricing.displayNightRate}
                         </Text>
                       </View>
                     )}
-                    <View style={styles.workerDetails}>
-                      <View style={styles.nameRow}>
-                        <Text style={styles.workerName}>{worker.name}</Text>
-                        {worker.verified && (
-                          <Text style={styles.verifiedBadge}>✓ Verified</Text>
+
+                    <View style={styles.cardBody}>
+                      {/* Header Row: Avatar, Name, Category, Verified */}
+                      <View style={styles.cardHeaderRow}>
+                        {/* Avatar */}
+                        <View style={styles.avatarContainer}>
+                          {worker.photo ? (
+                            <Image
+                              source={{ uri: worker.photo }}
+                              style={styles.avatarImg}
+                            />
+                          ) : (
+                            <View style={styles.avatarInitialBox}>
+                              <Text style={styles.avatarInitialText}>
+                                {initials}
+                              </Text>
+                            </View>
+                          )}
+                          {worker.available && (
+                            <View style={styles.avatarOnlineDot} />
+                          )}
+                        </View>
+
+                        {/* Details */}
+                        <View style={styles.cardDetailsCol}>
+                          <View style={styles.cardNameRow}>
+                            <Text style={styles.cardWorkerName} numberOfLines={1}>
+                              {worker.name}
+                            </Text>
+                            {worker.verified && (
+                              <View style={styles.cardVerifiedBadge}>
+                                <Text style={styles.cardVerifiedBadgeText}>
+                                  ✓ Verified
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+
+                          {/* Profession, Driver Vehicle & Experience */}
+                          <View style={styles.cardSubDetailsRow}>
+                            <Text style={styles.cardCategoryText}>
+                              {worker.category}
+                            </Text>
+                            {worker.vehicleType && (
+                              <>
+                                <Text style={styles.cardDot}>•</Text>
+                                <View style={styles.cardVehiclePill}>
+                                  <Text style={styles.cardVehiclePillText}>
+                                    🚗 {worker.vehicleType.split('(')[0].trim()}
+                                  </Text>
+                                </View>
+                              </>
+                            )}
+                            <Text style={styles.cardDot}>•</Text>
+                            <Text style={styles.cardExpText}>
+                              💼 {worker.experience} yrs exp
+                            </Text>
+                          </View>
+
+                          {/* Location & Live GPS Distance Badge */}
+                          <View style={styles.cardLocationRow}>
+                            <Text style={styles.cardLocationText}>
+                              📍 {worker.city}
+                              {worker.state ? `, ${worker.state}` : ''}
+                              {worker.pincode ? ` (${worker.pincode})` : ''}
+                            </Text>
+                            {worker.distanceKm !== undefined && (
+                              <View style={styles.distanceBadge}>
+                                <Text style={styles.distanceBadgeText}>
+                                  {worker.distanceKm} km away
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Middle Stats Row: Rating stars & Availability */}
+                      <View style={styles.cardStatsRow}>
+                        <View style={styles.cardRatingBadge}>
+                          <Text style={styles.cardRatingText}>
+                            ⭐ {(worker.rating || 5.0).toFixed(1)}
+                          </Text>
+                          <Text style={styles.cardReviewCountText}>
+                            ({worker.reviewCount || 1} reviews)
+                          </Text>
+                        </View>
+
+                        <View style={styles.cardAvailabilityBadge}>
+                          <View style={styles.availableDotSmall} />
+                          <Text style={styles.cardAvailabilityText}>
+                            Available Now
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Multi-Tier Rate Display Section */}
+                      <View style={styles.cardRatesContainer}>
+                        <View style={styles.cardRatesHeaderLine}>
+                          <Text style={styles.cardRatesTitle}>RATES:</Text>
+                          <Text style={styles.cardRatesSummaryText}>
+                            {pricing.allRatesFormatted}
+                          </Text>
+                        </View>
+
+                        {/* Distinct rate badge pills */}
+                        {pricing.hasMultipleRates && (
+                          <View style={styles.ratePillsRow}>
+                            {pricing.allRates.map((r, idx) => (
+                              <View key={idx} style={styles.ratePillBadge}>
+                                <Text style={styles.ratePillLabel}>
+                                  {r.label}:
+                                </Text>
+                                <Text style={styles.ratePillAmount}>
+                                  {' '}{r.displayRate}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
                         )}
                       </View>
-                      <Text style={styles.workerCategory}>{worker.category}</Text>
-                      {worker.vehicleType && (
-                        <Text style={styles.vehicleTypeTag}>
-                          🚗 {worker.vehicleType.split('(')[0].trim()}
-                        </Text>
+
+                      {/* Skills Tags */}
+                      {worker.skills && worker.skills.length > 0 && (
+                        <View style={styles.skillsRow}>
+                          {worker.skills.slice(0, 3).map((skill, i) => (
+                            <View key={i} style={styles.skillTag}>
+                              <Text style={styles.skillTagText}>{skill}</Text>
+                            </View>
+                          ))}
+                          {worker.skills.length > 3 && (
+                            <View style={styles.skillTagMore}>
+                              <Text style={styles.skillTagMoreText}>
+                                +{worker.skills.length - 3} more
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       )}
-                      <Text style={styles.workerLocation}>
-                        📍 {worker.city}, {worker.state || 'Tripura'} • {worker.experience} yrs exp
-                      </Text>
-                    </View>
-                  </View>
 
-                  <View style={styles.cardFooter}>
-                    <View>
-                      <Text style={styles.rateLabel}>Service Rate</Text>
-                      <Text style={styles.rateValue}>
-                        ₹{worker.hourlyRate || worker.rate || 300}
-                        <Text style={styles.rateUnit}>
-                          {' '}
-                          {worker.rateUnit || '/hr'}
+                      {/* Prominent Dark Green Call Now Button */}
+                      <TouchableOpacity
+                        style={[
+                          styles.callNowButton,
+                          isEmergency && styles.callNowButtonEmergency
+                        ]}
+                        onPress={() => handleCall(worker.phone)}
+                      >
+                        <Text style={styles.callNowButtonIcon}>📞</Text>
+                        <Text style={styles.callNowButtonText}>
+                          Call Now ({pricing.displayRate})
                         </Text>
-                      </Text>
+                      </TouchableOpacity>
                     </View>
-
-                    <TouchableOpacity
-                      style={styles.callButton}
-                      onPress={() => handleCall(worker.phone)}
-                    >
-                      <Text style={styles.callButtonText}>📞 Call Artisan</Text>
-                    </TouchableOpacity>
                   </View>
-                </View>
-              ))
+                );
+              })
             )}
           </ScrollView>
         </View>
@@ -402,9 +805,10 @@ function NativeApp() {
               </Text>
               <TouchableOpacity
                 style={styles.emergencyActionBtn}
-                onPress={() =>
-                  handleCategorySelectFromCategories('Emergency Highway Assistance')
-                }
+                onPress={() => {
+                  setSelectedCategory('Emergency Highway Assistance');
+                  setActiveTab('workers');
+                }}
               >
                 <Text style={styles.emergencyActionBtnText}>
                   View Rescue Teams →
@@ -418,66 +822,69 @@ function NativeApp() {
             ALL TRADES & SERVICES ({CATEGORIES.length})
           </Text>
 
-          {CATEGORIES.filter((c) => c.name !== 'Emergency Highway Assistance').map(
-            (cat) => {
-              const count = workers.filter((w) => w.category === cat.name).length;
-              return (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={styles.categoryCard}
-                  onPress={() => handleCategorySelectFromCategories(cat.name)}
-                >
-                  <View style={styles.categoryCardTop}>
-                    <View style={styles.categoryIconSquare}>
-                      <Text style={styles.categoryIconEmoji}>
-                        {cat.name === 'Plumber'
-                          ? '🔧'
-                          : cat.name === 'Electrician'
-                          ? '⚡'
-                          : cat.name === 'Carpenter'
-                          ? '🔨'
-                          : cat.name === 'Cook'
-                          ? '🍳'
-                          : cat.name === 'Painter'
-                          ? '🎨'
-                          : cat.name === 'Driver'
-                          ? '🚗'
-                          : cat.name === 'Rajmistri / Mason'
-                          ? '🧱'
-                          : cat.name === 'Labour / Helper'
-                          ? '👷'
-                          : cat.name === 'Welder'
-                          ? '🔥'
-                          : cat.name === 'Pest Control'
-                          ? '🐜'
-                          : '🛠️'}
-                      </Text>
-                    </View>
-                    <View style={styles.categoryCardInfo}>
-                      <Text style={styles.categoryCardName}>{cat.name}</Text>
-                      <Text style={styles.categoryCardHindi}>{cat.hindiName}</Text>
-                    </View>
-                    <View style={styles.categoryCountBadge}>
-                      <Text style={styles.categoryCountBadgeText}>
-                        {count} available
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.categoryCardDesc} numberOfLines={2}>
-                    {cat.description}
-                  </Text>
-
-                  <View style={styles.categoryCardBottom}>
-                    <Text style={styles.categoryAvgRate}>Avg: {cat.avgRate}</Text>
-                    <Text style={styles.categoryCardAction}>
-                      View Artisans →
+          {CATEGORIES.filter(
+            (c) => c.name !== 'Emergency Highway Assistance'
+          ).map((cat) => {
+            const count = workers.filter((w) => w.category === cat.name).length;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.categoryCard}
+                onPress={() => {
+                  setSelectedCategory(cat.name);
+                  setActiveTab('workers');
+                }}
+              >
+                <View style={styles.categoryCardTop}>
+                  <View style={styles.categoryIconSquare}>
+                    <Text style={styles.categoryIconEmoji}>
+                      {cat.name === 'Plumber'
+                        ? '🔧'
+                        : cat.name === 'Electrician'
+                        ? '⚡'
+                        : cat.name === 'Carpenter'
+                        ? '🔨'
+                        : cat.name === 'Cook'
+                        ? '🍳'
+                        : cat.name === 'Painter'
+                        ? '🎨'
+                        : cat.name === 'Driver'
+                        ? '🚗'
+                        : cat.name === 'Rajmistri / Mason'
+                        ? '🧱'
+                        : cat.name === 'Labour / Helper'
+                        ? '👷'
+                        : cat.name === 'Welder'
+                        ? '🔥'
+                        : cat.name === 'Pest Control'
+                        ? '🐜'
+                        : '🛠️'}
                     </Text>
                   </View>
-                </TouchableOpacity>
-              );
-            }
-          )}
+                  <View style={styles.categoryCardInfo}>
+                    <Text style={styles.categoryCardName}>{cat.name}</Text>
+                    <Text style={styles.categoryCardHindi}>{cat.hindiName}</Text>
+                  </View>
+                  <View style={styles.categoryCountBadge}>
+                    <Text style={styles.categoryCountBadgeText}>
+                      {count} available
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.categoryCardDesc} numberOfLines={2}>
+                  {cat.description}
+                </Text>
+
+                <View style={styles.categoryCardBottom}>
+                  <Text style={styles.categoryAvgRate}>Avg: {cat.avgRate}</Text>
+                  <Text style={styles.categoryCardAction}>
+                    View Artisans →
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       )}
 
@@ -488,14 +895,14 @@ function NativeApp() {
           contentContainerStyle={styles.listContent}
         >
           {regSuccessWorker ? (
-            /* Success confirmation card */
+            /* SUCCESS CONFIRMATION CARD */
             <View style={styles.successCard}>
               <View style={styles.successIconBadge}>
                 <Text style={styles.successIconEmoji}>🎉</Text>
               </View>
               <Text style={styles.successTitle}>Welcome to Quick Karya!</Text>
               <Text style={styles.successSubtitle}>
-                Your profile for <Text style={styles.boldText}>{regSuccessWorker.name}</Text> has been successfully published to the live artisan directory.
+                Your profile for <Text style={styles.boldText}>{regSuccessWorker.name}</Text> has been saved locally and published to the live directory!
               </Text>
 
               <View style={styles.summaryBox}>
@@ -545,6 +952,7 @@ function NativeApp() {
                   setRegName('');
                   setRegPhone('');
                   setRegSkills('');
+                  setRegPhoto('');
                 }}
               >
                 <Text style={styles.secondaryActionButtonText}>
@@ -553,31 +961,68 @@ function NativeApp() {
               </TouchableOpacity>
             </View>
           ) : (
-            /* Registration Form */
+            /* ONBOARDING FORM */
             <View style={styles.formCard}>
               <View style={styles.formHeader}>
                 <Text style={styles.formHeaderTitle}>Worker Onboarding</Text>
                 <Text style={styles.formHeaderSubtitle}>
-                  Join the proximity artisan network with flexible hourly, daily, or fixed rates.
+                  Join the proximity artisan network with flexible hourly, daily, or monthly rates.
                 </Text>
               </View>
 
-              {/* Photo Avatar Selector */}
-              <Text style={styles.inputLabel}>Profile Photo Avatar</Text>
-              <View style={styles.avatarRow}>
-                {SAMPLE_AVATARS.map((url, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    onPress={() => setRegPhoto(url)}
-                    style={[
-                      styles.avatarSelectCircle,
-                      regPhoto === url && styles.avatarSelectCircleActive
-                    ]}
-                  >
-                    <Image source={{ uri: url }} style={styles.avatarThumb} />
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {/* Photo Upload: Expo Image Picker & Camera */}
+              <Text style={styles.inputLabel}>Profile Avatar Photo</Text>
+              {regPhoto ? (
+                <View style={styles.photoPreviewRow}>
+                  <Image source={{ uri: regPhoto }} style={styles.photoPreviewImg} />
+                  <View style={styles.photoPreviewActions}>
+                    <Text style={styles.photoAttachedText}>✓ Photo Selected</Text>
+                    <View style={styles.photoButtonRow}>
+                      <TouchableOpacity
+                        style={styles.photoActionButton}
+                        onPress={handlePickFromGallery}
+                      >
+                        <Text style={styles.photoActionButtonText}>Change</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.photoActionRemove}
+                        onPress={() => setRegPhoto('')}
+                      >
+                        <Text style={styles.photoActionRemoveText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.photoPickerBox}>
+                  <View style={styles.pickerButtonsRow}>
+                    <TouchableOpacity
+                      style={styles.pickerBtn}
+                      onPress={handlePickFromGallery}
+                    >
+                      <Text style={styles.pickerBtnText}>🖼️ Choose Gallery</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.pickerBtn}
+                      onPress={handleTakePhoto}
+                    >
+                      <Text style={styles.pickerBtnText}>📷 Open Camera</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.sampleAvatarLabel}>Or select instant sample:</Text>
+                  <View style={styles.sampleAvatarsRow}>
+                    {SAMPLE_AVATARS.map((url, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => setRegPhoto(url)}
+                        style={styles.sampleAvatarThumbBtn}
+                      >
+                        <Image source={{ uri: url }} style={styles.sampleAvatarThumb} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
 
               {/* Full Name */}
               <Text style={styles.inputLabel}>Full Name or Team Name *</Text>
@@ -589,7 +1034,7 @@ function NativeApp() {
                 onChangeText={setRegName}
               />
 
-              {/* Category Picker */}
+              {/* Service Category */}
               <Text style={styles.inputLabel}>Service Category *</Text>
               <ScrollView
                 horizontal
@@ -663,7 +1108,7 @@ function NativeApp() {
                 onChangeText={setRegExperience}
               />
 
-              {/* Pricing Structure Multi-Select */}
+              {/* Multi-Tier Pricing Structure */}
               <Text style={styles.inputLabel}>
                 Pricing Structure & Rate Options *
               </Text>
@@ -699,7 +1144,7 @@ function NativeApp() {
                 )}
               </View>
 
-              {/* Rates amount inputs for chosen options */}
+              {/* Rate Inputs */}
               {regPricingTypes.includes('per_hour') && (
                 <View style={styles.rateRow}>
                   <Text style={styles.rateFieldLabel}>Rate Per Hour (₹/hr):</Text>
@@ -773,23 +1218,32 @@ function NativeApp() {
                 onChangeText={setRegPhone}
               />
 
-              {/* City and State */}
+              {/* State and City Dropdowns */}
               <View style={styles.twoColumnRow}>
-                <View style={styles.columnHalf}>
-                  <Text style={styles.inputLabel}>City *</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={regCity}
-                    onChangeText={setRegCity}
-                  />
-                </View>
+                {/* State Dropdown Trigger */}
                 <View style={styles.columnHalf}>
                   <Text style={styles.inputLabel}>State *</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={regState}
-                    onChangeText={setRegState}
-                  />
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setIsStateModalOpen(true)}
+                  >
+                    <Text style={styles.dropdownTriggerText} numberOfLines={1}>
+                      {regState} ▼
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* City Dropdown Trigger */}
+                <View style={styles.columnHalf}>
+                  <Text style={styles.inputLabel}>City *</Text>
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setIsCityModalOpen(true)}
+                  >
+                    <Text style={styles.dropdownTriggerText} numberOfLines={1}>
+                      {regCity} ▼
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -802,13 +1256,13 @@ function NativeApp() {
                 onChangeText={setRegPincode}
               />
 
-              {/* Key Skills */}
+              {/* Skills */}
               <Text style={styles.inputLabel}>
-                Specializations & Skills (Optional)
+                Specializations & Skills (Comma separated)
               </Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="e.g. Motor repair, CPVC fitting, Bathroom fixtures"
+                placeholder="e.g. Pipe fittings, Motor repair, Leakage fix"
                 placeholderTextColor="#9ca3af"
                 value={regSkills}
                 onChangeText={setRegSkills}
@@ -820,11 +1274,97 @@ function NativeApp() {
                 onPress={handleRegisterSubmit}
               >
                 <Text style={styles.submitButtonText}>
-                  ✓ Register & Publish Profile
+                  ✓ Register & Save Profile
                 </Text>
               </TouchableOpacity>
             </View>
           )}
+
+          {/* STATE PICKER MODAL */}
+          <Modal
+            visible={isStateModalOpen}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setIsStateModalOpen(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select State</Text>
+                  <TouchableOpacity onPress={() => setIsStateModalOpen(false)}>
+                    <Text style={styles.modalCloseText}>✕ Close</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.modalList}>
+                  {INDIAN_STATES.map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[
+                        styles.modalListItem,
+                        regState === s && styles.modalListItemActive
+                      ]}
+                      onPress={() => {
+                        setRegState(s);
+                        setIsStateModalOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.modalListItemText,
+                          regState === s && styles.modalListItemTextActive
+                        ]}
+                      >
+                        {s}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+
+          {/* CITY PICKER MODAL */}
+          <Modal
+            visible={isCityModalOpen}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setIsCityModalOpen(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select City</Text>
+                  <TouchableOpacity onPress={() => setIsCityModalOpen(false)}>
+                    <Text style={styles.modalCloseText}>✕ Close</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.modalList}>
+                  {POPULAR_CITIES.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[
+                        styles.modalListItem,
+                        regCity === c && styles.modalListItemActive
+                      ]}
+                      onPress={() => {
+                        setRegCity(c);
+                        setIsCityModalOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.modalListItemText,
+                          regCity === c && styles.modalListItemTextActive
+                        ]}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
         </ScrollView>
       )}
 
@@ -844,9 +1384,11 @@ function NativeApp() {
             >
               👥
             </Text>
-            <View style={styles.navCountBadge}>
-              <Text style={styles.navCountBadgeText}>{workers.length}</Text>
-            </View>
+            {workers.length > 0 && (
+              <View style={styles.navCountBadge}>
+                <Text style={styles.navCountBadgeText}>{workers.length}</Text>
+              </View>
+            )}
           </View>
           <Text
             style={[
@@ -1075,7 +1617,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6'
   },
   listContent: {
-    padding: 16,
+    padding: 14,
     paddingBottom: 90
   },
   sectionHeaderRow: {
@@ -1096,151 +1638,395 @@ const styles = StyleSheet.create({
     color: '#059669',
     fontWeight: '700'
   },
+
+  /* EMPTY STATE */
   emptyCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 24,
     alignItems: 'center',
-    marginTop: 20
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2
   },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 8
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#ecfdf5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  emptyIconText: {
+    fontSize: 28
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#111827',
-    marginBottom: 4
+    marginBottom: 6
   },
   emptySubtitle: {
     fontSize: 12,
     color: '#6b7280',
     textAlign: 'center',
+    lineHeight: 18,
     marginBottom: 16
   },
   emptyButton: {
     backgroundColor: '#059669',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12
   },
   emptyButtonText: {
     color: '#ffffff',
     fontWeight: 'bold',
     fontSize: 13
   },
+
+  /* EXACT WORKER CARD STYLES */
   workerCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    borderRadius: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e5e7eb'
+    borderColor: 'rgba(6, 78, 59, 0.12)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2.5
   },
-  workerHeader: {
+  workerCardEmergency: {
+    borderColor: '#f59e0b',
+    borderWidth: 1.5,
+    backgroundColor: '#fffdfa'
+  },
+  cardEmergencyTopBanner: {
+    backgroundColor: '#d97706',
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12
+    paddingHorizontal: 12,
+    paddingVertical: 4
   },
-  avatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
+  cardEmergencyBannerText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5
+  },
+  cardEmergencyOnCallBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4
+  },
+  cardEmergencyOnCallText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: 'bold'
+  },
+  cardNightTopBanner: {
+    backgroundColor: '#581c87',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4
+  },
+  cardNightBannerText: {
+    color: '#e9d5ff',
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
+  cardNightRateText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
+  cardBody: {
+    padding: 14,
+    gap: 10
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12
+  },
+  avatarContainer: {
+    position: 'relative'
+  },
+  avatarImg: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     backgroundColor: '#e5e7eb'
   },
-  avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#059669',
+  avatarInitialBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#064e3b',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12
+    borderWidth: 1,
+    borderColor: '#047857'
   },
-  avatarText: {
+  avatarInitialText: {
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold'
   },
-  workerDetails: {
+  avatarOnlineDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#ffffff'
+  },
+  cardDetailsCol: {
     flex: 1
   },
-  nameRow: {
+  cardNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    gap: 6
   },
-  workerName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827'
+  cardWorkerName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+    flexShrink: 1
   },
-  verifiedBadge: {
+  cardVerifiedBadge: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10
+  },
+  cardVerifiedBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#059669',
+    color: '#047857'
+  },
+  cardSubDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 2
+  },
+  cardCategoryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857'
+  },
+  cardDot: {
+    color: '#9ca3af',
+    fontSize: 11
+  },
+  cardVehiclePill: {
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6
+  },
+  cardVehiclePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#064e3b'
+  },
+  cardExpText: {
+    fontSize: 11,
+    color: '#4b5563'
+  },
+  cardLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 3
+  },
+  cardLocationText: {
+    fontSize: 11,
+    color: '#4b5563',
+    fontWeight: '500'
+  },
+  distanceBadge: {
     backgroundColor: '#ecfdf5',
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: '#a7f3d0'
   },
-  workerCategory: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#059669',
-    marginTop: 1
+  distanceBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#064e3b'
   },
-  vehicleTypeTag: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#047857',
-    marginTop: 1
-  },
-  workerLocation: {
-    fontSize: 11,
-    color: '#6b7280',
-    marginTop: 2
-  },
-  cardFooter: {
+  cardStatsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    paddingTop: 10
+    borderTopColor: '#f3f4f6'
   },
-  rateLabel: {
-    fontSize: 10,
-    color: '#9ca3af',
-    textTransform: 'uppercase'
+  cardRatingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4
   },
-  rateValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#111827'
-  },
-  rateUnit: {
+  cardRatingText: {
     fontSize: 11,
-    fontWeight: 'normal',
+    fontWeight: 'bold',
+    color: '#92400e'
+  },
+  cardReviewCountText: {
+    fontSize: 10,
+    color: '#b45309'
+  },
+  cardAvailabilityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  availableDotSmall: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981'
+  },
+  cardAvailabilityText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#064e3b'
+  },
+  cardRatesContainer: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    borderRadius: 12,
+    padding: 10,
+    gap: 6
+  },
+  cardRatesHeaderLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap'
+  },
+  cardRatesTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#064e3b',
+    letterSpacing: 0.5
+  },
+  cardRatesSummaryText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#064e3b'
+  },
+  ratePillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(5, 150, 105, 0.2)'
+  },
+  ratePillBadge: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  ratePillLabel: {
+    fontSize: 10,
     color: '#6b7280'
   },
-  callButton: {
-    backgroundColor: '#059669',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8
+  ratePillAmount: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#064e3b'
   },
-  callButtonText: {
+  skillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6
+  },
+  skillTag: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  skillTagText: {
+    fontSize: 10,
+    color: '#4b5563'
+  },
+  skillTagMore: {
+    paddingHorizontal: 4,
+    paddingVertical: 3
+  },
+  skillTagMoreText: {
+    fontSize: 10,
+    color: '#9ca3af'
+  },
+  callNowButton: {
+    backgroundColor: '#064e3b',
+    borderRadius: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2
+  },
+  callNowButtonEmergency: {
+    backgroundColor: '#b45309'
+  },
+  callNowButtonIcon: {
+    fontSize: 14
+  },
+  callNowButtonText: {
     color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700'
+    fontSize: 14,
+    fontWeight: 'bold'
   },
 
   /* CATEGORIES VIEW STYLES */
@@ -1442,23 +2228,103 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 6
   },
-  avatarRow: {
+  photoPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ecfdf5',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#a7f3d0'
+  },
+  photoPreviewImg: {
+    width: 60,
+    height: 60,
+    borderRadius: 14
+  },
+  photoPreviewActions: {
+    flex: 1
+  },
+  photoAttachedText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#064e3b'
+  },
+  photoButtonRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 6
+    marginTop: 6
   },
-  avatarSelectCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    overflow: 'hidden'
+  photoActionButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#a7f3d0'
   },
-  avatarSelectCircleActive: {
-    borderColor: '#059669'
+  photoActionButtonText: {
+    fontSize: 11,
+    color: '#064e3b',
+    fontWeight: 'bold'
   },
-  avatarThumb: {
+  photoActionRemove: {
+    paddingVertical: 4,
+    paddingHorizontal: 8
+  },
+  photoActionRemoveText: {
+    fontSize: 11,
+    color: '#dc2626',
+    fontWeight: '600'
+  },
+  photoPickerBox: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#d1d5db',
+    padding: 12,
+    alignItems: 'center',
+    gap: 8
+  },
+  pickerButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%'
+  },
+  pickerBtn: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center'
+  },
+  pickerBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#064e3b'
+  },
+  sampleAvatarLabel: {
+    fontSize: 10,
+    color: '#9ca3af',
+    marginTop: 4
+  },
+  sampleAvatarsRow: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  sampleAvatarThumbBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#d1d5db'
+  },
+  sampleAvatarThumb: {
     width: '100%',
     height: '100%'
   },
@@ -1596,6 +2462,20 @@ const styles = StyleSheet.create({
   columnHalf: {
     flex: 1
   },
+  dropdownTrigger: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center'
+  },
+  dropdownTriggerText: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600'
+  },
   submitButton: {
     backgroundColor: '#059669',
     borderRadius: 12,
@@ -1606,6 +2486,58 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: '#ffffff',
     fontSize: 14,
+    fontWeight: 'bold'
+  },
+
+  /* MODALS */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end'
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    padding: 16
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb'
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827'
+  },
+  modalCloseText: {
+    fontSize: 14,
+    color: '#059669',
+    fontWeight: 'bold'
+  },
+  modalList: {
+    paddingVertical: 8
+  },
+  modalListItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6'
+  },
+  modalListItemActive: {
+    backgroundColor: '#ecfdf5'
+  },
+  modalListItemText: {
+    fontSize: 14,
+    color: '#374151'
+  },
+  modalListItemTextActive: {
+    color: '#064e3b',
     fontWeight: 'bold'
   },
 

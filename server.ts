@@ -11,8 +11,8 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// In-memory persistent worker storage initialized with seed data
-let workers: WorkerProfile[] = [...INITIAL_WORKERS];
+// In-memory persistent worker storage - starts empty as requested
+let workers: WorkerProfile[] = [];
 
 // Helper: Haversine distance in km
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
