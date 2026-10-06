@@ -19,7 +19,12 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import WebApp from './src/App';
 import { CATEGORIES, CATEGORY_SUB_ROLES } from './src/data/categories';
-import { INDIAN_STATES } from './src/data/indianStates';
+import {
+  INDIAN_STATES,
+  STATE_CITIES,
+  DEFAULT_POPULAR_CITIES,
+  getCitiesForState
+} from './src/data/indianStates';
 import {
   ActiveTab,
   ServiceCategory,
@@ -32,19 +37,6 @@ const SAMPLE_AVATARS = [
   'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=200&auto=format&fit=crop&q=80',
   'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
   'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80'
-];
-
-const POPULAR_CITIES = [
-  'Agartala',
-  'Bengaluru',
-  'Delhi',
-  'Mumbai',
-  'Kolkata',
-  'Hyderabad',
-  'Chennai',
-  'Pune',
-  'Jaipur',
-  'Guwahati'
 ];
 
 // Helper: Haversine distance in km
@@ -97,9 +89,90 @@ function NativeApp() {
   const [regPhoto, setRegPhoto] = useState<string>('');
   const [regSuccessWorker, setRegSuccessWorker] = useState<WorkerProfile | null>(null);
 
-  // State & City Selector Modals
+  // State & City Selector Modals & Search query in Modals
   const [isStateModalOpen, setIsStateModalOpen] = useState(false);
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+  const [stateSearchText, setStateSearchText] = useState('');
+  const [citySearchText, setCitySearchText] = useState('');
+  const [formGpsLoading, setFormGpsLoading] = useState(false);
+
+  // Quick-fill State, City, Pincode using device GPS
+  const handleUseGpsInForm = async () => {
+    setFormGpsLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location Permission Required',
+          'Please allow GPS access to auto-fill your location details.'
+        );
+        setFormGpsLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
+
+      setUserCoords({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude
+      });
+
+      let detectedCity = '';
+      let detectedState = '';
+      let detectedPin = '';
+
+      // Try expo-location reverseGeocodeAsync
+      try {
+        const [geo] = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude
+        });
+        if (geo) {
+          detectedCity = geo.city || geo.subregion || '';
+          detectedState = geo.region || '';
+          detectedPin = geo.postalCode || '';
+        }
+      } catch (e) {
+        // Fallback to server endpoint
+      }
+
+      if (!detectedCity || !detectedState) {
+        try {
+          const res = await fetch(
+            `/api/reverse-geocode?lat=${loc.coords.latitude}&lng=${loc.coords.longitude}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data.city) detectedCity = data.city;
+            if (data.state) detectedState = data.state;
+            if (data.pincode) detectedPin = data.pincode;
+          }
+        } catch {
+          // Fallback coordinates
+        }
+      }
+
+      if (detectedCity) setRegCity(detectedCity);
+      if (detectedState) setRegState(detectedState);
+      if (detectedPin) setRegPincode(detectedPin);
+
+      if (detectedCity && detectedState) {
+        setUserLocationName(`${detectedCity}, ${detectedState}`);
+        Alert.alert(
+          'GPS Location Auto-Filled',
+          `✓ Detected: ${detectedCity}, ${detectedState} ${detectedPin ? `(${detectedPin})` : ''}`
+        );
+      } else {
+        Alert.alert('GPS Location', `Coordinates updated: ${loc.coords.latitude.toFixed(4)}, ${loc.coords.longitude.toFixed(4)}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Location Error', err?.message || 'Could not fetch GPS location.');
+    } finally {
+      setFormGpsLoading(false);
+    }
+  };
 
   // 1. Load persisted workers from AsyncStorage on mount
   useEffect(() => {
@@ -978,33 +1051,89 @@ function NativeApp() {
                 onChangeText={setRegPhone}
               />
 
-              {/* 6. City and State Dropdowns */}
-              <View style={styles.twoColumnRow}>
-                {/* State Dropdown Trigger */}
-                <View style={styles.columnHalf}>
-                  <Text style={styles.inputLabel}>State *</Text>
-                  <TouchableOpacity
-                    style={styles.dropdownTrigger}
-                    onPress={() => setIsStateModalOpen(true)}
-                  >
-                    <Text style={styles.dropdownTriggerText} numberOfLines={1}>
-                      {regState} ▼
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+              {/* 6. Service Location Header with Auto-Detect via GPS Button */}
+              <View style={styles.locationSectionHeaderRow}>
+                <Text style={styles.inputSectionLabel}>Service Location Details *</Text>
+                <TouchableOpacity
+                  style={styles.gpsAutoFillBtn}
+                  onPress={handleUseGpsInForm}
+                  disabled={formGpsLoading}
+                >
+                  <Text style={styles.gpsAutoFillBtnText}>
+                    {formGpsLoading ? '📍 Locating...' : '📍 Use GPS Location'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-                {/* City Dropdown Trigger */}
-                <View style={styles.columnHalf}>
-                  <Text style={styles.inputLabel}>City *</Text>
-                  <TouchableOpacity
-                    style={styles.dropdownTrigger}
-                    onPress={() => setIsCityModalOpen(true)}
-                  >
-                    <Text style={styles.dropdownTriggerText} numberOfLines={1}>
-                      {regCity} ▼
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+              {/* State Dropdown Trigger */}
+              <Text style={styles.inputLabel}>State *</Text>
+              <TouchableOpacity
+                style={styles.dropdownTrigger}
+                onPress={() => {
+                  setStateSearchText('');
+                  setIsStateModalOpen(true);
+                }}
+              >
+                <Text style={styles.dropdownTriggerText} numberOfLines={1}>
+                  {regState} ▼
+                </Text>
+              </TouchableOpacity>
+
+              {/* Dynamic City Selection: Combo-Box with State Filtering & Free Manual Typing */}
+              <View style={styles.cityFieldHeaderRow}>
+                <Text style={styles.inputLabel}>City / Town *</Text>
+                <Text style={styles.cityFieldHintText}>
+                  Pick from {regState} or type custom
+                </Text>
+              </View>
+
+              <View style={styles.cityComboContainer}>
+                <TextInput
+                  style={styles.cityComboInput}
+                  placeholder={`Type city in ${regState}...`}
+                  placeholderTextColor="#9ca3af"
+                  value={regCity}
+                  onChangeText={setRegCity}
+                />
+                <TouchableOpacity
+                  style={styles.cityComboDropdownBtn}
+                  onPress={() => {
+                    setCitySearchText('');
+                    setIsCityModalOpen(true);
+                  }}
+                >
+                  <Text style={styles.cityComboDropdownText}>Pick ▼</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Quick-Select Chips for Top Cities in Selected State */}
+              <View style={styles.quickCitiesContainer}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quickCitiesScroll}
+                >
+                  <Text style={styles.quickCitiesLabel}>Popular:</Text>
+                  {getCitiesForState(regState).slice(0, 6).map((qc) => (
+                    <TouchableOpacity
+                      key={qc}
+                      onPress={() => setRegCity(qc)}
+                      style={[
+                        styles.quickCityChip,
+                        regCity.toLowerCase() === qc.toLowerCase() && styles.quickCityChipActive
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.quickCityChipText,
+                          regCity.toLowerCase() === qc.toLowerCase() && styles.quickCityChipTextActive
+                        ]}
+                      >
+                        {qc}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
 
               {/* 7. Pincode */}
@@ -1044,8 +1173,18 @@ function NativeApp() {
                     <Text style={styles.modalCloseText}>✕ Close</Text>
                   </TouchableOpacity>
                 </View>
+                <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder="Search state..."
+                  placeholderTextColor="#9ca3af"
+                  value={stateSearchText}
+                  onChangeText={setStateSearchText}
+                />
                 <ScrollView style={styles.modalList}>
-                  {INDIAN_STATES.map((s) => (
+                  {INDIAN_STATES.filter((s) =>
+                    !stateSearchText.trim() ||
+                    s.toLowerCase().includes(stateSearchText.toLowerCase().trim())
+                  ).map((s) => (
                     <TouchableOpacity
                       key={s}
                       style={[
@@ -1054,6 +1193,10 @@ function NativeApp() {
                       ]}
                       onPress={() => {
                         setRegState(s);
+                        const stateCities = getCitiesForState(s);
+                        if (stateCities.length > 0 && !stateCities.includes(regCity)) {
+                          setRegCity(stateCities[0]);
+                        }
                         setIsStateModalOpen(false);
                       }}
                     >
@@ -1072,7 +1215,7 @@ function NativeApp() {
             </View>
           </Modal>
 
-          {/* CITY PICKER MODAL */}
+          {/* STATE-FILTERED CITY PICKER MODAL */}
           <Modal
             visible={isCityModalOpen}
             animationType="slide"
@@ -1082,34 +1225,64 @@ function NativeApp() {
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Select City</Text>
+                  <Text style={styles.modalTitle}>
+                    Cities in {regState} ({getCitiesForState(regState).length})
+                  </Text>
                   <TouchableOpacity onPress={() => setIsCityModalOpen(false)}>
                     <Text style={styles.modalCloseText}>✕ Close</Text>
                   </TouchableOpacity>
                 </View>
+                <TextInput
+                  style={styles.modalSearchInput}
+                  placeholder={`Search or type city in ${regState}...`}
+                  placeholderTextColor="#9ca3af"
+                  value={citySearchText}
+                  onChangeText={setCitySearchText}
+                />
+                {citySearchText.trim() !== '' && (
+                  <TouchableOpacity
+                    style={styles.modalCustomOption}
+                    onPress={() => {
+                      setRegCity(citySearchText.trim());
+                      setIsCityModalOpen(false);
+                    }}
+                  >
+                    <Text style={styles.modalCustomOptionText}>
+                      ✍️ Use custom city: &quot;{citySearchText.trim()}&quot;
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <ScrollView style={styles.modalList}>
-                  {POPULAR_CITIES.map((c) => (
-                    <TouchableOpacity
-                      key={c}
-                      style={[
-                        styles.modalListItem,
-                        regCity === c && styles.modalListItemActive
-                      ]}
-                      onPress={() => {
-                        setRegCity(c);
-                        setIsCityModalOpen(false);
-                      }}
-                    >
-                      <Text
+                  {getCitiesForState(regState)
+                    .filter((c) =>
+                      !citySearchText.trim() ||
+                      c.toLowerCase().includes(citySearchText.toLowerCase().trim())
+                    )
+                    .map((c) => (
+                      <TouchableOpacity
+                        key={c}
                         style={[
-                          styles.modalListItemText,
-                          regCity === c && styles.modalListItemTextActive
+                          styles.modalListItem,
+                          regCity.toLowerCase() === c.toLowerCase() && styles.modalListItemActive
                         ]}
+                        onPress={() => {
+                          setRegCity(c);
+                          setIsCityModalOpen(false);
+                        }}
                       >
-                        {c}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.modalListItemText,
+                            regCity.toLowerCase() === c.toLowerCase() && styles.modalListItemTextActive
+                          ]}
+                        >
+                          {c}
+                        </Text>
+                        {regCity.toLowerCase() === c.toLowerCase() && (
+                          <Text style={styles.modalCheckText}>✓</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))}
                 </ScrollView>
               </View>
             </View>
@@ -2318,5 +2491,147 @@ const styles = StyleSheet.create({
   subRoleBtnTextActive: {
     color: '#ffffff',
     fontWeight: 'bold'
+  },
+
+  /* LOCATION & COMBO-BOX STYLES */
+  locationSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    marginBottom: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6'
+  },
+  inputSectionLabel: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#1f2937'
+  },
+  gpsAutoFillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  gpsAutoFillBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065f46'
+  },
+  cityFieldHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6
+  },
+  cityFieldHintText: {
+    fontSize: 11,
+    color: '#065f46',
+    fontWeight: '600'
+  },
+  cityComboContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    marginTop: 4,
+    overflow: 'hidden'
+  },
+  cityComboInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '500'
+  },
+  cityComboDropdownBtn: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#e5e7eb'
+  },
+  cityComboDropdownText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065f46'
+  },
+  quickCitiesContainer: {
+    marginTop: 6,
+    marginBottom: 4
+  },
+  quickCitiesScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2
+  },
+  quickCitiesLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9ca3af',
+    marginRight: 2
+  },
+  quickCityChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb'
+  },
+  quickCityChipActive: {
+    backgroundColor: '#064e3b',
+    borderColor: '#064e3b'
+  },
+  quickCityChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#374151'
+  },
+  quickCityChipTextActive: {
+    color: '#ffffff',
+    fontWeight: 'bold'
+  },
+  modalSearchInput: {
+    marginHorizontal: 16,
+    marginVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#f9fafb',
+    fontSize: 13,
+    color: '#111827'
+  },
+  modalCustomOption: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    borderRadius: 8
+  },
+  modalCustomOptionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065f46'
+  },
+  modalCheckText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#059669'
   }
 });

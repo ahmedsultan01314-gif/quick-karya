@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { CATEGORIES, CATEGORY_SUB_ROLES } from '../data/categories';
-import { INDIAN_STATES } from '../data/indianStates';
+import { INDIAN_STATES, getCitiesForState } from '../data/indianStates';
 import {
   ServiceCategory,
   UserLocation,
@@ -17,7 +17,10 @@ import {
   Upload,
   X,
   ChevronDown,
-  AlertCircle
+  AlertCircle,
+  MapPin,
+  Navigation,
+  Loader2
 } from 'lucide-react';
 
 interface RegisterWorkerProps {
@@ -45,6 +48,7 @@ const SAMPLE_AVATARS = [
 
 export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   userLocation,
+  onRequestGps,
   onWorkerRegistered,
   onGoToWorkers
 }) => {
@@ -60,6 +64,75 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   const [pincode, setPincode] = useState(userLocation.pincode || '799001');
   const [photo, setPhoto] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
+
+  // Dynamic City combo-box & GPS auto-detection states
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [gpsDetecting, setGpsDetecting] = useState(false);
+  const [gpsNotice, setGpsNotice] = useState<string | null>(null);
+
+  // State-filtered cities
+  const stateCities = useMemo(() => getCitiesForState(state), [state]);
+  const filteredCities = useMemo(() => {
+    if (!city.trim()) return stateCities;
+    const q = city.toLowerCase().trim();
+    return stateCities.filter((c) => c.toLowerCase().includes(q));
+  }, [stateCities, city]);
+
+  // Auto-Detect via GPS handler
+  const handleUseGpsLocation = () => {
+    setGpsDetecting(true);
+    setGpsNotice(null);
+    setError(null);
+    onRequestGps();
+
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      setGpsDetecting(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(`/api/reverse-geocode?lat=${latitude}&lng=${longitude}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.state) setState(data.state);
+            if (data.city) setCity(data.city);
+            if (data.pincode) setPincode(data.pincode);
+            setGpsNotice(`✓ Auto-filled: ${data.city || 'Area'}, ${data.state || ''} ${data.pincode ? `(${data.pincode})` : ''}`);
+          } else if (userLocation.city) {
+            if (userLocation.state) setState(userLocation.state);
+            if (userLocation.city) setCity(userLocation.city);
+            if (userLocation.pincode) setPincode(userLocation.pincode);
+            setGpsNotice(`✓ Auto-filled from GPS: ${userLocation.city}, ${userLocation.state || ''}`);
+          }
+        } catch {
+          if (userLocation.city) {
+            if (userLocation.state) setState(userLocation.state);
+            if (userLocation.city) setCity(userLocation.city);
+            if (userLocation.pincode) setPincode(userLocation.pincode);
+            setGpsNotice(`✓ Auto-filled: ${userLocation.city}`);
+          }
+        } finally {
+          setGpsDetecting(false);
+        }
+      },
+      (err) => {
+        if (userLocation.city) {
+          if (userLocation.state) setState(userLocation.state);
+          if (userLocation.city) setCity(userLocation.city);
+          if (userLocation.pincode) setPincode(userLocation.pincode);
+          setGpsNotice(`✓ Auto-filled: ${userLocation.city}`);
+        } else {
+          setError(`GPS detection: ${err.message}`);
+        }
+        setGpsDetecting(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
@@ -555,43 +628,195 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
           </div>
         </div>
 
-        {/* City and State Selection */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              City <span className="text-red-500">*</span>
+        {/* Location Section Header with Auto-Detect via GPS Button */}
+        <div className="pt-2 border-t border-gray-100">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-emerald-800" />
+              <span>Service Location Details</span>
             </label>
+            <button
+              id="btn-use-gps-location"
+              type="button"
+              onClick={handleUseGpsLocation}
+              disabled={gpsDetecting}
+              className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              title="Auto-detect State, City, and Pincode using device GPS"
+            >
+              {gpsDetecting ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin text-emerald-700" />
+                  <span>Locating...</span>
+                </>
+              ) : (
+                <>
+                  <Navigation className="w-3 h-3 text-emerald-700" />
+                  <span>Use GPS Location</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* GPS Detection Confirmation Banner */}
+          {gpsNotice && (
+            <div className="mb-2 p-2 rounded-lg bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-800 font-medium flex items-center justify-between">
+              <span>{gpsNotice}</span>
+              <button
+                type="button"
+                onClick={() => setGpsNotice(null)}
+                className="text-emerald-700 hover:text-emerald-900 ml-2"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* State Selection */}
+        <div>
+          <label className="block text-xs font-bold text-gray-700 mb-1">
+            State <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <select
+              id="reg-select-state"
+              value={state}
+              onChange={(e) => {
+                const newState = e.target.value;
+                setState(newState);
+                const newCities = getCitiesForState(newState);
+                if (newCities.length > 0 && !newCities.includes(city)) {
+                  setCity(newCities[0]);
+                }
+              }}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-medium text-gray-900 cursor-pointer appearance-none pr-9"
+            >
+              {INDIAN_STATES.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-gray-500 absolute right-3 top-3.5 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Dynamic City Selection: Combo-Box with State Filtering & Free Manual Typing */}
+        <div className="relative">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-bold text-gray-700">
+              City / Town <span className="text-red-500">*</span>
+            </label>
+            <span className="text-[11px] text-emerald-800 font-medium">
+              Pick from {state} or type custom
+            </span>
+          </div>
+
+          <div className="relative">
             <input
               id="reg-input-city"
               type="text"
               required
               value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="e.g. Agartala"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white"
+              onChange={(e) => {
+                setCity(e.target.value);
+                setCityDropdownOpen(true);
+              }}
+              onFocus={() => setCityDropdownOpen(true)}
+              placeholder={`Type or pick city in ${state}...`}
+              className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white font-medium"
             />
+            <button
+              type="button"
+              onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
+              className="absolute right-2 top-2 p-1 text-gray-500 hover:text-emerald-800 cursor-pointer"
+              title="Toggle city suggestions"
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform ${cityDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              State <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <select
-                id="reg-select-state"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-medium text-gray-900 cursor-pointer appearance-none pr-9"
+          {/* Quick-select chips for top cities in current state */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1.5 pb-0.5">
+            <span className="text-[10px] text-gray-400 font-medium shrink-0">Popular:</span>
+            {stateCities.slice(0, 5).map((quickCity) => (
+              <button
+                key={quickCity}
+                type="button"
+                onClick={() => {
+                  setCity(quickCity);
+                  setCityDropdownOpen(false);
+                }}
+                className={`px-2 py-0.5 text-[11px] rounded-md font-medium whitespace-nowrap transition-colors cursor-pointer border ${
+                  city === quickCity
+                    ? 'bg-emerald-800 text-white border-emerald-800'
+                    : 'bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                }`}
               >
-                {INDIAN_STATES.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-gray-500 absolute right-3 top-3.5 pointer-events-none" />
-            </div>
+                {quickCity}
+              </button>
+            ))}
           </div>
+
+          {/* Dropdown suggestions menu */}
+          {cityDropdownOpen && (
+            <div className="absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+              <div className="p-2 border-b border-gray-100 flex items-center justify-between bg-gray-50 text-[11px] text-gray-500 font-medium sticky top-0">
+                <span>Suggested in {state} ({filteredCities.length})</span>
+                <button
+                  type="button"
+                  onClick={() => setCityDropdownOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 px-1"
+                >
+                  ✕ Close
+                </button>
+              </div>
+
+              {/* Custom town option if typed text doesn't exactly match */}
+              {city.trim() && !stateCities.some((c) => c.toLowerCase() === city.trim().toLowerCase()) && (
+                <button
+                  type="button"
+                  onClick={() => setCityDropdownOpen(false)}
+                  className="w-full text-left px-3.5 py-2 text-xs text-emerald-800 font-bold bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-100 flex items-center justify-between cursor-pointer"
+                >
+                  <span>✍️ Use custom: &quot;{city.trim()}&quot;</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded">Custom</span>
+                </button>
+              )}
+
+              {filteredCities.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => {
+                    setCity(item);
+                    setCityDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                    city === item
+                      ? 'bg-emerald-800 text-white font-bold'
+                      : 'hover:bg-emerald-50 text-gray-800'
+                  }`}
+                >
+                  <span>{item}</span>
+                  {city === item && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                </button>
+              ))}
+
+              {filteredCities.length === 0 && (
+                <div className="p-3 text-center text-xs text-gray-500">
+                  <p>No predefined cities match &quot;{city}&quot;</p>
+                  <button
+                    type="button"
+                    onClick={() => setCityDropdownOpen(false)}
+                    className="mt-1 text-[11px] text-emerald-800 font-bold underline cursor-pointer"
+                  >
+                    Keep custom city name &quot;{city}&quot;
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Pincode */}
