@@ -81,6 +81,7 @@ export interface WorkerProfile {
   latitude: number;
   longitude: number;
   verified: boolean;
+  isVerified?: boolean;
   available: boolean;
   distanceKm?: number; // dynamically computed based on user GPS
   completedJobs: number;

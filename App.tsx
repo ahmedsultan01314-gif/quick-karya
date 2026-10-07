@@ -30,6 +30,10 @@ import {
   ServiceCategory,
   WorkerProfile
 } from './src/types';
+import {
+  saveWorkerToCloud,
+  subscribeWorkersFromCloud
+} from './src/firebase';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
 
@@ -174,22 +178,45 @@ function NativeApp() {
     }
   };
 
-  // 1. Load persisted workers from AsyncStorage on mount
+  // 1. Cloud Firestore Real-time synchronization with local offline cache fallback
   useEffect(() => {
-    const loadStoredWorkers = async () => {
+    // First, load from local offline cache (AsyncStorage) immediately
+    const loadOfflineCache = async () => {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             setWorkers(parsed);
           }
         }
       } catch (err) {
-        console.warn('Error reading from AsyncStorage:', err);
+        console.warn('Error reading from offline storage cache:', err);
       }
     };
-    loadStoredWorkers();
+    loadOfflineCache();
+
+    // Subscribe to Cloud Firestore for live real-time sync across all devices
+    const unsubscribe = subscribeWorkersFromCloud(
+      (cloudWorkers) => {
+        if (Array.isArray(cloudWorkers)) {
+          setWorkers(cloudWorkers);
+          // Persist to local offline cache
+          AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cloudWorkers)).catch(
+            (e) => console.warn('Error caching cloud workers locally:', e)
+          );
+        }
+      },
+      (err) => {
+        console.warn('Firestore live sync listener error:', err);
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
   }, []);
 
   // 2. Request Expo Location for device GPS
@@ -357,11 +384,12 @@ function NativeApp() {
       pincode: regPincode.trim() || '799001',
       latitude: userCoords.latitude,
       longitude: userCoords.longitude,
-      verified: true,
+      verified: false,
+      isVerified: false,
       available: true,
       completedJobs: 1,
       languages: ['Bengali', 'Hindi', 'English'],
-      skills: regSubRole ? [regSubRole.trim(), `Verified ${regCategory}`] : [`Verified ${regCategory}`],
+      skills: regSubRole ? [regSubRole.trim(), regCategory] : [regCategory],
       photo: regPhoto || undefined,
       emergencyAvailable: regCategory === 'Emergency Highway Assistance'
     };
@@ -369,11 +397,17 @@ function NativeApp() {
     const updated = [newWorker, ...workers];
     setWorkers(updated);
 
+    // Save to local offline cache fallback
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.warn('Failed saving to AsyncStorage:', e);
     }
+
+    // Save to Cloud Firestore so all other phones receive live update immediately
+    saveWorkerToCloud(newWorker).catch((err) => {
+      console.warn('Could not sync to cloud database immediately:', err);
+    });
 
     setRegSuccessWorker(newWorker);
   };
@@ -599,13 +633,13 @@ function NativeApp() {
                             <Text style={styles.cardWorkerName} numberOfLines={1}>
                               {worker.name}
                             </Text>
-                            {worker.verified && (
+                            {(worker.isVerified ?? worker.verified) ? (
                               <View style={styles.cardVerifiedBadge}>
                                 <Text style={styles.cardVerifiedBadgeText}>
                                   ✓ Verified
                                 </Text>
                               </View>
-                            )}
+                            ) : null}
                           </View>
 
                           {/* Profession & Experience */}

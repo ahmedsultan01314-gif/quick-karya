@@ -4,6 +4,11 @@ import { createServer as createViteServer } from 'vite';
 import { INITIAL_WORKERS } from './src/data/initialWorkers';
 import { CATEGORIES } from './src/data/categories';
 import { WorkerProfile, ServiceCategory } from './src/types';
+import {
+  saveWorkerToCloud,
+  fetchWorkersFromCloud,
+  subscribeWorkersFromCloud
+} from './src/firebase';
 
 const app = express();
 const PORT = 3000;
@@ -11,8 +16,22 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// In-memory persistent worker storage - starts empty as requested
+// Cloud-synced worker storage with in-memory cache
 let workers: WorkerProfile[] = [];
+
+// Real-time synchronization from Cloud Firestore
+try {
+  subscribeWorkersFromCloud(
+    (cloudWorkers) => {
+      workers = cloudWorkers;
+    },
+    (err) => {
+      console.warn('Server Firestore sync error:', err);
+    }
+  );
+} catch (e) {
+  console.warn('Could not initialize server Firestore listener:', e);
+}
 
 // Helper: Haversine distance in km
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -279,7 +298,8 @@ app.post('/api/workers', (req, res) => {
     pincode: pincode ? pincode.trim() : (matched?.pincode || '799001'),
     latitude: workerLat,
     longitude: workerLng,
-    verified: true, // Auto-verified through Quick Karya onboarding
+    verified: false, // Default unverified for all new onboarded workers
+    isVerified: false,
     available: true,
     completedJobs: 1,
     photo: profilePhoto,
@@ -288,12 +308,17 @@ app.post('/api/workers', (req, res) => {
       : ['Hindi', 'Local'],
     skills: skills
       ? (Array.isArray(skills) ? skills : skills.split(',')).map((s: string) => s.trim()).filter(Boolean)
-      : subRole ? [subRole.trim(), `Verified ${category}`] : [`Verified ${category}`],
+      : subRole ? [subRole.trim(), category] : [category],
     emergencyAvailable: category === 'Emergency Highway Assistance'
   };
 
   // Prepend so newly registered worker appears immediately
   workers.unshift(newWorker);
+
+  // Sync to Cloud Firestore
+  saveWorkerToCloud(newWorker).catch((err) => {
+    console.warn('Could not sync newly registered worker to Firestore:', err);
+  });
 
   res.status(201).json({
     success: true,

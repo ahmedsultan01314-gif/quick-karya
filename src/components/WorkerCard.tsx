@@ -74,7 +74,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
               <h3 className="text-base font-bold text-gray-900 truncate leading-tight tracking-tight">
                 {worker.name}
               </h3>
-              {worker.verified && (
+              {(worker.isVerified ?? worker.verified) ? (
                 <span
                   id={`worker-verified-${worker.id}`}
                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-full text-[11px] font-semibold"
@@ -83,7 +83,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker, onCallNow }) => 
                   <ShieldCheck className="w-3 h-3 text-emerald-600" />
                   <span>Verified</span>
                 </span>
-              )}
+              ) : null}
             </div>
 
             {/* Profession, Driver Vehicle Badge & Experience */}

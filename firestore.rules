@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /workers/{workerId} {
+      // Public directory: anyone can browse & view verified and registered local workers
+      allow read: if true;
+
+      // Allow worker registration with valid required fields and unverified default
+      allow create: if request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 100
+                    && request.resource.data.category is string
+                    && request.resource.data.phone is string
+                    && request.resource.data.phone.size() >= 10
+                    && request.resource.data.city is string
+                    && (!('isVerified' in request.resource.data) || request.resource.data.isVerified == false);
+
+      // Prevent unauthorized modification or deletion from client devices
+      allow update, delete: if false;
+    }
+  }
+}

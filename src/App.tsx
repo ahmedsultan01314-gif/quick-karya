@@ -14,6 +14,7 @@ import { BottomNav } from './components/BottomNav';
 import { CallModal } from './components/CallModal';
 import { LocationModal } from './components/LocationModal';
 import { CityCoord, KNOWN_LOCATIONS } from './utils/geo';
+import { subscribeWorkersFromCloud } from './firebase';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('workers');
@@ -142,6 +143,16 @@ export default function App() {
   // Re-fetch workers when location, category or search query changes
   useEffect(() => {
     fetchWorkers();
+  }, [fetchWorkers]);
+
+  // Subscribe to Cloud Firestore for live real-time synchronization
+  useEffect(() => {
+    const unsubscribe = subscribeWorkersFromCloud(() => {
+      fetchWorkers();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, [fetchWorkers]);
 
   // Handle Manual City / Pincode switch

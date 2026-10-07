@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "worker": {
+      "title": "Worker Profile",
+      "description": "Registered local artisan or worker profile in the Quick Karya proximity directory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "subRole": { "type": "string" },
+        "experience": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "pincode": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "verified": { "type": "boolean" },
+        "isVerified": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "completedJobs": { "type": "number" },
+        "languages": { "type": "array" },
+        "skills": { "type": "array" },
+        "photo": { "type": "string" },
+        "emergencyAvailable": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "category", "experience", "phone", "city", "pincode"]
+    }
+  },
+  "firestore": {
+    "/workers/{workerId}": {
+      "schema": { "$ref": "#/entities/worker" },
+      "description": "Collection of registered workers and artisans in the directory"
+    }
+  }
+}

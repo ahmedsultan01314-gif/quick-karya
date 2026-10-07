@@ -314,8 +314,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
 
           <div>
             <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-semibold">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Verified &amp; Published Listing
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+              Published Active Listing
             </span>
             <h2 className="text-xl font-extrabold text-gray-900 mt-2">
               Welcome to Quick Karya!
