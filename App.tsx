@@ -2667,5 +2667,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#059669'
+  },
+  cardSubRoleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#065f46',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4
+  },
+  subRoleChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f9fafb'
+  },
+  subRoleChipActive: {
+    borderColor: '#059669',
+    backgroundColor: '#ecfdf5'
+  },
+  subRoleChipText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#4b5563'
+  },
+  subRoleChipTextActive: {
+    color: '#065f46',
+    fontWeight: '700'
   }
 });
