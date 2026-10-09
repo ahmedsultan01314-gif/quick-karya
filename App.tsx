@@ -34,14 +34,15 @@ import {
   saveWorkerToCloud,
   subscribeWorkersFromCloud
 } from './src/firebase';
+import {
+  setupNotifications,
+  triggerRegistrationNotification,
+  triggerCallWorkerNotification
+} from './src/utils/notifications';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
 
-const SAMPLE_AVATARS = [
-  'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80'
-];
+
 
 // Helper: Haversine distance in km
 function calculateDistanceKm(
@@ -178,8 +179,10 @@ function NativeApp() {
     }
   };
 
-  // 1. Cloud Firestore Real-time synchronization with local offline cache fallback
+  // 1. Cloud Firestore Real-time synchronization with local offline cache fallback & Notifications setup
   useEffect(() => {
+    setupNotifications().catch(() => {});
+
     // First, load from local offline cache (AsyncStorage) immediately
     const loadOfflineCache = async () => {
       try {
@@ -315,6 +318,10 @@ function NativeApp() {
   // Direct Phone Call handler using Expo Linking
   const handleCall = (phone: string) => {
     const cleanPhone = phone.replace(/[^0-9+]/g, '');
+
+    // Trigger local push notification & in-app alert for calling worker
+    triggerCallWorkerNotification('Worker', cleanPhone, 'Artisan').catch(() => {});
+
     Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
       console.warn('Could not trigger call:', err);
       Alert.alert('Phone Call Error', `Could not initiate call to ${cleanPhone}`);
@@ -408,6 +415,9 @@ function NativeApp() {
     saveWorkerToCloud(newWorker).catch((err) => {
       console.warn('Could not sync to cloud database immediately:', err);
     });
+
+    // Trigger local push notification on phone
+    triggerRegistrationNotification(newWorker.name, newWorker.category).catch(() => {});
 
     setRegSuccessWorker(newWorker);
   };
@@ -979,18 +989,6 @@ function NativeApp() {
                       <Text style={styles.pickerBtnText}>📷 Open Camera</Text>
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.sampleAvatarLabel}>Or select instant sample:</Text>
-                  <View style={styles.sampleAvatarsRow}>
-                    {SAMPLE_AVATARS.map((url, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        onPress={() => setRegPhoto(url)}
-                        style={styles.sampleAvatarThumbBtn}
-                      >
-                        <Image source={{ uri: url }} style={styles.sampleAvatarThumb} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                 </View>
               )}
 
@@ -1324,6 +1322,86 @@ function NativeApp() {
         </ScrollView>
       )}
 
+      {/* TAB 4: MY PROFILE (PERMANENT WORKER ID & VERIFIED SESSION) */}
+      {activeTab === 'profile' && (
+        <ScrollView
+          style={styles.listContainer}
+          contentContainerStyle={styles.listContent}
+        >
+          {/* Profile Header Banner */}
+          <View style={styles.profileCard}>
+            <View style={styles.profileHeaderBanner}>
+              <View style={styles.profileAvatarLarge}>
+                {regPhoto ? (
+                  <Image source={{ uri: regPhoto }} style={styles.profileAvatarImg} />
+                ) : (
+                  <Text style={styles.profileAvatarText}>
+                    {regName ? regName.slice(0, 2).toUpperCase() : 'QK'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.profileHeaderInfo}>
+                <Text style={styles.profileUserName}>
+                  {regName || 'Quick Karya Member'}
+                </Text>
+                <Text style={styles.profileUserPhone}>
+                  {regPhone ? `+91 ${regPhone}` : '+91 Verified Mobile'}
+                </Text>
+                <View style={styles.profileRoleBadge}>
+                  <Text style={styles.profileRoleBadgeText}>
+                    {workers.some((w) => regPhone && w.phone.includes(regPhone))
+                      ? 'Verified Worker'
+                      : 'Customer Account'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Permanent Worker ID Section */}
+            <View style={styles.workerIdBox}>
+              <Text style={styles.workerIdLabel}>PERMANENT WORKER ID</Text>
+              <Text style={styles.workerIdCode}>
+                {workers.find((w) => regPhone && w.phone.includes(regPhone))?.workerId ||
+                  `QK-${Math.abs((regPhone || '799001').split('').reduce((a, b) => a + b.charCodeAt(0), 10000))}`}
+              </Text>
+              <Text style={styles.workerIdHint}>
+                Permanently registered on Quick Karya cloud backend.
+              </Text>
+            </View>
+
+            {/* Worker Details Summary */}
+            <View style={styles.profileStatsGrid}>
+              <View style={styles.profileStatCard}>
+                <Text style={styles.profileStatLabel}>Category</Text>
+                <Text style={styles.profileStatVal}>{regCategory}</Text>
+              </View>
+              <View style={styles.profileStatCard}>
+                <Text style={styles.profileStatLabel}>Experience</Text>
+                <Text style={styles.profileStatVal}>{regExperience} Years</Text>
+              </View>
+              <View style={styles.profileStatCard}>
+                <Text style={styles.profileStatLabel}>Location</Text>
+                <Text style={styles.profileStatVal}>{regCity}, {regState}</Text>
+              </View>
+              <View style={styles.profileStatCard}>
+                <Text style={styles.profileStatLabel}>Rating</Text>
+                <Text style={styles.profileStatVal}>⭐ 5.0 (Verified)</Text>
+              </View>
+            </View>
+
+            {/* Quick Actions */}
+            <TouchableOpacity
+              style={styles.profileActionBtn}
+              onPress={() => setActiveTab('register')}
+            >
+              <Text style={styles.profileActionBtnText}>
+                ✎ Edit / Register Worker Profile
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+
       {/* FIXED BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomNavContainer}>
         {/* Tab 1: Workers (Home) */}
@@ -1407,6 +1485,34 @@ function NativeApp() {
             Categories
           </Text>
           {activeTab === 'categories' && (
+            <View style={styles.navActiveIndicator} />
+          )}
+        </TouchableOpacity>
+
+        {/* Tab 4: My Profile */}
+        <TouchableOpacity
+          style={styles.navTabButton}
+          onPress={() => setActiveTab('profile')}
+        >
+          <View style={styles.navIconWrapper}>
+            <Text
+              style={[
+                styles.navEmoji,
+                activeTab === 'profile' && styles.navEmojiActive
+              ]}
+            >
+              👤
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.navTabLabel,
+              activeTab === 'profile' && styles.navTabLabelActive
+            ]}
+          >
+            My Profile
+          </Text>
+          {activeTab === 'profile' && (
             <View style={styles.navActiveIndicator} />
           )}
         </TouchableOpacity>
@@ -2668,15 +2774,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#059669'
   },
-  cardSubRoleText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#065f46',
-    backgroundColor: '#d1fae5',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4
-  },
   subRoleChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -2697,5 +2794,132 @@ const styles = StyleSheet.create({
   subRoleChipTextActive: {
     color: '#065f46',
     fontWeight: '700'
+  },
+  /* PROFILE VIEW STYLES */
+  profileCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 16
+  },
+  profileHeaderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6'
+  },
+  profileAvatarLarge: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: '#064e3b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden'
+  },
+  profileAvatarImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover'
+  },
+  profileAvatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff'
+  },
+  profileHeaderInfo: {
+    flex: 1
+  },
+  profileUserName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827'
+  },
+  profileUserPhone: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'
+  },
+  profileRoleBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4
+  },
+  profileRoleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#065f46'
+  },
+  workerIdBox: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 14
+  },
+  workerIdLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#166534',
+    letterSpacing: 0.5
+  },
+  workerIdCode: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#064e3b',
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'
+  },
+  workerIdHint: {
+    fontSize: 11,
+    color: '#15803d',
+    marginTop: 4
+  },
+  profileStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14
+  },
+  profileStatCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 10
+  },
+  profileStatLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase'
+  },
+  profileStatVal: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginTop: 2
+  },
+  profileActionBtn: {
+    backgroundColor: '#064e3b',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center'
+  },
+  profileActionBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold'
   }
 });

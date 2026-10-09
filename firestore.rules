@@ -1,22 +1,44 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /workers/{workerId} {
-      // Public directory: anyone can browse & view verified and registered local workers
-      allow read: if true;
 
-      // Allow worker registration with valid required fields and unverified default
+    // Workers collection: Public directory for verified/unverified workers
+    match /workers/{workerId} {
+      allow read: if true;
       allow create: if request.resource.data.name is string
                     && request.resource.data.name.size() > 0
-                    && request.resource.data.name.size() <= 100
                     && request.resource.data.category is string
                     && request.resource.data.phone is string
-                    && request.resource.data.phone.size() >= 10
-                    && request.resource.data.city is string
                     && (!('isVerified' in request.resource.data) || request.resource.data.isVerified == false);
+      allow update: if true; // Allows rating and review updates
+      allow delete: if false;
+    }
 
-      // Prevent unauthorized modification or deletion from client devices
-      allow update, delete: if false;
+    // App Users
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.phone is string
+                            && request.resource.data.name is string;
+      allow delete: if false;
+    }
+
+    // Customer Star Ratings & Written Reviews
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5
+                    && request.resource.data.workerId is string
+                    && request.resource.data.serviceRequestId is string;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reported']);
+      allow delete: if false;
+    }
+
+    // Service Requests & Location Sharing
+    match /serviceRequests/{requestId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.customerId is string
+                            && request.resource.data.workerId is string;
+      allow delete: if false;
     }
   }
 }

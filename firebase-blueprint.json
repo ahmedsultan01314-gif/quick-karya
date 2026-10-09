@@ -6,6 +6,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "workerId": { "type": "string" },
         "name": { "type": "string" },
         "category": { "type": "string" },
         "subRole": { "type": "string" },
@@ -29,12 +30,81 @@
         "createdAt": { "type": "string" }
       },
       "required": ["name", "category", "experience", "phone", "city", "pincode"]
+    },
+    "user": {
+      "title": "App User",
+      "description": "Authenticated user profile for customer or worker with verified phone",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "phone": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "workerId": { "type": "string" },
+        "profilePhoto": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "phone", "name", "role", "verified"]
+    },
+    "review": {
+      "title": "Worker Review",
+      "description": "Customer star rating and written review for a completed service",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workerId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "serviceRequestId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "reported": { "type": "boolean" }
+      },
+      "required": ["workerId", "customerId", "rating", "serviceRequestId"]
+    },
+    "serviceRequest": {
+      "title": "Service Request",
+      "description": "Job engagement between customer and worker with location authorization",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "workerId": { "type": "string" },
+        "workerName": { "type": "string" },
+        "workerCategory": { "type": "string" },
+        "status": { "type": "string" },
+        "customerLat": { "type": "number" },
+        "customerLng": { "type": "number" },
+        "serviceAddress": { "type": "string" },
+        "hasLocationPermission": { "type": "boolean" },
+        "reviewed": { "type": "boolean" },
+        "reviewId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["customerId", "workerId", "status"]
     }
   },
   "firestore": {
     "/workers/{workerId}": {
       "schema": { "$ref": "#/entities/worker" },
       "description": "Collection of registered workers and artisans in the directory"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/user" },
+      "description": "Registered and authenticated users"
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/review" },
+      "description": "Verified customer ratings and reviews"
+    },
+    "/serviceRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/serviceRequest" },
+      "description": "Customer service bookings and location sharing requests"
     }
   }
 }

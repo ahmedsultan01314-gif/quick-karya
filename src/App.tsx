@@ -3,7 +3,9 @@ import {
   ActiveTab,
   ServiceCategory,
   UserLocation,
-  WorkerProfile
+  WorkerProfile,
+  AppUser,
+  ServiceRequest
 } from './types';
 import { Header } from './components/Header';
 import { LocationBar } from './components/LocationBar';
@@ -13,8 +15,13 @@ import { RegisterWorker } from './components/RegisterWorker';
 import { BottomNav } from './components/BottomNav';
 import { CallModal } from './components/CallModal';
 import { LocationModal } from './components/LocationModal';
+import { AuthModal } from './components/AuthModal';
+import { ProfileView } from './components/ProfileView';
+import { RatingModal } from './components/RatingModal';
+import { NotificationToast } from './components/NotificationToast';
 import { CityCoord, KNOWN_LOCATIONS } from './utils/geo';
 import { subscribeWorkersFromCloud } from './firebase';
+import { setupNotifications } from './utils/notifications';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('workers');
@@ -22,6 +29,35 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [callingWorker, setCallingWorker] = useState<WorkerProfile | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Service Request & Rating State
+  const [activeServiceRequest, setActiveServiceRequest] = useState<ServiceRequest | null>(null);
+  const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+
+  // Check persistent local user session on mount and initialize notifications
+  useEffect(() => {
+    setupNotifications().catch(() => {});
+
+    try {
+      const stored = localStorage.getItem('quick_karya_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.phone && parsed?.verified) {
+          setCurrentUser(parsed);
+          return;
+        }
+      }
+    } catch {
+      // Ignore localStorage parse errors
+    }
+
+    // New user on first startup: open mandatory mobile number & OTP verification
+    setIsAuthModalOpen(true);
+  }, []);
 
   // User location state (defaults to Agartala, Tripura as requested benchmark)
   const [userLocation, setUserLocation] = useState<UserLocation>({
@@ -53,7 +89,6 @@ export default function App() {
         params.append('lng', userLocation.longitude.toString());
       }
 
-      // If user specifically picked a manual city without live GPS
       if (!userLocation.isLiveGps && userLocation.city) {
         params.append('city', userLocation.city);
       }
@@ -87,7 +122,6 @@ export default function App() {
       async (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
 
-        // Try reverse geocoding via server endpoint
         let detectedCity = 'Current Location';
         let detectedState = '';
         let detectedPincode = '';
@@ -119,7 +153,6 @@ export default function App() {
       },
       (err) => {
         console.warn('Live GPS error or permission denied:', err.message);
-        // Fallback gracefully without breaking
         setUserLocation((prev) => ({
           ...prev,
           isLiveGps: false,
@@ -155,7 +188,6 @@ export default function App() {
     };
   }, [fetchWorkers]);
 
-  // Handle Manual City / Pincode switch
   const handleSelectManualLocation = (loc: CityCoord) => {
     setUserLocation({
       latitude: loc.lat,
@@ -168,27 +200,30 @@ export default function App() {
     });
   };
 
-  // Handle Custom text search in Location Modal
   const handleSearchCustomText = (text: string) => {
     setSearchQuery(text);
   };
 
-  // Handle Category selection from Categories tab or Highway Emergency banner
   const handleSelectCategoryFromCategories = (cat: ServiceCategory) => {
     setSelectedCategory(cat);
     setActiveTab('workers');
   };
 
-  // Handle newly registered worker
   const handleWorkerRegistered = (newWorker: WorkerProfile) => {
-    // Add to list and select their category
     setWorkers((prev) => [newWorker, ...prev]);
     setSelectedCategory(newWorker.category);
+    // Switch to profile tab to show worker card & ID
+    setActiveTab('profile');
   };
 
   const handleResetFilters = () => {
     setSelectedCategory('All');
     setSearchQuery('');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('quick_karya_user');
+    setCurrentUser(null);
   };
 
   return (
@@ -204,7 +239,7 @@ export default function App() {
         />
 
         {/* Main Body content according to Active Tab */}
-        <main className="flex-1 px-4 pt-3 pb-6 overflow-y-auto">
+        <main className="flex-1 px-4 pt-3 pb-20 overflow-y-auto">
           {activeTab === 'workers' && (
             <div className="space-y-3.5">
               {/* Proximity Location & Search bar */}
@@ -221,7 +256,9 @@ export default function App() {
                 workers={workers}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
-                onCallNow={(w) => setCallingWorker(w)}
+                onCallNow={(w) => {
+                  setCallingWorker(w);
+                }}
                 onGoToRegister={() => setActiveTab('register')}
                 onResetFilters={handleResetFilters}
                 isLoading={loadingWorkers}
@@ -244,13 +281,25 @@ export default function App() {
               workers={workers}
             />
           )}
+
+          {activeTab === 'profile' && (
+            <ProfileView
+              user={currentUser}
+              onLoginClick={() => setIsAuthModalOpen(true)}
+              onLogout={handleLogout}
+              workers={workers}
+              onGoToRegister={() => setActiveTab('register')}
+            />
+          )}
         </main>
 
-        {/* Bottom Navigation with 3 main tabs */}
+        {/* Bottom Navigation with 4 working tabs: Workers, Register, Categories, My Profile */}
         <BottomNav
           activeTab={activeTab}
           onChangeTab={(tab) => setActiveTab(tab)}
           workersCount={workers.length}
+          userName={currentUser?.name}
+          isLoggedIn={Boolean(currentUser)}
         />
 
         {/* Direct Call Dialog Sheet */}
@@ -258,6 +307,10 @@ export default function App() {
           worker={callingWorker}
           onClose={() => setCallingWorker(null)}
           userLocation={userLocation}
+          currentUser={currentUser}
+          onServiceBooked={(req) => {
+            setActiveServiceRequest(req);
+          }}
         />
 
         {/* Location Switcher Modal */}
@@ -269,6 +322,41 @@ export default function App() {
           onSelectManualLocation={handleSelectManualLocation}
           onSearchCustomText={handleSearchCustomText}
         />
+
+        {/* Mobile SMS OTP Login Modal */}
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => {
+            // Allow close only if user has logged in
+            if (currentUser) {
+              setIsAuthModalOpen(false);
+            }
+          }}
+          forceLogin={!currentUser}
+          onLoginSuccess={(u, role) => {
+            setCurrentUser(u);
+            setIsAuthModalOpen(false);
+            // Profile Separation: Worker -> 'register', Customer -> 'workers'
+            if (role === 'worker') {
+              setActiveTab('register');
+            } else {
+              setActiveTab('workers');
+            }
+          }}
+        />
+
+        {/* Rating Modal for Completed Services */}
+        <RatingModal
+          isOpen={isRatingModalOpen}
+          onClose={() => setIsRatingModalOpen(false)}
+          serviceRequest={activeServiceRequest}
+          onRatingSubmitted={() => {
+            fetchWorkers();
+          }}
+        />
+
+        {/* Global In-App Activity & Local Notification Banner */}
+        <NotificationToast />
       </div>
     </div>
   );

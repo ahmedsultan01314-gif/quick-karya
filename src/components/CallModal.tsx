@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WorkerProfile, UserLocation } from '../types';
+import { WorkerProfile, UserLocation, AppUser, ServiceRequest } from '../types';
 import {
   Phone,
   Check,
@@ -22,14 +22,23 @@ import {
 } from 'lucide-react';
 import { formatDistance } from '../utils/geo';
 import { formatWorkerPricing, isLateNightNow } from '../utils/pricing';
+import { triggerCallWorkerNotification } from '../utils/notifications';
 
 interface CallModalProps {
   worker: WorkerProfile | null;
   onClose: () => void;
   userLocation?: UserLocation;
+  currentUser?: AppUser | null;
+  onServiceBooked?: (req: ServiceRequest) => void;
 }
 
-export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocation }) => {
+export const CallModal: React.FC<CallModalProps> = ({
+  worker,
+  onClose,
+  userLocation,
+  currentUser,
+  onServiceBooked
+}) => {
   const [copiedNumber, setCopiedNumber] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
   const [pickupLocation, setPickupLocation] = useState('');
@@ -177,14 +186,35 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
       ? `Quick Karya Ride Booking\nDriver: ${worker.name} (${worker.phone})\nPickup: ${pickupLocation.trim()}\nDrop: ${dropLocation.trim() || 'Flexible'}\nRate: ${isNightActive ? pricing.displayNightRate : pricing.displayRate}`
       : `Quick Karya Service Booking\nWorker: ${worker.name} (${worker.category})\nLocation: ${pickupLocation.trim() || 'As agreed'}\nRate: ${pricing.displayRate}`;
 
-    try {
-      navigator.clipboard?.writeText(summaryText);
-      setCopiedSummary(true);
-      setTimeout(() => setCopiedSummary(false), 3000);
-    } catch {
-      // Fallback ignore clipboard errors
+    // Record service request to enable rating and location sharing
+    if (currentUser) {
+      fetch('/api/service-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: currentUser.id,
+          customerName: currentUser.name,
+          customerPhone: currentUser.phone,
+          workerId: worker.id,
+          customerLat: userLocation?.latitude,
+          customerLng: userLocation?.longitude,
+          serviceAddress: pickupLocation.trim() || undefined,
+          hasLocationPermission: Boolean(userLocation?.isLiveGps)
+        })
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.serviceRequest && onServiceBooked) {
+            onServiceBooked(data.serviceRequest);
+          }
+        })
+        .catch(() => {});
     }
 
+    // Trigger local push notification & in-app activity alert for calling action
+    triggerCallWorkerNotification(worker.name, worker.phone, worker.category).catch(() => {});
+
+    // Call through masked route or direct native dialer
     window.location.href = `tel:${rawPhone}`;
   };
 
@@ -298,10 +328,13 @@ export const CallModal: React.FC<CallModalProps> = ({ worker, onClose, userLocat
           </div>
         </div>
 
-        {/* Free Directory Banner */}
+        {/* Caller ID & Privacy Notice */}
         <div className="bg-emerald-50 px-4 sm:px-5 py-2.5 border-b border-emerald-100 flex items-center justify-between text-xs shrink-0">
-          <span className="text-emerald-900 font-bold">100% Free Proximity Directory</span>
-          <span className="text-emerald-700 font-medium">Direct Phone Connection</span>
+          <div className="flex items-center gap-1.5 text-emerald-900 font-bold">
+            <ShieldCheck className="w-4 h-4 text-emerald-700" />
+            <span>Caller ID: Quick Karya</span>
+          </div>
+          <span className="text-emerald-700 font-medium text-[11px]">Phone Numbers Protected</span>
         </div>
 
         {/* Scrollable Modal Content */}

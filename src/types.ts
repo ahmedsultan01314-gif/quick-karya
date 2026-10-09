@@ -59,6 +59,7 @@ export interface WorkerRateOption {
 
 export interface WorkerProfile {
   id: string;
+  workerId?: string; // Permanent Unique Quick Karya Worker ID, e.g. QK-10492
   name: string;
   category: ServiceCategory;
   experience: number; // in years
@@ -103,7 +104,51 @@ export interface UserLocation {
   error?: string;
 }
 
-export type ActiveTab = 'workers' | 'register' | 'categories';
+export type UserRole = 'customer' | 'worker';
+
+export interface AppUser {
+  id: string;
+  phone: string;
+  name: string;
+  role: UserRole;
+  workerId?: string; // Permanent Quick Karya Worker ID, e.g. QK-78901
+  profilePhoto?: string;
+  verified: boolean;
+  createdAt: string;
+}
+
+export interface WorkerReview {
+  id: string;
+  workerId: string;
+  customerId: string;
+  customerName: string;
+  rating: number; // 1-5
+  comment?: string;
+  serviceRequestId: string;
+  createdAt: string;
+  reported?: boolean;
+}
+
+export interface ServiceRequest {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  workerId: string;
+  workerName: string;
+  workerCategory: string;
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
+  customerLat?: number;
+  customerLng?: number;
+  serviceAddress?: string;
+  hasLocationPermission: boolean;
+  reviewed?: boolean;
+  reviewId?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export type ActiveTab = 'workers' | 'register' | 'categories' | 'profile';
 
 export interface OnboardingForm {
   name: string;

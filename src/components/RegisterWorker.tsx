@@ -22,6 +22,7 @@ import {
   Navigation,
   Loader2
 } from 'lucide-react';
+import { triggerRegistrationNotification } from '../utils/notifications';
 
 interface RegisterWorkerProps {
   userLocation: UserLocation;
@@ -30,21 +31,7 @@ interface RegisterWorkerProps {
   onGoToWorkers: () => void;
 }
 
-// Preset artisan avatar samples for instant one-tap testing
-const SAMPLE_AVATARS = [
-  {
-    name: 'Artisan 1',
-    url: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=200&auto=format&fit=crop&q=80'
-  },
-  {
-    name: 'Artisan 2',
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80'
-  },
-  {
-    name: 'Artisan 3',
-    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80'
-  }
-];
+
 
 export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   userLocation,
@@ -64,6 +51,24 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   const [pincode, setPincode] = useState(userLocation.pincode || '799001');
   const [photo, setPhoto] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
+
+  // Auto-fill from authenticated user session
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('quick_karya_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.name && !name) setName(u.name);
+        if (u.phone && !phone) {
+          const raw = u.phone.replace(/[^0-9]/g, '').slice(-10);
+          setPhone(raw);
+        }
+        if (u.profilePhoto && !photo) {
+          setPhoto(u.profilePhoto);
+        }
+      }
+    } catch {}
+  }, []);
 
   // Dynamic City combo-box & GPS auto-detection states
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
@@ -243,6 +248,16 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         ? `+${cleanPhone}`
         : `+91 ${cleanPhone.slice(-10, -5)} ${cleanPhone.slice(-5)}`;
 
+      // Get logged in user if available
+      let currentUserId: string | undefined;
+      try {
+        const stored = localStorage.getItem('quick_karya_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          currentUserId = parsed?.id;
+        }
+      } catch {}
+
       const payload = {
         name: name.trim(),
         category,
@@ -256,7 +271,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         pincode: pincode.trim(),
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
-        photo: photo || undefined
+        photo: photo || undefined,
+        userId: currentUserId
       };
 
       const res = await fetch('/api/workers', {
@@ -273,6 +289,9 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       const data = await res.json();
       setSuccessWorker(data.worker);
       onWorkerRegistered(data.worker);
+
+      // Trigger automatic local push notification & in-app activity alert
+      triggerRegistrationNotification(data.worker.name, data.worker.category).catch(() => {});
     } catch (err: any) {
       setError(err.message || 'Something went wrong while submitting.');
     } finally {
@@ -492,31 +511,6 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 JPG, PNG, WebP (or fallback initial badge will be used)
               </p>
 
-              {/* Instant sample avatars option */}
-              <div
-                className="mt-3 pt-2.5 border-t border-gray-100 w-full flex items-center justify-center gap-2"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <span className="text-[10px] text-gray-500 font-medium">Or pick sample:</span>
-                <div className="flex items-center gap-1.5">
-                  {SAMPLE_AVATARS.map((sample, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setPhoto(sample.url)}
-                      className="w-7 h-7 rounded-full overflow-hidden border border-gray-300 hover:border-emerald-600 hover:scale-110 transition-transform cursor-pointer"
-                      title={`Select ${sample.name}`}
-                    >
-                      <img
-                        src={sample.url}
-                        alt={sample.name}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
         </div>
