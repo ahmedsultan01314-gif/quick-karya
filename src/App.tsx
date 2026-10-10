@@ -24,7 +24,7 @@ import { subscribeWorkersFromCloud } from './firebase';
 import { setupNotifications } from './utils/notifications';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('workers');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [callingWorker, setCallingWorker] = useState<WorkerProfile | null>(null);
@@ -96,7 +96,12 @@ export default function App() {
       const res = await fetch(`/api/workers?${params.toString()}`);
       if (res.ok) {
         const data = (await res.json()) as WorkerProfile[];
-        setWorkers(data);
+        const clean = data.filter(
+          (w) =>
+            !w.name?.toLowerCase().includes('kastu') &&
+            !w.name?.toLowerCase().includes('santirkey')
+        );
+        setWorkers(clean);
       }
     } catch (err) {
       console.error('Error loading workers:', err);
@@ -188,6 +193,31 @@ export default function App() {
     };
   }, [fetchWorkers]);
 
+  // Handle browser back button smoothly for Web/PWA
+  useEffect(() => {
+    const handlePopState = () => {
+      if (isLocationModalOpen) {
+        setIsLocationModalOpen(false);
+        return;
+      }
+      if (callingWorker) {
+        setCallingWorker(null);
+        return;
+      }
+      if (selectedCategory !== 'All') {
+        setSelectedCategory('All');
+        return;
+      }
+      if (activeTab !== 'home' && activeTab !== 'workers') {
+        setActiveTab('home');
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isLocationModalOpen, callingWorker, selectedCategory, activeTab]);
+
   const handleSelectManualLocation = (loc: CityCoord) => {
     setUserLocation({
       latitude: loc.lat,
@@ -206,7 +236,7 @@ export default function App() {
 
   const handleSelectCategoryFromCategories = (cat: ServiceCategory) => {
     setSelectedCategory(cat);
-    setActiveTab('workers');
+    setActiveTab('home');
   };
 
   const handleWorkerRegistered = (newWorker: WorkerProfile) => {
@@ -240,7 +270,7 @@ export default function App() {
 
         {/* Main Body content according to Active Tab */}
         <main className="flex-1 px-4 pt-3 pb-20 overflow-y-auto">
-          {activeTab === 'workers' && (
+          {(activeTab === 'home' || activeTab === 'workers') && (
             <div className="space-y-3.5">
               {/* Proximity Location & Search bar */}
               <LocationBar
@@ -336,11 +366,11 @@ export default function App() {
           onLoginSuccess={(u, role) => {
             setCurrentUser(u);
             setIsAuthModalOpen(false);
-            // Profile Separation: Worker -> 'register', Customer -> 'workers'
+            // Profile Separation: Worker -> 'register', Customer -> 'home'
             if (role === 'worker') {
               setActiveTab('register');
             } else {
-              setActiveTab('workers');
+              setActiveTab('home');
             }
           }}
         />

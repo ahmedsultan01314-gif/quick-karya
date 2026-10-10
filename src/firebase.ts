@@ -6,6 +6,7 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  deleteDoc,
   query,
   where,
   onSnapshot
@@ -62,6 +63,14 @@ export async function saveWorkerToCloud(worker: WorkerProfile): Promise<void> {
   if (worker.vehicleType) cleanData.vehicleType = worker.vehicleType;
 
   await setDoc(workerDocRef, cleanData);
+}
+
+/**
+ * Delete worker profile from Cloud Firestore
+ */
+export async function deleteWorkerFromCloud(workerId: string): Promise<void> {
+  const workerDocRef = doc(db, WORKERS_COLLECTION, workerId);
+  await deleteDoc(workerDocRef);
 }
 
 /**

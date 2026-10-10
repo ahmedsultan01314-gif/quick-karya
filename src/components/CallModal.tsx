@@ -211,8 +211,14 @@ export const CallModal: React.FC<CallModalProps> = ({
         .catch(() => {});
     }
 
-    // Trigger local push notification & in-app activity alert for calling action
-    triggerCallWorkerNotification(worker.name, worker.phone, worker.category).catch(() => {});
+    // Trigger push notification to worker device with explicit customer identity
+    triggerCallWorkerNotification(
+      worker.name,
+      worker.phone,
+      worker.category,
+      currentUser?.name,
+      currentUser?.phone
+    ).catch(() => {});
 
     // Call through masked route or direct native dialer
     window.location.href = `tel:${rawPhone}`;

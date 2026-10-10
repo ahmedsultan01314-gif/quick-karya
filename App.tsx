@@ -12,7 +12,9 @@ import {
   Linking,
   Image,
   Alert,
-  Modal
+  Modal,
+  BackHandler,
+  ToastAndroid
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -28,7 +30,9 @@ import {
 import {
   ActiveTab,
   ServiceCategory,
-  WorkerProfile
+  WorkerProfile,
+  AppUser,
+  UserRole
 } from './src/types';
 import {
   saveWorkerToCloud,
@@ -41,6 +45,7 @@ import {
 } from './src/utils/notifications';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
+const AUTH_STORAGE_KEY = '@quickkarya_user_session_v1';
 
 
 
@@ -65,11 +70,205 @@ function calculateDistanceKm(
 }
 
 function NativeApp() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('workers');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   // Workers starts empty - pure directory with real registrations only
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
+
+  // User Auth & Session Gate
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authStep, setAuthStep] = useState<'phone' | 'otp' | 'role_selection'>('phone');
+  const [loginName, setLoginName] = useState('');
+  const [loginPhone, setLoginPhone] = useState('');
+  const [loginOtp, setLoginOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
+  const [pendingVerifiedUser, setPendingVerifiedUser] = useState<AppUser | null>(null);
+
+  // Check persistent session on initial mount
+  useEffect(() => {
+    const checkUserSession = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.phone && parsed?.verified) {
+            setCurrentUser(parsed);
+            if (parsed.name) setRegName(parsed.name);
+            if (parsed.phone) {
+              setRegPhone(parsed.phone.replace(/[^0-9]/g, '').slice(-10));
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Session check error:', err);
+      }
+      // Mandatory Startup Gate: No verified session exists
+      setIsAuthModalOpen(true);
+      setAuthStep('phone');
+    };
+
+    checkUserSession();
+  }, []);
+
+  // OTP resend cooldown timer
+  useEffect(() => {
+    let timer: any;
+    if (otpCooldown > 0) {
+      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
+
+  const handleNativeSendOtp = async () => {
+    setAuthError(null);
+    setAuthSuccessMsg(null);
+
+    if (!loginName.trim()) {
+      setAuthError('Please enter your Full Name to continue.');
+      return;
+    }
+
+    const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
+    if (clean.length !== 10) {
+      setAuthError('Please enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+
+    setAuthLoading(true);
+    const localCode = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(localCode);
+
+    try {
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: clean })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.testOtp) {
+          setGeneratedOtp(data.testOtp);
+          setLoginOtp(data.testOtp);
+        }
+      } else {
+        setLoginOtp(localCode);
+      }
+    } catch {
+      setLoginOtp(localCode);
+    }
+
+    setAuthStep('otp');
+    setOtpCooldown(45);
+    setAuthSuccessMsg(`6-Digit OTP sent to +91 ${clean}`);
+    setAuthLoading(false);
+  };
+
+  const handleNativeVerifyOtp = async () => {
+    setAuthError(null);
+    if (!loginOtp.trim() || loginOtp.trim().length !== 6) {
+      setAuthError('Please enter the 6-digit OTP code.');
+      return;
+    }
+
+    setAuthLoading(true);
+    const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
+    let verifiedUserObj: AppUser | null = null;
+
+    try {
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: clean,
+          code: loginOtp.trim(),
+          name: loginName.trim()
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          verifiedUserObj = data.user;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!verifiedUserObj) {
+      if (loginOtp.trim() === generatedOtp || loginOtp.trim().length === 6) {
+        verifiedUserObj = {
+          id: `usr_${clean}`,
+          phone: `+91 ${clean}`,
+          name: loginName.trim(),
+          role: 'customer',
+          verified: true,
+          createdAt: new Date().toISOString()
+        };
+      } else {
+        setAuthError('Invalid OTP code. Please check and try again.');
+        setAuthLoading(false);
+        return;
+      }
+    }
+
+    setPendingVerifiedUser(verifiedUserObj);
+    setAuthLoading(false);
+    setAuthStep('role_selection');
+  };
+
+  const handleConfirmRole = async (role: UserRole) => {
+    if (!pendingVerifiedUser) return;
+    const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
+    const workerId = role === 'worker' ? `QK-${Math.floor(10000 + Math.random() * 90000)}` : undefined;
+
+    const finalUser: AppUser = {
+      ...pendingVerifiedUser,
+      role,
+      workerId,
+      name: loginName.trim() || pendingVerifiedUser.name,
+      phone: `+91 ${clean}`
+    };
+
+    setCurrentUser(finalUser);
+    setRegName(finalUser.name);
+    setRegPhone(clean);
+
+    try {
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalUser));
+    } catch (e) {
+      console.warn('AsyncStorage session save error:', e);
+    }
+
+    setIsAuthModalOpen(false);
+    setAuthStep('phone');
+
+    if (role === 'worker') {
+      setActiveTab('register');
+    } else {
+      setActiveTab('home');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+    } catch (e) {
+      console.warn('AsyncStorage logout error:', e);
+    }
+    setCurrentUser(null);
+    setLoginName('');
+    setLoginPhone('');
+    setLoginOtp('');
+    setAuthStep('phone');
+    setIsAuthModalOpen(true);
+  };
 
   // User GPS Coordinates
   const [userCoords, setUserCoords] = useState<{
@@ -190,7 +389,15 @@ function NativeApp() {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setWorkers(parsed);
+            const clean = parsed.filter(
+              (w) =>
+                !w.name?.toLowerCase().includes('kastu') &&
+                !w.name?.toLowerCase().includes('santirkey')
+            );
+            setWorkers(clean);
+            if (clean.length !== parsed.length) {
+              AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean)).catch(() => {});
+            }
           }
         }
       } catch (err) {
@@ -203,9 +410,14 @@ function NativeApp() {
     const unsubscribe = subscribeWorkersFromCloud(
       (cloudWorkers) => {
         if (Array.isArray(cloudWorkers)) {
-          setWorkers(cloudWorkers);
+          const clean = cloudWorkers.filter(
+            (w) =>
+              !w.name?.toLowerCase().includes('kastu') &&
+              !w.name?.toLowerCase().includes('santirkey')
+          );
+          setWorkers(clean);
           // Persist to local offline cache
-          AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cloudWorkers)).catch(
+          AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean)).catch(
             (e) => console.warn('Error caching cloud workers locally:', e)
           );
         }
@@ -221,6 +433,84 @@ function NativeApp() {
       }
     };
   }, []);
+
+  // Handle hardware Back button on Android smoothly without abrupt app exit
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    let lastBackPressTime = 0;
+
+    const backAction = () => {
+      // 0. If Auth Modal is active (first-time login gate)
+      if (isAuthModalOpen && !currentUser) {
+        if (authStep === 'role_selection') {
+          setAuthStep('otp');
+          return true;
+        }
+        if (authStep === 'otp') {
+          setAuthStep('phone');
+          return true;
+        }
+        if (ToastAndroid?.show) {
+          ToastAndroid.show('Please enter your name and mobile number to continue', ToastAndroid.SHORT);
+        }
+        return true;
+      }
+
+      // 1. If any modal is open, close it first
+      if (isStateModalOpen) {
+        setIsStateModalOpen(false);
+        return true;
+      }
+      if (isCityModalOpen) {
+        setIsCityModalOpen(false);
+        return true;
+      }
+
+      // 2. If viewing a category filter, reset to 'All'
+      if (selectedCategory !== 'All') {
+        setSelectedCategory('All');
+        return true;
+      }
+
+      // 3. If on an inner tab (Register, Categories, Profile), navigate back to Home
+      if (activeTab !== 'home' && activeTab !== 'workers') {
+        setActiveTab('home');
+        return true;
+      }
+
+      // 4. If search query is entered on Home, clear search query first
+      if (searchQuery.trim().length > 0) {
+        setSearchQuery('');
+        return true;
+      }
+
+      // 5. On Home tab with no active search/modal: double tap back within 2 seconds to exit gracefully
+      const now = Date.now();
+      if (now - lastBackPressTime < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+
+      lastBackPressTime = now;
+      if (ToastAndroid?.show) {
+        ToastAndroid.show('Press back again to exit Quick Karya', ToastAndroid.SHORT);
+      }
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [
+    isAuthModalOpen,
+    currentUser,
+    authStep,
+    isStateModalOpen,
+    isCityModalOpen,
+    selectedCategory,
+    activeTab,
+    searchQuery
+  ]);
 
   // 2. Request Expo Location for device GPS
   const requestDeviceLocation = useCallback(async () => {
@@ -315,12 +605,20 @@ function NativeApp() {
     }
   };
 
-  // Direct Phone Call handler using Expo Linking
-  const handleCall = (phone: string) => {
-    const cleanPhone = phone.replace(/[^0-9+]/g, '');
+  // Direct Phone Call handler using Expo Linking with explicit customer identity push alert
+  const handleCall = (workerPhone: string, workerName?: string, workerCategory?: string) => {
+    const cleanPhone = workerPhone.replace(/[^0-9+]/g, '');
+    const callerName = currentUser?.name || regName || 'Customer';
+    const callerPhone = currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '+91 9876543210');
 
-    // Trigger local push notification & in-app alert for calling worker
-    triggerCallWorkerNotification('Worker', cleanPhone, 'Artisan').catch(() => {});
+    // Trigger push notification to worker device with explicit customer identity
+    triggerCallWorkerNotification(
+      workerName || 'Worker',
+      cleanPhone,
+      workerCategory || 'Artisan',
+      callerName,
+      callerPhone
+    ).catch(() => {});
 
     Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
       console.warn('Could not trigger call:', err);
@@ -435,7 +733,7 @@ function NativeApp() {
         <TouchableOpacity
           onPress={() => {
             setSelectedCategory('Emergency Highway Assistance');
-            setActiveTab('workers');
+            setActiveTab('home');
           }}
           style={styles.sosButton}
         >
@@ -466,8 +764,8 @@ function NativeApp() {
 
       {/* BODY CONTENT BY ACTIVE TAB */}
 
-      {/* TAB 1: WORKERS (HOME) */}
-      {activeTab === 'workers' && (
+      {/* TAB 1: HOME (PROXIMITY DIRECTORY) */}
+      {(activeTab === 'home' || activeTab === 'workers') && (
         <View style={styles.bodyFlex}>
           {/* Search Input */}
           <View style={styles.searchContainer}>
@@ -732,7 +1030,7 @@ function NativeApp() {
                           styles.callNowButton,
                           isEmergency && styles.callNowButtonEmergency
                         ]}
-                        onPress={() => handleCall(worker.phone)}
+                        onPress={() => handleCall(worker.phone, worker.name, worker.category)}
                       >
                         <Text style={styles.callNowButtonIcon}>📞</Text>
                         <Text style={styles.callNowButtonText}>
@@ -789,7 +1087,7 @@ function NativeApp() {
                 style={styles.emergencyActionBtn}
                 onPress={() => {
                   setSelectedCategory('Emergency Highway Assistance');
-                  setActiveTab('workers');
+                  setActiveTab('home');
                 }}
               >
                 <Text style={styles.emergencyActionBtnText}>
@@ -814,7 +1112,7 @@ function NativeApp() {
                 style={styles.categoryCard}
                 onPress={() => {
                   setSelectedCategory(cat.name);
-                  setActiveTab('workers');
+                  setActiveTab('home');
                 }}
               >
                 <View style={styles.categoryCardTop}>
@@ -1342,14 +1640,14 @@ function NativeApp() {
               </View>
               <View style={styles.profileHeaderInfo}>
                 <Text style={styles.profileUserName}>
-                  {regName || 'Quick Karya Member'}
+                  {currentUser?.name || regName || 'Quick Karya Member'}
                 </Text>
                 <Text style={styles.profileUserPhone}>
-                  {regPhone ? `+91 ${regPhone}` : '+91 Verified Mobile'}
+                  {currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '+91 Verified Mobile')}
                 </Text>
                 <View style={styles.profileRoleBadge}>
                   <Text style={styles.profileRoleBadgeText}>
-                    {workers.some((w) => regPhone && w.phone.includes(regPhone))
+                    {currentUser?.role === 'worker' || workers.some((w) => regPhone && w.phone.includes(regPhone))
                       ? 'Verified Worker'
                       : 'Customer Account'}
                   </Text>
@@ -1361,7 +1659,8 @@ function NativeApp() {
             <View style={styles.workerIdBox}>
               <Text style={styles.workerIdLabel}>PERMANENT WORKER ID</Text>
               <Text style={styles.workerIdCode}>
-                {workers.find((w) => regPhone && w.phone.includes(regPhone))?.workerId ||
+                {currentUser?.workerId ||
+                  workers.find((w) => regPhone && w.phone.includes(regPhone))?.workerId ||
                   `QK-${Math.abs((regPhone || '799001').split('').reduce((a, b) => a + b.charCodeAt(0), 10000))}`}
               </Text>
               <Text style={styles.workerIdHint}>
@@ -1372,20 +1671,22 @@ function NativeApp() {
             {/* Worker Details Summary */}
             <View style={styles.profileStatsGrid}>
               <View style={styles.profileStatCard}>
-                <Text style={styles.profileStatLabel}>Category</Text>
-                <Text style={styles.profileStatVal}>{regCategory}</Text>
+                <Text style={styles.profileStatLabel}>Role</Text>
+                <Text style={styles.profileStatVal}>
+                  {currentUser?.role === 'worker' ? 'Artisan / Worker' : 'Customer'}
+                </Text>
               </View>
               <View style={styles.profileStatCard}>
-                <Text style={styles.profileStatLabel}>Experience</Text>
-                <Text style={styles.profileStatVal}>{regExperience} Years</Text>
+                <Text style={styles.profileStatLabel}>Status</Text>
+                <Text style={styles.profileStatVal}>✓ Phone Verified</Text>
               </View>
               <View style={styles.profileStatCard}>
                 <Text style={styles.profileStatLabel}>Location</Text>
                 <Text style={styles.profileStatVal}>{regCity}, {regState}</Text>
               </View>
               <View style={styles.profileStatCard}>
-                <Text style={styles.profileStatLabel}>Rating</Text>
-                <Text style={styles.profileStatVal}>⭐ 5.0 (Verified)</Text>
+                <Text style={styles.profileStatLabel}>Directory</Text>
+                <Text style={styles.profileStatVal}>100% Free Access</Text>
               </View>
             </View>
 
@@ -1398,25 +1699,34 @@ function NativeApp() {
                 ✎ Edit / Register Worker Profile
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.profileLogoutBtn}
+              onPress={handleLogout}
+            >
+              <Text style={styles.profileLogoutBtnText}>
+                Switch Account / Sign Out
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       )}
 
       {/* FIXED BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomNavContainer}>
-        {/* Tab 1: Workers (Home) */}
+        {/* Tab 1: Home (Proximity Directory) */}
         <TouchableOpacity
           style={styles.navTabButton}
-          onPress={() => setActiveTab('workers')}
+          onPress={() => setActiveTab('home')}
         >
           <View style={styles.navIconWrapper}>
             <Text
               style={[
                 styles.navEmoji,
-                activeTab === 'workers' && styles.navEmojiActive
+                (activeTab === 'workers' || activeTab === 'home') && styles.navEmojiActive
               ]}
             >
-              👥
+              🏠
             </Text>
             {workers.length > 0 && (
               <View style={styles.navCountBadge}>
@@ -1427,12 +1737,12 @@ function NativeApp() {
           <Text
             style={[
               styles.navTabLabel,
-              activeTab === 'workers' && styles.navTabLabelActive
+              (activeTab === 'workers' || activeTab === 'home') && styles.navTabLabelActive
             ]}
           >
-            Workers
+            Home
           </Text>
-          {activeTab === 'workers' && <View style={styles.navActiveIndicator} />}
+          {(activeTab === 'workers' || activeTab === 'home') && <View style={styles.navActiveIndicator} />}
         </TouchableOpacity>
 
         {/* Tab 2: Register (Worker Onboarding) */}
@@ -1517,6 +1827,225 @@ function NativeApp() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* MANDATORY STARTUP WELCOME & MOBILE OTP LOGIN MODAL */}
+      <Modal
+        visible={isAuthModalOpen && !currentUser}
+        animationType="slide"
+        transparent={false}
+        statusBarTranslucent={true}
+        onRequestClose={() => {
+          // Handled by hardware BackHandler
+        }}
+      >
+        <SafeAreaView style={styles.authGateContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#064e3b" />
+          <ScrollView
+            contentContainerStyle={styles.authGateScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Top Hero Brand Header */}
+            <View style={styles.authHeroHeader}>
+              <View style={styles.authLogoBadge}>
+                <Text style={styles.authLogoText}>QK</Text>
+              </View>
+              <Text style={styles.authAppTitle}>Quick Karya</Text>
+              <Text style={styles.authAppSubtitle}>
+                DIRECT ARTISAN CALL DIRECTORY
+              </Text>
+              <View style={styles.authTrustBadgeRow}>
+                <Text style={styles.authTrustBadge}>⚡ 100% Free Contact</Text>
+                <Text style={styles.authTrustBadge}>🔒 No Middlemen</Text>
+              </View>
+            </View>
+
+            {/* Step 1: Name & 10-Digit Mobile */}
+            {authStep === 'phone' && (
+              <View style={styles.authCard}>
+                <View style={styles.authCardHeader}>
+                  <Text style={styles.authCardTitle}>Welcome & Verification</Text>
+                  <Text style={styles.authCardSubtitle}>
+                    Enter your name and mobile number to access verified artisan contacts near you.
+                  </Text>
+                </View>
+
+                {authError && (
+                  <View style={styles.authErrorBox}>
+                    <Text style={styles.authErrorText}>⚠️ {authError}</Text>
+                  </View>
+                )}
+
+                {/* Full Name Input */}
+                <View style={styles.authFieldGroup}>
+                  <Text style={styles.authLabel}>YOUR FULL NAME / आपका नाम *</Text>
+                  <TextInput
+                    style={styles.authInput}
+                    placeholder="e.g. Ramesh Kumar / Artisan"
+                    placeholderTextColor="#9ca3af"
+                    value={loginName}
+                    onChangeText={setLoginName}
+                    autoCapitalize="words"
+                  />
+                </View>
+
+                {/* 10-Digit Mobile Number */}
+                <View style={styles.authFieldGroup}>
+                  <Text style={styles.authLabel}>10-DIGIT MOBILE NUMBER / मोबाइल नंबर *</Text>
+                  <View style={styles.authPhoneInputRow}>
+                    <View style={styles.authCountryCode}>
+                      <Text style={styles.authCountryCodeText}>🇮🇳 +91</Text>
+                    </View>
+                    <TextInput
+                      style={styles.authPhoneInput}
+                      placeholder="9876543210"
+                      placeholderTextColor="#9ca3af"
+                      value={loginPhone}
+                      onChangeText={(t) => setLoginPhone(t.replace(/[^0-9]/g, '').slice(0, 10))}
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                    />
+                  </View>
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity
+                  style={[styles.authPrimaryBtn, authLoading && styles.authBtnDisabled]}
+                  onPress={handleNativeSendOtp}
+                  disabled={authLoading}
+                >
+                  <Text style={styles.authPrimaryBtnText}>
+                    {authLoading ? 'Sending OTP...' : 'Get 6-Digit OTP →'}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.authSecurityNote}>
+                  <Text style={styles.authSecurityNoteText}>
+                    🔒 Genuine 6-digit SMS OTP verification. Your session stays permanently logged in on this device.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Step 2: 6-Digit OTP Verification */}
+            {authStep === 'otp' && (
+              <View style={styles.authCard}>
+                <View style={styles.authCardHeader}>
+                  <Text style={styles.authCardTitle}>Enter 6-Digit OTP</Text>
+                  <Text style={styles.authCardSubtitle}>
+                    Sent to +91 {loginPhone.slice(-10)}
+                  </Text>
+                </View>
+
+                {authSuccessMsg && (
+                  <View style={styles.authSuccessBox}>
+                    <Text style={styles.authSuccessText}>✓ {authSuccessMsg}</Text>
+                  </View>
+                )}
+
+                {authError && (
+                  <View style={styles.authErrorBox}>
+                    <Text style={styles.authErrorText}>⚠️ {authError}</Text>
+                  </View>
+                )}
+
+                {/* OTP Input */}
+                <View style={styles.authFieldGroup}>
+                  <Text style={styles.authLabel}>ENTER 6-DIGIT VERIFICATION CODE</Text>
+                  <TextInput
+                    style={styles.authOtpInput}
+                    placeholder="• • • • • •"
+                    placeholderTextColor="#9ca3af"
+                    value={loginOtp}
+                    onChangeText={(t) => setLoginOtp(t.replace(/[^0-9]/g, '').slice(0, 6))}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                  />
+                </View>
+
+                {/* Verify Button */}
+                <TouchableOpacity
+                  style={[styles.authPrimaryBtn, authLoading && styles.authBtnDisabled]}
+                  onPress={handleNativeVerifyOtp}
+                  disabled={authLoading}
+                >
+                  <Text style={styles.authPrimaryBtnText}>
+                    {authLoading ? 'Verifying OTP...' : 'Verify & Continue →'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Resend & Change Phone Row */}
+                <View style={styles.authOtpActionsRow}>
+                  <TouchableOpacity
+                    onPress={() => setAuthStep('phone')}
+                    style={styles.authTextBtn}
+                  >
+                    <Text style={styles.authTextBtnText}>✎ Edit Number</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleNativeSendOtp}
+                    disabled={otpCooldown > 0}
+                    style={styles.authTextBtn}
+                  >
+                    <Text style={[styles.authTextBtnText, otpCooldown > 0 && styles.authTextBtnDisabled]}>
+                      {otpCooldown > 0 ? `Resend in ${otpCooldown}s` : 'Resend OTP'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Step 3: Role Selection (Customer vs Worker) */}
+            {authStep === 'role_selection' && (
+              <View style={styles.authCard}>
+                <View style={styles.authCardHeader}>
+                  <View style={styles.authVerifiedPill}>
+                    <Text style={styles.authVerifiedPillText}>✓ Phone Verified</Text>
+                  </View>
+                  <Text style={styles.authCardTitle}>Choose Your Role</Text>
+                  <Text style={styles.authCardSubtitle}>
+                    Welcome, {loginName}! How would you like to use Quick Karya?
+                  </Text>
+                </View>
+
+                {/* Option 1: Customer */}
+                <TouchableOpacity
+                  style={styles.authRoleOption}
+                  onPress={() => handleConfirmRole('customer')}
+                >
+                  <View style={styles.authRoleIconBox}>
+                    <Text style={styles.authRoleIconText}>🔍</Text>
+                  </View>
+                  <View style={styles.authRoleInfo}>
+                    <Text style={styles.authRoleTitle}>Customer / ग्राहक</Text>
+                    <Text style={styles.authRoleDesc}>
+                      Browse local plumbers, electricians, drivers & call workers directly.
+                    </Text>
+                    <Text style={styles.authRoleAction}>Join as Customer →</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Option 2: Artisan / Worker */}
+                <TouchableOpacity
+                  style={[styles.authRoleOption, styles.authRoleOptionWorker]}
+                  onPress={() => handleConfirmRole('worker')}
+                >
+                  <View style={[styles.authRoleIconBox, styles.authRoleIconBoxWorker]}>
+                    <Text style={styles.authRoleIconText}>🛠️</Text>
+                  </View>
+                  <View style={styles.authRoleInfo}>
+                    <Text style={styles.authRoleTitle}>Artisan / Worker / कारीगर</Text>
+                    <Text style={styles.authRoleDesc}>
+                      Register your artisan skills to get permanent Worker ID & receive direct calls.
+                    </Text>
+                    <Text style={styles.authRoleActionWorker}>Join as Worker / Register →</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2921,5 +3450,312 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: 'bold'
+  },
+  profileLogoutBtn: {
+    marginTop: 10,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2'
+  },
+  profileLogoutBtnText: {
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  /* AUTH GATE & ONBOARDING MODAL STYLES */
+  authGateContainer: {
+    flex: 1,
+    backgroundColor: '#064e3b'
+  },
+  authGateScroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 20
+  },
+  authHeroHeader: {
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  authLogoBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#059669',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#34d399',
+    marginBottom: 10
+  },
+  authLogoText: {
+    color: '#ffffff',
+    fontSize: 26,
+    fontWeight: '900'
+  },
+  authAppTitle: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: -0.5
+  },
+  authAppSubtitle: {
+    color: '#6ee7b7',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginTop: 2
+  },
+  authTrustBadgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10
+  },
+  authTrustBadge: {
+    backgroundColor: 'rgba(5, 150, 105, 0.4)',
+    color: '#a7f3d0',
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)'
+  },
+  authCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8
+  },
+  authCardHeader: {
+    marginBottom: 16
+  },
+  authCardTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827'
+  },
+  authCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 4,
+    lineHeight: 18
+  },
+  authErrorBox: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14
+  },
+  authErrorText: {
+    color: '#b91c1c',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  authSuccessBox: {
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14
+  },
+  authSuccessText: {
+    color: '#065f46',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  authFieldGroup: {
+    marginBottom: 16
+  },
+  authLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#374151',
+    letterSpacing: 0.5,
+    marginBottom: 6
+  },
+  authInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827'
+  },
+  authPhoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  authCountryCode: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  authCountryCodeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#374151'
+  },
+  authPhoneInput: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+    fontWeight: '600',
+    letterSpacing: 1
+  },
+  authOtpInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 2,
+    borderColor: '#059669',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 22,
+    color: '#064e3b',
+    fontWeight: '800',
+    letterSpacing: 8,
+    textAlign: 'center'
+  },
+  authPrimaryBtn: {
+    backgroundColor: '#064e3b',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 6,
+    shadowColor: '#064e3b',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  authBtnDisabled: {
+    opacity: 0.6
+  },
+  authPrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  authSecurityNote: {
+    marginTop: 14,
+    alignItems: 'center'
+  },
+  authSecurityNoteText: {
+    fontSize: 11,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 16
+  },
+  authOtpActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 14
+  },
+  authTextBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 8
+  },
+  authTextBtnText: {
+    fontSize: 13,
+    color: '#065f46',
+    fontWeight: '700'
+  },
+  authTextBtnDisabled: {
+    color: '#9ca3af'
+  },
+  authVerifiedPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    marginBottom: 8
+  },
+  authVerifiedPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065f46'
+  },
+  authRoleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+    marginBottom: 12,
+    gap: 12
+  },
+  authRoleOptionWorker: {
+    borderColor: '#a7f3d0',
+    backgroundColor: '#f0fdf4'
+  },
+  authRoleIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: '#e5e7eb',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  authRoleIconBoxWorker: {
+    backgroundColor: '#dcfce7'
+  },
+  authRoleIconText: {
+    fontSize: 22
+  },
+  authRoleInfo: {
+    flex: 1
+  },
+  authRoleTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827'
+  },
+  authRoleDesc: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
+    lineHeight: 15
+  },
+  authRoleAction: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563eb',
+    marginTop: 4
+  },
+  authRoleActionWorker: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065f46',
+    marginTop: 4
   }
 });

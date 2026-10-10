@@ -28,7 +28,11 @@ let workers: WorkerProfile[] = [];
 try {
   subscribeWorkersFromCloud(
     (cloudWorkers) => {
-      workers = cloudWorkers;
+      workers = cloudWorkers.filter(
+        (w) =>
+          !w.name?.toLowerCase().includes('kastu') &&
+          !w.name?.toLowerCase().includes('santirkey')
+      );
     },
     (err) => {
       console.warn('Server Firestore sync error:', err);

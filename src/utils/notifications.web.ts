@@ -64,9 +64,19 @@ export async function triggerRegistrationNotification(workerName: string, catego
   }
 }
 
-export async function triggerCallWorkerNotification(workerName: string, workerPhone: string, category?: string) {
-  const title = `📞 Calling ${workerName}`;
-  const body = `Connecting you directly to verified ${category || 'artisan'} (${workerPhone}). Quick Karya Caller ID active.`;
+export async function triggerCallWorkerNotification(
+  workerName: string,
+  workerPhone: string,
+  category?: string,
+  customerName?: string,
+  customerPhone?: string
+) {
+  const callerIdent = customerName
+    ? `${customerName}${customerPhone ? ` (${customerPhone})` : ''}`
+    : 'Customer';
+
+  const title = `📞 Quick Karya: New call request from ${callerIdent}`;
+  const body = `Customer ${callerIdent} is calling ${workerName} (${category || 'artisan'}). Direct line: ${workerPhone}.`;
 
   dispatchInAppBanner(title, body, 'call');
 

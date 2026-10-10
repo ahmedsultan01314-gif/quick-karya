@@ -58,6 +58,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setSuccessMsg(null);
     setTestOtpHint(null);
 
+    if (!name.trim()) {
+      setError('Please enter your Full Name to continue.');
+      return;
+    }
+
     const clean = phone.replace(/[^0-9]/g, '').slice(-10);
     if (clean.length !== 10) {
       setError('Please enter a valid 10-digit Indian mobile number');
@@ -234,10 +239,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {/* Name */}
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">
-                  Your Full Name
+                  Your Full Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Rahul Sharma"

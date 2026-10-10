@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveTab } from '../types';
-import { Users, UserPlus, LayoutGrid, User } from 'lucide-react';
+import { Home, UserPlus, LayoutGrid, User } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: ActiveTab;
@@ -17,26 +17,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   userName,
   isLoggedIn
 }) => {
+  const isHomeActive = activeTab === 'home' || activeTab === 'workers';
+
   return (
     <nav
       id="bottom-navigation-bar"
       className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-emerald-900/10 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
     >
       <div className="max-w-md mx-auto px-2 h-16 flex items-center justify-around">
-        {/* Tab 1: Workers (Directory) */}
+        {/* Tab 1: Home (Proximity Directory) */}
         <button
-          id="nav-tab-workers"
-          onClick={() => onChangeTab('workers')}
+          id="nav-tab-home"
+          onClick={() => onChangeTab('home')}
           className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'workers'
+            isHomeActive
               ? 'text-emerald-800 font-bold scale-102'
               : 'text-gray-500 hover:text-emerald-700 font-medium'
           }`}
         >
           <div className="relative">
-            <Users
+            <Home
               className={`w-5 h-5 transition-transform ${
-                activeTab === 'workers' ? 'stroke-[2.5] text-emerald-800' : ''
+                isHomeActive ? 'stroke-[2.5] text-emerald-800' : ''
               }`}
             />
             {workersCount !== undefined && (
@@ -45,8 +47,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               </span>
             )}
           </div>
-          <span className="text-[11px] mt-1 tracking-tight">Workers</span>
-          {activeTab === 'workers' && (
+          <span className="text-[11px] mt-1 tracking-tight">Home</span>
+          {isHomeActive && (
             <span className="w-4 h-0.5 bg-emerald-700 rounded-full mt-0.5" />
           )}
         </button>

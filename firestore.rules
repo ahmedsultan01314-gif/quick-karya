@@ -11,7 +11,7 @@ service cloud.firestore {
                     && request.resource.data.phone is string
                     && (!('isVerified' in request.resource.data) || request.resource.data.isVerified == false);
       allow update: if true; // Allows rating and review updates
-      allow delete: if false;
+      allow delete: if true; // Allows deleting worker profiles
     }
 
     // App Users
