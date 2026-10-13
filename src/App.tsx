@@ -18,6 +18,8 @@ import { LocationModal } from './components/LocationModal';
 import { AuthModal } from './components/AuthModal';
 import { ProfileView } from './components/ProfileView';
 import { RatingModal } from './components/RatingModal';
+import { WorkerDetailModal } from './components/WorkerDetailModal';
+import { HighwaySosModal } from './components/HighwaySosModal';
 import { NotificationToast } from './components/NotificationToast';
 import { CityCoord, KNOWN_LOCATIONS } from './utils/geo';
 import { subscribeWorkersFromCloud } from './firebase';
@@ -28,7 +30,10 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [callingWorker, setCallingWorker] = useState<WorkerProfile | null>(null);
+  const [ratingWorker, setRatingWorker] = useState<WorkerProfile | null>(null);
+  const [detailWorker, setDetailWorker] = useState<WorkerProfile | null>(null);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isHighwaySosOpen, setIsHighwaySosOpen] = useState(false);
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -196,6 +201,10 @@ export default function App() {
   // Handle browser back button smoothly for Web/PWA
   useEffect(() => {
     const handlePopState = () => {
+      if (isHighwaySosOpen) {
+        setIsHighwaySosOpen(false);
+        return;
+      }
       if (isLocationModalOpen) {
         setIsLocationModalOpen(false);
         return;
@@ -216,7 +225,7 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isLocationModalOpen, callingWorker, selectedCategory, activeTab]);
+  }, [isHighwaySosOpen, isLocationModalOpen, callingWorker, selectedCategory, activeTab]);
 
   const handleSelectManualLocation = (loc: CityCoord) => {
     setUserLocation({
@@ -235,6 +244,10 @@ export default function App() {
   };
 
   const handleSelectCategoryFromCategories = (cat: ServiceCategory) => {
+    if (cat === 'Emergency Highway Assistance') {
+      setIsHighwaySosOpen(true);
+      return;
+    }
     setSelectedCategory(cat);
     setActiveTab('home');
   };
@@ -266,6 +279,7 @@ export default function App() {
           onOpenLocationModal={() => setIsLocationModalOpen(true)}
           onRefreshGps={requestLiveGps}
           onSelectCategory={handleSelectCategoryFromCategories}
+          onOpenHighwaySos={() => setIsHighwaySosOpen(true)}
         />
 
         {/* Main Body content according to Active Tab */}
@@ -289,6 +303,8 @@ export default function App() {
                 onCallNow={(w) => {
                   setCallingWorker(w);
                 }}
+                onOpenRating={(w) => setRatingWorker(w)}
+                onOpenDetails={(w) => setDetailWorker(w)}
                 onGoToRegister={() => setActiveTab('register')}
                 onResetFilters={handleResetFilters}
                 isLoading={loadingWorkers}
@@ -301,7 +317,7 @@ export default function App() {
               userLocation={userLocation}
               onRequestGps={requestLiveGps}
               onWorkerRegistered={handleWorkerRegistered}
-              onGoToWorkers={() => setActiveTab('workers')}
+              onGoToWorkers={() => setActiveTab('home')}
             />
           )}
 
@@ -375,14 +391,52 @@ export default function App() {
           }}
         />
 
-        {/* Rating Modal for Completed Services */}
+        {/* Worker Detailed Profile & Review List Modal */}
+        <WorkerDetailModal
+          worker={detailWorker}
+          isOpen={Boolean(detailWorker)}
+          onClose={() => setDetailWorker(null)}
+          onCallWorker={(w) => setCallingWorker(w)}
+          onOpenRating={(w) => setRatingWorker(w)}
+        />
+
+        {/* Rating Modal for Customer Star Rating & Written Reviews */}
         <RatingModal
-          isOpen={isRatingModalOpen}
-          onClose={() => setIsRatingModalOpen(false)}
+          isOpen={isRatingModalOpen || Boolean(ratingWorker)}
+          onClose={() => {
+            setIsRatingModalOpen(false);
+            setRatingWorker(null);
+          }}
+          worker={ratingWorker}
           serviceRequest={activeServiceRequest}
-          onRatingSubmitted={() => {
+          currentUser={currentUser}
+          onRatingSubmitted={(updated) => {
+            if (updated && ratingWorker) {
+              setWorkers((prev) =>
+                prev.map((w) =>
+                  w.id === ratingWorker.id
+                    ? { ...w, rating: updated.rating, reviewCount: updated.reviewCount }
+                    : w
+                )
+              );
+              if (detailWorker && detailWorker.id === ratingWorker.id) {
+                setDetailWorker((prev) =>
+                  prev ? { ...prev, rating: updated.rating, reviewCount: updated.reviewCount } : null
+                );
+              }
+            }
             fetchWorkers();
           }}
+        />
+
+        {/* Dedicated Highway SOS (24/7) Roadside Assistance Screen */}
+        <HighwaySosModal
+          isOpen={isHighwaySosOpen}
+          onClose={() => setIsHighwaySosOpen(false)}
+          userLocation={userLocation}
+          currentUser={currentUser}
+          emergencyWorkers={workers.filter((w) => w.category === 'Emergency Highway Assistance')}
+          onCallWorker={(w) => setCallingWorker(w)}
         />
 
         {/* Global In-App Activity & Local Notification Banner */}

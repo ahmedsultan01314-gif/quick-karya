@@ -144,21 +144,26 @@ export async function fetchUserFromCloud(userId: string): Promise<AppUser | null
 /**
  * Reviews Cloud Operations
  */
-export async function saveReviewToCloud(review: WorkerReview): Promise<void> {
+export async function saveReviewToCloud(
+  review: WorkerReview
+): Promise<{ newRating: number; newCount: number }> {
   const reviewRef = doc(db, REVIEWS_COLLECTION, review.id);
   await setDoc(reviewRef, review);
 
   // Update worker rating and reviewCount in Firestore
   const workerRef = doc(db, WORKERS_COLLECTION, review.workerId);
   const workerSnap = await getDoc(workerRef);
+  let newRating = review.rating;
+  let newCount = 1;
   if (workerSnap.exists()) {
     const wData = workerSnap.data() as WorkerProfile;
     const currentCount = wData.reviewCount || 0;
     const currentRating = wData.rating || 5.0;
-    const newCount = currentCount + 1;
-    const newRating = Number(((currentRating * currentCount + review.rating) / newCount).toFixed(1));
+    newCount = currentCount + 1;
+    newRating = Number(((currentRating * currentCount + review.rating) / newCount).toFixed(1));
     await setDoc(workerRef, { rating: newRating, reviewCount: newCount }, { merge: true });
   }
+  return { newRating, newCount };
 }
 
 export async function fetchReviewsForWorker(workerId: string): Promise<WorkerReview[]> {

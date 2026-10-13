@@ -7,13 +7,15 @@ interface HeaderProps {
   onOpenLocationModal: () => void;
   onRefreshGps: () => void;
   onSelectCategory: (category: ServiceCategory) => void;
+  onOpenHighwaySos?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   userLocation,
   onOpenLocationModal,
   onRefreshGps,
-  onSelectCategory
+  onSelectCategory,
+  onOpenHighwaySos
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-emerald-900 text-white shadow-md border-b border-emerald-950">
@@ -26,11 +28,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           id="header-highway-emergency-btn"
-          onClick={() => onSelectCategory('Emergency Highway Assistance')}
+          onClick={() => {
+            if (onOpenHighwaySos) {
+              onOpenHighwaySos();
+            } else {
+              onSelectCategory('Emergency Highway Assistance');
+            }
+          }}
           className="flex items-center gap-1 font-bold text-amber-300 hover:text-amber-200 text-[11px] cursor-pointer"
         >
           <ShieldAlert className="w-3 h-3 text-amber-400" />
-          <span>Highway SOS</span>
+          <span>Highway SOS (24/7)</span>
         </button>
       </div>
 

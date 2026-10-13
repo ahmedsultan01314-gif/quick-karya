@@ -581,8 +581,8 @@ app.get('/api/workers/:workerId/reviews', async (req, res) => {
 app.post('/api/reviews', async (req, res) => {
   const { workerId, customerId, customerName, rating, comment, serviceRequestId } = req.body;
 
-  if (!workerId || !customerId || !rating || !serviceRequestId) {
-    return res.status(400).json({ error: 'Missing required review fields' });
+  if (!workerId || !rating) {
+    return res.status(400).json({ error: 'Missing required review fields (workerId and rating)' });
   }
 
   const numRating = Number(rating);
@@ -591,20 +591,22 @@ app.post('/api/reviews', async (req, res) => {
   }
 
   // Prevent duplicate reviews for the same service request
-  const existingReviews = await fetchReviewsForWorker(workerId);
-  const alreadyReviewed = existingReviews.some((r) => r.serviceRequestId === serviceRequestId);
-  if (alreadyReviewed) {
-    return res.status(409).json({ error: 'A review has already been submitted for this completed service.' });
+  if (serviceRequestId) {
+    const existingReviews = await fetchReviewsForWorker(workerId);
+    const alreadyReviewed = existingReviews.some((r) => r.serviceRequestId === serviceRequestId);
+    if (alreadyReviewed) {
+      return res.status(409).json({ error: 'A review has already been submitted for this service.' });
+    }
   }
 
   const review: WorkerReview = {
     id: `rev-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     workerId,
-    customerId,
-    customerName: customerName || 'Customer',
+    customerId: customerId || `cust-${Date.now()}`,
+    customerName: customerName || 'Verified Customer',
     rating: numRating,
     comment: comment ? comment.trim() : undefined,
-    serviceRequestId,
+    serviceRequestId: serviceRequestId || `direct-${Date.now()}`,
     createdAt: new Date().toISOString(),
     reported: false
   };
@@ -621,7 +623,12 @@ app.post('/api/reviews', async (req, res) => {
     targetWorker.reviewCount = newCount;
   }
 
-  res.status(201).json({ success: true, review });
+  res.status(201).json({
+    success: true,
+    review,
+    updatedRating: targetWorker?.rating,
+    updatedReviewCount: targetWorker?.reviewCount
+  });
 });
 
 // Report abusive review

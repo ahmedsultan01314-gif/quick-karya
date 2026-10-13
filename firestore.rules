@@ -27,8 +27,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if request.resource.data.rating >= 1
                     && request.resource.data.rating <= 5
-                    && request.resource.data.workerId is string
-                    && request.resource.data.serviceRequestId is string;
+                    && request.resource.data.workerId is string;
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reported']);
       allow delete: if false;
     }

@@ -29,6 +29,8 @@ interface WorkerListProps {
   selectedCategory: ServiceCategory | 'All';
   onSelectCategory: (category: ServiceCategory | 'All') => void;
   onCallNow: (worker: WorkerProfile) => void;
+  onOpenRating?: (worker: WorkerProfile) => void;
+  onOpenDetails?: (worker: WorkerProfile) => void;
   onGoToRegister: () => void;
   onResetFilters: () => void;
   isLoading: boolean;
@@ -39,6 +41,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   selectedCategory,
   onSelectCategory,
   onCallNow,
+  onOpenRating,
+  onOpenDetails,
   onGoToRegister,
   onResetFilters,
   isLoading
@@ -311,7 +315,13 @@ export const WorkerList: React.FC<WorkerListProps> = ({
       {!isLoading && displayWorkers.length > 0 && (
         <div className="space-y-3">
           {displayWorkers.map((worker) => (
-            <WorkerCard key={worker.id} worker={worker} onCallNow={onCallNow} />
+            <WorkerCard
+              key={worker.id}
+              worker={worker}
+              onCallNow={onCallNow}
+              onOpenRating={onOpenRating}
+              onOpenDetails={onOpenDetails}
+            />
           ))}
         </div>
       )}
@@ -326,11 +336,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-gray-900">No Workers Found</h3>
+            <h3 className="text-base font-bold text-gray-900">
+              {selectedCategory === 'All'
+                ? 'No Registered Workers Found'
+                : `0 Registered Artisans in ${selectedCategory}`}
+            </h3>
             <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
               {selectedCategory === 'Driver' && driverSubFilter !== 'all'
                 ? 'No drivers found under this specific specialization. Try switching to "All Drivers".'
-                : 'No registered service providers found matching the selected category or area.'}
+                : selectedCategory === 'All'
+                ? 'No service providers found matching your current area filter. 100% verified genuine worker listings only.'
+                : `Currently 0 registered service providers found in ${selectedCategory}. Zero fake or dummy profiles.`}
             </p>
           </div>
 
