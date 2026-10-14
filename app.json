@@ -8,14 +8,14 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#064e3b"
+      "backgroundColor": "#001F3F"
     },
     "android": {
       "package": "com.quickkarya.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#064e3b"
+        "backgroundColor": "#001F3F"
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",

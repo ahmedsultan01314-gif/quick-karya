@@ -59,8 +59,15 @@ export async function saveWorkerToCloud(worker: WorkerProfile): Promise<void> {
   };
 
   if (worker.subRole) cleanData.subRole = worker.subRole;
-  if (worker.photo) cleanData.photo = worker.photo;
+  const photoVal = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
+  if (photoVal) {
+    cleanData.photo = photoVal;
+    cleanData.avatar = photoVal;
+    cleanData.avatarUrl = photoVal;
+  }
   if (worker.vehicleType) cleanData.vehicleType = worker.vehicleType;
+  if (worker.fcmToken) cleanData.fcmToken = worker.fcmToken;
+  if (worker.pushToken) cleanData.pushToken = worker.pushToken;
 
   await setDoc(workerDocRef, cleanData);
 }
@@ -81,13 +88,18 @@ export async function fetchWorkersFromCloud(): Promise<WorkerProfile[]> {
   const snapshot = await getDocs(workersRef);
   const list: WorkerProfile[] = [];
   snapshot.forEach((docSnap) => {
-    const data = docSnap.data() as WorkerProfile;
+    const data = docSnap.data() as any;
+    const photo = data.photo || data.avatar || data.avatarUrl || data.photoUrl || data.profileImage || undefined;
     list.push({
       ...data,
       id: docSnap.id,
-      workerId: data.workerId || `QK-${data.id.slice(-5).toUpperCase()}`,
+      workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
+      photo: photo,
+      avatar: photo,
       verified: Boolean(data.isVerified ?? data.verified),
-      isVerified: Boolean(data.isVerified ?? data.verified)
+      isVerified: Boolean(data.isVerified ?? data.verified),
+      fcmToken: data.fcmToken || data.pushToken,
+      pushToken: data.pushToken || data.fcmToken
     });
   });
   return list;
@@ -106,13 +118,18 @@ export function subscribeWorkersFromCloud(
     (snapshot) => {
       const list: WorkerProfile[] = [];
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as WorkerProfile;
+        const data = docSnap.data() as any;
+        const photo = data.photo || data.avatar || data.avatarUrl || data.photoUrl || data.profileImage || undefined;
         list.push({
           ...data,
           id: docSnap.id,
-          workerId: data.workerId || `QK-${data.id.slice(-5).toUpperCase()}`,
+          workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
+          photo: photo,
+          avatar: photo,
           verified: Boolean(data.isVerified ?? data.verified),
-          isVerified: Boolean(data.isVerified ?? data.verified)
+          isVerified: Boolean(data.isVerified ?? data.verified),
+          fcmToken: data.fcmToken || data.pushToken,
+          pushToken: data.pushToken || data.fcmToken
         });
       });
       onUpdate(list);

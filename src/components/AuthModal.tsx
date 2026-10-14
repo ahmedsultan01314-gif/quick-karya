@@ -83,11 +83,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
       setStep('otp');
       setResendCooldown(45);
-      setSuccessMsg(data.message || 'OTP sent successfully!');
-      if (data.testOtp) {
-        setTestOtpHint(`SMS Provider is pending in .env. Test OTP: ${data.testOtp}`);
-        setOtp(data.testOtp);
-      }
+      setSuccessMsg(data.message || '6-digit verification code sent directly to your phone SMS inbox.');
+      setOtp('');
     } catch (err: any) {
       setError(err?.message || 'Network error while sending OTP');
     } finally {
@@ -181,24 +178,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         id="startup-auth-card"
         className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden border border-emerald-900/10 flex flex-col animate-in fade-in zoom-in-95 duration-200 my-auto"
       >
-        {/* Brand Header */}
-        <div className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-emerald-950 p-6 text-white text-center relative">
+        {/* Brand Header with Running Technician Emblem & DIRECT ARTISAN CALL DIRECTORY */}
+        <div className="bg-[#001F3F] p-6 text-white text-center relative border-b-2 border-amber-500">
           {!forceLogin && (
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 text-emerald-300 hover:text-white p-1 rounded-full cursor-pointer text-sm"
+              className="absolute top-4 right-4 text-amber-300 hover:text-white p-1 rounded-full cursor-pointer text-sm"
             >
               ✕
             </button>
           )}
 
-          <div className="w-14 h-14 bg-white/10 rounded-2xl border border-white/20 mx-auto flex items-center justify-center mb-3 shadow-inner">
-            <ShieldCheck className="w-8 h-8 text-emerald-300" />
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 mx-auto mb-2 shadow-lg ring-2 ring-amber-400/50">
+            <img
+              src="/assets/icon.png"
+              alt="Quick Karya Official Running Technician Emblem"
+              className="w-full h-full rounded-full object-cover shadow-sm"
+            />
           </div>
 
-          <h3 className="text-xl font-black tracking-tight">Quick Karya</h3>
-          <p className="text-xs text-emerald-200 mt-0.5">
-            100% Free Proximity Directory & Artisan Network
+          <h3 className="text-xl font-black tracking-tight text-white">Quick Karya</h3>
+          <p className="text-[11px] font-black uppercase tracking-wider text-amber-400 mt-1">
+            DIRECT ARTISAN CALL DIRECTORY
           </p>
         </div>
 
@@ -212,15 +213,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {successMsg && step === 'otp' && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#001F3F] shrink-0" />
               <span>{successMsg}</span>
-            </div>
-          )}
-
-          {testOtpHint && step === 'otp' && (
-            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] font-mono font-medium">
-              ⚡ {testOtpHint}
             </div>
           )}
 
@@ -279,10 +274,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="submit"
                 disabled={loading || phone.length < 10}
-                className="w-full py-3 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                className="w-full py-3 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 {loading ? 'Sending SMS OTP...' : 'Send Verification OTP'}
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 text-amber-400" />
               </button>
             </form>
           )}
@@ -319,10 +314,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="submit"
                 disabled={loading || otp.length < 6}
-                className="w-full py-3 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                className="w-full py-3 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 {loading ? 'Verifying OTP...' : 'Verify & Select Role'}
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-4 h-4 text-amber-400" />
               </button>
 
               <div className="text-center pt-1">
@@ -364,12 +359,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   onClick={() => setSelectedRole('customer')}
                   className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                     selectedRole === 'customer'
-                      ? 'border-emerald-600 bg-emerald-50/70 shadow-xs'
+                      ? 'border-[#001F3F] bg-blue-50/70 shadow-xs ring-1 ring-[#001F3F]'
                       : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
                   }`}
                 >
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedRole === 'customer' ? 'bg-emerald-700 text-white' : 'bg-gray-200 text-gray-600'
+                    selectedRole === 'customer' ? 'bg-[#001F3F] text-amber-300' : 'bg-gray-200 text-gray-600'
                   }`}>
                     <Users className="w-5 h-5" />
                   </div>
@@ -377,7 +372,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-900">I am a Customer</span>
                       {selectedRole === 'customer' && (
-                        <span className="text-emerald-700 font-bold text-xs">✓ Selected</span>
+                        <span className="text-[#001F3F] font-bold text-xs">✓ Selected</span>
                       )}
                     </div>
                     <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
@@ -392,12 +387,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   onClick={() => setSelectedRole('worker')}
                   className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
                     selectedRole === 'worker'
-                      ? 'border-emerald-600 bg-emerald-50/70 shadow-xs'
+                      ? 'border-[#001F3F] bg-amber-50/70 shadow-xs ring-1 ring-amber-500'
                       : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
                   }`}
                 >
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedRole === 'worker' ? 'bg-emerald-700 text-white' : 'bg-gray-200 text-gray-600'
+                    selectedRole === 'worker' ? 'bg-[#001F3F] text-amber-300' : 'bg-gray-200 text-gray-600'
                   }`}>
                     <Briefcase className="w-5 h-5" />
                   </div>
@@ -405,7 +400,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-900">I am an Artisan / Worker</span>
                       {selectedRole === 'worker' && (
-                        <span className="text-emerald-700 font-bold text-xs">✓ Selected</span>
+                        <span className="text-[#001F3F] font-bold text-xs">✓ Selected</span>
                       )}
                     </div>
                     <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
@@ -419,7 +414,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={handleConfirmRole}
                 disabled={loading}
-                className="w-full py-3 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 mt-2"
+                className="w-full py-3 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 mt-2"
               >
                 {loading
                   ? 'Setting up Profile...'

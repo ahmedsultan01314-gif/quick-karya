@@ -22,7 +22,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   return (
     <nav
       id="bottom-navigation-bar"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-emerald-900/10 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-[#001F3F] border-t border-[#0a2e5c] shadow-[0_-4px_20px_rgba(0,0,0,0.35)]"
     >
       <div className="max-w-md mx-auto px-2 h-16 flex items-center justify-around">
         {/* Tab 1: Home (Proximity Directory) */}
@@ -31,25 +31,33 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onChangeTab('home')}
           className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
             isHomeActive
-              ? 'text-emerald-800 font-bold scale-102'
-              : 'text-gray-500 hover:text-emerald-700 font-medium'
+              ? 'text-amber-400 font-bold scale-102'
+              : 'text-slate-300 hover:text-white font-medium'
           }`}
         >
           <div className="relative">
-            <Home
-              className={`w-5 h-5 transition-transform ${
-                isHomeActive ? 'stroke-[2.5] text-emerald-800' : ''
+            <div
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                isHomeActive
+                  ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
+                  : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
               }`}
-            />
+            >
+              <Home
+                className={`w-4.5 h-4.5 transition-transform ${
+                  isHomeActive ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
+                }`}
+              />
+            </div>
             {workersCount !== undefined && (
-              <span className="absolute -top-1 -right-2.5 bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1 rounded-full border border-emerald-300">
+              <span className="absolute -top-1 -right-2 bg-gradient-to-r from-amber-500 to-amber-600 text-[#001F3F] text-[9px] font-black px-1.5 rounded-full border border-amber-300 shadow-xs">
                 {workersCount}
               </span>
             )}
           </div>
-          <span className="text-[11px] mt-1 tracking-tight">Home</span>
+          <span className="text-[11px] mt-0.5 tracking-tight">Home</span>
           {isHomeActive && (
-            <span className="w-4 h-0.5 bg-emerald-700 rounded-full mt-0.5" />
+            <span className="w-5 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
           )}
         </button>
 
@@ -59,24 +67,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onChangeTab('register')}
           className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'register'
-              ? 'text-emerald-800 font-bold scale-102'
-              : 'text-gray-500 hover:text-emerald-700 font-medium'
+              ? 'text-amber-400 font-bold scale-102'
+              : 'text-slate-300 hover:text-white font-medium'
           }`}
         >
           <div className="relative">
             <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
                 activeTab === 'register'
-                  ? 'bg-emerald-800 text-white shadow-xs'
-                  : 'bg-emerald-50 text-emerald-800'
+                  ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
+                  : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5 stroke-[2.2]" />
+              <UserPlus
+                className={`w-4.5 h-4.5 stroke-[2.2] ${
+                  activeTab === 'register' ? 'text-amber-400 drop-shadow-sm' : 'text-slate-300'
+                }`}
+              />
             </div>
           </div>
           <span className="text-[11px] mt-0.5 tracking-tight">Register</span>
           {activeTab === 'register' && (
-            <span className="w-4 h-0.5 bg-emerald-700 rounded-full mt-0.5" />
+            <span className="w-5 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
           )}
         </button>
 
@@ -86,20 +98,28 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onChangeTab('categories')}
           className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'categories'
-              ? 'text-emerald-800 font-bold scale-102'
-              : 'text-gray-500 hover:text-emerald-700 font-medium'
+              ? 'text-amber-400 font-bold scale-102'
+              : 'text-slate-300 hover:text-white font-medium'
           }`}
         >
           <div className="relative">
-            <LayoutGrid
-              className={`w-5 h-5 transition-transform ${
-                activeTab === 'categories' ? 'stroke-[2.5] text-emerald-800' : ''
+            <div
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                activeTab === 'categories'
+                  ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
+                  : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
               }`}
-            />
+            >
+              <LayoutGrid
+                className={`w-4.5 h-4.5 transition-transform ${
+                  activeTab === 'categories' ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
+                }`}
+              />
+            </div>
           </div>
-          <span className="text-[11px] mt-1 tracking-tight">Categories</span>
+          <span className="text-[11px] mt-0.5 tracking-tight">Categories</span>
           {activeTab === 'categories' && (
-            <span className="w-4 h-0.5 bg-emerald-700 rounded-full mt-0.5" />
+            <span className="w-5 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
           )}
         </button>
 
@@ -109,23 +129,31 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onChangeTab('profile')}
           className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
             activeTab === 'profile'
-              ? 'text-emerald-800 font-bold scale-102'
-              : 'text-gray-500 hover:text-emerald-700 font-medium'
+              ? 'text-amber-400 font-bold scale-102'
+              : 'text-slate-300 hover:text-white font-medium'
           }`}
         >
           <div className="relative">
-            <User
-              className={`w-5 h-5 transition-transform ${
-                activeTab === 'profile' ? 'stroke-[2.5] text-emerald-800' : ''
+            <div
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                activeTab === 'profile'
+                  ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
+                  : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
               }`}
-            />
+            >
+              <User
+                className={`w-4.5 h-4.5 transition-transform ${
+                  activeTab === 'profile' ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
+                }`}
+              />
+            </div>
             {isLoggedIn && (
-              <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-emerald-500 border border-white" />
+              <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-[#001F3F] shadow-xs" />
             )}
           </div>
-          <span className="text-[11px] mt-1 tracking-tight">My Profile</span>
+          <span className="text-[11px] mt-0.5 tracking-tight">My Profile</span>
           {activeTab === 'profile' && (
-            <span className="w-4 h-0.5 bg-emerald-700 rounded-full mt-0.5" />
+            <span className="w-5 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
           )}
         </button>
       </div>

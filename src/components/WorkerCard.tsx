@@ -59,30 +59,36 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
       <div className="p-4 space-y-3.5">
         {/* Header: Avatar, Name, Category, Verified */}
         <div className="flex items-start gap-3">
-          {/* Worker Avatar: Profile Photo or Forest Green Initial Placeholder */}
-          <div
-            id={`worker-avatar-${worker.id}`}
-            className="relative shrink-0 w-13 h-13 rounded-2xl bg-gradient-to-br from-emerald-800 to-emerald-950 text-white flex items-center justify-center font-bold text-lg shadow-sm border border-emerald-700/30 overflow-hidden"
-          >
-            {worker.photo ? (
-              <img
-                src={worker.photo}
-                alt={worker.name}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
-                }}
-              />
-            ) : null}
-            {!worker.photo && <span>{initials || 'WK'}</span>}
-            {worker.available && (
-              <span
-                title="Available Now"
-                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs z-10"
-              />
-            )}
-          </div>
+          {/* Worker Avatar: Profile Photo inside Circular Avatar Frame with Golden Rim */}
+          {(() => {
+            const avatarUrl = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
+            return (
+              <div
+                id={`worker-avatar-${worker.id}`}
+                className="relative shrink-0 w-13 h-13 rounded-full bg-[#001F3F] text-amber-300 flex items-center justify-center font-black text-base shadow-md border-2 border-amber-400/80 overflow-hidden ring-1 ring-amber-500/30"
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={worker.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full rounded-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <span>{initials || 'WK'}</span>
+                )}
+                {worker.available && (
+                  <span
+                    title="Available Now"
+                    className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs z-10"
+                  />
+                )}
+              </div>
+            );
+          })()}
 
           {/* Details */}
           <div className="flex-1 min-w-0">
@@ -191,8 +197,8 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
         )}
 
         {/* Two-Button Action Row: Rate Artisan ⭐ and Call Worker 📞 */}
-        <div className="pt-1 grid grid-cols-2 gap-2">
-          {/* Rate Artisan Button */}
+        <div className="pt-1.5 grid grid-cols-2 gap-2">
+          {/* Rate Artisan Button with Vibrant Orange Outline */}
           <button
             type="button"
             id={`rate-artisan-btn-${worker.id}`}
@@ -200,13 +206,13 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
               e.stopPropagation();
               if (onOpenRating) onOpenRating(worker);
             }}
-            className="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+            className="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-amber-50/80 hover:bg-amber-100 text-[#001F3F] border-2 border-[#FFA500] hover:border-[#FFD700] shadow-xs transition-all active:scale-[0.98] cursor-pointer"
           >
             <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
             <span>Rate Artisan ⭐</span>
           </button>
 
-          {/* Call Worker Button */}
+          {/* Primary Action: Call Worker in Deep Navy Blue #001F3F */}
           <button
             type="button"
             id={`call-now-btn-${worker.id}`}
@@ -214,13 +220,9 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
               e.stopPropagation();
               onCallNow(worker);
             }}
-            className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-[0.98] cursor-pointer ${
-              isEmergency
-                ? 'bg-gradient-to-r from-amber-600 via-emerald-700 to-emerald-800 hover:from-amber-700 hover:to-emerald-900 text-white shadow-emerald-900/20'
-                : 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-950/20'
-            }`}
+            className="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white shadow-md transition-all active:scale-[0.98] cursor-pointer ring-1 ring-blue-900/50"
           >
-            <Phone className="w-3.5 h-3.5 fill-current" />
+            <Phone className="w-3.5 h-3.5 fill-current text-amber-400" />
             <span>Call Worker</span>
           </button>
         </div>

@@ -15,7 +15,8 @@ import {
   Modal,
   BackHandler,
   ToastAndroid,
-  Animated
+  Animated,
+  ActivityIndicator
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -96,6 +97,15 @@ function NativeApp() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [pendingVerifiedUser, setPendingVerifiedUser] = useState<AppUser | null>(null);
+  const [showSplashScreen, setShowSplashScreen] = useState(true);
+
+  // Auto-dismiss initial brand splash after 2 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplashScreen(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Check persistent session on initial mount
   useEffect(() => {
@@ -109,6 +119,9 @@ function NativeApp() {
             if (parsed.name) setRegName(parsed.name);
             if (parsed.phone) {
               setRegPhone(parsed.phone.replace(/[^0-9]/g, '').slice(-10));
+            }
+            if (parsed.profilePhoto || parsed.avatar) {
+              setRegPhoto(parsed.profilePhoto || parsed.avatar);
             }
             return;
           }
@@ -149,8 +162,6 @@ function NativeApp() {
     }
 
     setAuthLoading(true);
-    const localCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(localCode);
 
     try {
       const res = await fetch('/api/auth/send-otp', {
@@ -160,20 +171,17 @@ function NativeApp() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.testOtp) {
-          setGeneratedOtp(data.testOtp);
-          setLoginOtp(data.testOtp);
-        }
+        setAuthSuccessMsg(data.message || `6-digit verification code sent directly to +91 ${clean}`);
       } else {
-        setLoginOtp(localCode);
+        setAuthSuccessMsg(`6-digit verification code sent to +91 ${clean}`);
       }
     } catch {
-      setLoginOtp(localCode);
+      setAuthSuccessMsg(`6-digit verification code sent to +91 ${clean}`);
     }
 
+    setLoginOtp(''); // Strictly empty, requiring real SMS verification code from SMS inbox
     setAuthStep('otp');
     setOtpCooldown(45);
-    setAuthSuccessMsg(`6-Digit OTP sent to +91 ${clean}`);
     setAuthLoading(false);
   };
 
@@ -881,7 +889,30 @@ Please dispatch assistance immediately!`;
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#064e3b" />
+      <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
+
+      {/* 0. OFFICIAL STARTUP SPLASH SCREEN */}
+      {showSplashScreen && (
+        <Modal visible={showSplashScreen} transparent={false} animationType="fade">
+          <View style={styles.splashFullScreen}>
+            <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
+            <View style={styles.splashContent}>
+              <View style={styles.splashEmblemRing}>
+                <Image
+                  source={require('./assets/icon.png')}
+                  style={styles.splashEmblemImg}
+                  resizeMode="cover"
+                />
+              </View>
+              <Text style={styles.splashTitle}>Quick Karya</Text>
+              <Text style={styles.splashSubtitle}>DIRECT ARTISAN CALL DIRECTORY</Text>
+              <View style={styles.splashDivider} />
+              <Text style={styles.splashTagline}>Instant Nearby Verified Artisans • Live GPS Proximity</Text>
+              <ActivityIndicator size="small" color="#FFA500" style={styles.splashLoader} />
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* TOP EMERGENCY HIGHWAY SOS BAR */}
       <View style={styles.topEmergencyStrip}>
@@ -903,7 +934,11 @@ Please dispatch assistance immediately!`;
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>QK</Text>
+            <Image
+              source={require('./assets/icon.png')}
+              style={styles.headerLogoImg}
+              resizeMode="cover"
+            />
           </View>
           <View>
             <Text style={styles.brandTitle}>Quick Karya</Text>
@@ -1947,13 +1982,20 @@ Please dispatch assistance immediately!`;
       )}
 
       {/* FIXED BOTTOM NAVIGATION BAR */}
+      {/* FIXED BOTTOM NAVIGATION BAR WITH 3D STYLED ICONS IN DEEP NAVY BLUE */}
       <View style={styles.bottomNavContainer}>
         {/* Tab 1: Home (Proximity Directory) */}
         <TouchableOpacity
           style={styles.navTabButton}
           onPress={() => setActiveTab('home')}
+          activeOpacity={0.8}
         >
-          <View style={styles.navIconWrapper}>
+          <View
+            style={[
+              styles.nav3dBadge,
+              (activeTab === 'workers' || activeTab === 'home') && styles.nav3dBadgeActive
+            ]}
+          >
             <Text
               style={[
                 styles.navEmoji,
@@ -1983,14 +2025,22 @@ Please dispatch assistance immediately!`;
         <TouchableOpacity
           style={styles.navTabButton}
           onPress={() => setActiveTab('register')}
+          activeOpacity={0.8}
         >
           <View
             style={[
-              styles.navCenterBadge,
-              activeTab === 'register' && styles.navCenterBadgeActive
+              styles.nav3dBadge,
+              activeTab === 'register' && styles.nav3dBadgeActive
             ]}
           >
-            <Text style={styles.navCenterBadgeText}>➕</Text>
+            <Text
+              style={[
+                styles.navEmoji,
+                activeTab === 'register' && styles.navEmojiActive
+              ]}
+            >
+              ➕
+            </Text>
           </View>
           <Text
             style={[
@@ -2000,17 +2050,21 @@ Please dispatch assistance immediately!`;
           >
             Register
           </Text>
-          {activeTab === 'register' && (
-            <View style={styles.navActiveIndicator} />
-          )}
+          {activeTab === 'register' && <View style={styles.navActiveIndicator} />}
         </TouchableOpacity>
 
         {/* Tab 3: Categories */}
         <TouchableOpacity
           style={styles.navTabButton}
           onPress={() => setActiveTab('categories')}
+          activeOpacity={0.8}
         >
-          <View style={styles.navIconWrapper}>
+          <View
+            style={[
+              styles.nav3dBadge,
+              activeTab === 'categories' && styles.nav3dBadgeActive
+            ]}
+          >
             <Text
               style={[
                 styles.navEmoji,
@@ -2028,17 +2082,21 @@ Please dispatch assistance immediately!`;
           >
             Categories
           </Text>
-          {activeTab === 'categories' && (
-            <View style={styles.navActiveIndicator} />
-          )}
+          {activeTab === 'categories' && <View style={styles.navActiveIndicator} />}
         </TouchableOpacity>
 
         {/* Tab 4: My Profile */}
         <TouchableOpacity
           style={styles.navTabButton}
           onPress={() => setActiveTab('profile')}
+          activeOpacity={0.8}
         >
-          <View style={styles.navIconWrapper}>
+          <View
+            style={[
+              styles.nav3dBadge,
+              activeTab === 'profile' && styles.nav3dBadgeActive
+            ]}
+          >
             <Text
               style={[
                 styles.navEmoji,
@@ -2056,9 +2114,7 @@ Please dispatch assistance immediately!`;
           >
             My Profile
           </Text>
-          {activeTab === 'profile' && (
-            <View style={styles.navActiveIndicator} />
-          )}
+          {activeTab === 'profile' && <View style={styles.navActiveIndicator} />}
         </TouchableOpacity>
       </View>
 
@@ -3968,24 +4024,24 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
 
-  /* BOTTOM NAVIGATION BAR */
+  /* BOTTOM NAVIGATION BAR IN DEEP NAVY BLUE #001F3F WITH 3D ICONS */
   bottomNavContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 64,
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    height: 66,
+    backgroundColor: '#001F3F',
+    borderTopWidth: 1.5,
+    borderTopColor: '#0a2e5c',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    elevation: 8,
+    elevation: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6
   },
   navTabButton: {
     flex: 1,
@@ -3993,62 +4049,91 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 4
   },
+  nav3dBadge: {
+    width: 36,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#0a2e5c',
+    borderWidth: 1,
+    borderColor: '#1e4d8c',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 2,
+    elevation: 4
+  },
+  nav3dBadgeActive: {
+    backgroundColor: '#133d73',
+    borderColor: '#FFA500',
+    borderWidth: 1.5,
+    shadowColor: '#FFA500',
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 6
+  },
   navIconWrapper: {
     position: 'relative'
   },
   navEmoji: {
-    fontSize: 20,
-    opacity: 0.6
+    fontSize: 16,
+    opacity: 0.75
   },
   navEmojiActive: {
     opacity: 1
   },
   navCountBadge: {
     position: 'absolute',
-    top: -4,
-    right: -10,
-    backgroundColor: '#ecfdf5',
-    borderColor: '#a7f3d0',
+    top: -5,
+    right: -8,
+    backgroundColor: '#FFA500',
+    borderColor: '#FFD700',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 4,
-    paddingVertical: 1
+    paddingVertical: 1,
+    elevation: 3
   },
   navCountBadgeText: {
-    fontSize: 9,
-    color: '#064e3b',
-    fontWeight: 'bold'
+    fontSize: 8.5,
+    color: '#001F3F',
+    fontWeight: '900'
   },
   navCenterBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f3f4f6',
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#0a2e5c',
+    borderWidth: 1,
+    borderColor: '#1e4d8c',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2
   },
   navCenterBadgeActive: {
-    backgroundColor: '#064e3b'
+    backgroundColor: '#133d73',
+    borderColor: '#FFA500',
+    borderWidth: 1.5
   },
   navCenterBadgeText: {
     fontSize: 15
   },
   navTabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#94a3b8',
     marginTop: 2
   },
   navTabLabelActive: {
-    color: '#064e3b',
+    color: '#FFD700',
     fontWeight: '800'
   },
   navActiveIndicator: {
-    width: 16,
+    width: 18,
     height: 2.5,
     borderRadius: 1.5,
-    backgroundColor: '#059669',
+    backgroundColor: '#FFA500',
     marginTop: 2
   },
   cardSubRoleText: {
@@ -4703,8 +4788,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     backgroundColor: '#fffbeb',
-    borderColor: '#fcd34d',
-    borderWidth: 1,
+    borderColor: '#FFA500',
+    borderWidth: 2,
     paddingVertical: 10,
     borderRadius: 12
   },
@@ -4713,8 +4798,8 @@ const styles = StyleSheet.create({
   },
   rateArtisanButtonText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#78350f'
+    fontWeight: '800',
+    color: '#001F3F'
   },
   callNowButtonHalf: {
     flex: 1,
@@ -4722,9 +4807,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#064e3b',
+    backgroundColor: '#001F3F',
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
     paddingVertical: 10,
-    borderRadius: 12
+    borderRadius: 12,
+    elevation: 2
   },
   cardTapHint: {
     fontSize: 10,

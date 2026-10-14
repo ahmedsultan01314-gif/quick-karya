@@ -79,10 +79,10 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   return (
     <div className="space-y-4 pb-20 pt-2">
       {/* Category Header Intro */}
-      <div className="bg-emerald-900 text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">
-        <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-emerald-800/40 rounded-full blur-xl pointer-events-none" />
+      <div className="bg-[#001F3F] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden border border-[#0a2e5c]">
+        <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-amber-500/20 rounded-full blur-xl pointer-events-none" />
         <h2 className="text-lg font-bold">Service Categories</h2>
-        <p className="text-xs text-emerald-200 mt-0.5">
+        <p className="text-xs text-amber-300 mt-0.5">
           Browse verified local trades &amp; artisans with direct phone contacts
         </p>
       </div>

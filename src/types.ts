@@ -88,8 +88,12 @@ export interface WorkerProfile {
   completedJobs: number;
   languages: string[];
   skills: string[];
-  emergencyAvailable?: boolean;
   photo?: string;
+  avatar?: string;
+  avatarUrl?: string;
+  photoUrl?: string;
+  fcmToken?: string;
+  pushToken?: string;
 }
 
 export interface UserLocation {
@@ -113,6 +117,9 @@ export interface AppUser {
   role: UserRole;
   workerId?: string; // Permanent Quick Karya Worker ID, e.g. QK-78901
   profilePhoto?: string;
+  avatar?: string;
+  fcmToken?: string;
+  pushToken?: string;
   verified: boolean;
   createdAt: string;
 }

@@ -133,10 +133,10 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               onSelectCategory('All');
               setDriverSubFilter('all');
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
               selectedCategory === 'All'
-                ? 'bg-emerald-800 text-white shadow-xs'
-                : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50'
+                ? 'bg-[#001F3F] text-amber-300 shadow-sm border border-[#0a2e5c]'
+                : 'bg-[#FFF9E6] border border-[#FFE082] text-gray-900 hover:bg-[#FFF3CD]'
             }`}
           >
             All Trades ({workers.length})
@@ -151,11 +151,11 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 ${
               selectedCategory === 'Emergency Highway Assistance'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-[#001F3F] font-black shadow-sm border border-amber-400 ring-2 ring-amber-400/40'
+                : 'bg-[#FFF9E6] border border-[#FFE082] text-gray-900 hover:bg-[#FFF3CD]'
             }`}
           >
-            <ShieldAlert className="w-3.5 h-3.5" />
+            <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
             <span>Emergency Highway Assistance</span>
           </button>
 
@@ -169,10 +169,10 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                   onSelectCategory(cat.name);
                   if (cat.name !== 'Driver') setDriverSubFilter('all');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                   selectedCategory === cat.name
-                    ? 'bg-emerald-800 text-white font-semibold shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50 hover:text-emerald-900'
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-[#001F3F] font-black shadow-sm border border-amber-400 ring-1 ring-amber-500/50'
+                    : 'bg-[#FFF9E6] border border-[#FFE082] text-gray-900 hover:bg-[#FFF3CD]'
                 }`}
               >
                 {getCategoryIcon(cat.name)}

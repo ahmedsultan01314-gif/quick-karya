@@ -99,27 +99,26 @@ export async function triggerCallWorkerNotification(
   customerName?: string,
   customerPhone?: string
 ) {
-  const callerIdent = customerName
-    ? `${customerName}${customerPhone ? ` (${customerPhone})` : ''}`
-    : 'Customer';
-
-  const title = `📞 Quick Karya: New call request from ${callerIdent}`;
-  const body = `Customer ${callerIdent} is calling ${workerName} (${category || 'artisan'}). Direct line: ${workerPhone}.`;
-
-  dispatchInAppBanner(title, body, 'call');
+  // CRITICAL: When a customer taps 'Call Worker', do NOT trigger the push notification
+  // on the customer's own device. Route the push notification directly to the target
+  // Worker's FCM device token.
+  const callerName = customerName || 'Customer';
+  const callerPhone = customerPhone || '';
 
   try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        sound: 'default',
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-        color: '#064e3b'
-      },
-      trigger: null
+    await fetch('/api/notifications/notify-worker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workerName,
+        workerPhone,
+        category,
+        customerName: callerName,
+        customerPhone: callerPhone
+      })
     });
-  } catch (e) {
-    console.warn('Error scheduling native call notification:', e);
+  } catch (err) {
+    console.warn('Failed to dispatch targeted push notification to worker:', err);
   }
 }
+
