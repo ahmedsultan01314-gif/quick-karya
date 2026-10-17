@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppUser, WorkerProfile, WorkerReview } from '../types';
+import { getApiUrl } from '../config';
 import {
   User,
   ShieldCheck,
@@ -97,7 +98,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     setUpdatingPhoto(true);
     try {
-      const res = await fetch('/api/auth/profile', {
+      const res = await fetch(getApiUrl('/api/auth/profile'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,7 +139,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const base64 = reader.result as string;
       setUpdatingPhoto(true);
       try {
-        await fetch('/api/auth/profile', {
+        await fetch(getApiUrl('/api/auth/profile'), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -18,6 +18,7 @@ import {
   verifyFirebasePhoneOtp,
   saveUserToCloud
 } from '../firebase';
+import { getApiUrl } from '../config';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -56,7 +57,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 1. Send OTP natively via Firebase Phone Auth SDK
+  // 1. Send OTP directly via Firebase Phone Authentication
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
@@ -76,39 +77,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true);
     try {
-      // Direct Firebase Phone Auth SDK native dispatch
-      try {
-        await sendFirebasePhoneOtp(clean);
-        setStep('otp');
-        setResendCooldown(60);
-        setSuccessMsg(`SMS verification code dispatched natively via Firebase Phone Auth to +91 ${clean}.`);
-        setOtp('');
-      } catch (fbErr: any) {
-        console.warn('Firebase Phone Auth attempt:', fbErr);
-        // Seamless fallback to server-side SMS dispatch if Firebase auth restrictions occur in preview sandbox
-        const res = await fetch('/api/auth/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: clean })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(fbErr?.message || data.error || 'Failed to dispatch verification code');
-        }
-
-        setStep('otp');
-        setResendCooldown(45);
-        setSuccessMsg(data.message || `6-digit verification code sent directly to +91 ${clean}.`);
-        setOtp('');
-      }
+      // Connect send-OTP button directly to Firebase Phone Authentication
+      await sendFirebasePhoneOtp(clean);
+      setStep('otp');
+      setResendCooldown(60);
+      setSuccessMsg(`SMS verification code dispatched via Firebase Phone Auth to +91 ${clean}.`);
+      setOtp('');
     } catch (err: any) {
-      setError(err?.message || 'Network error while sending OTP');
+      console.warn('Firebase Phone Auth send error:', err?.message || err);
+      setError(err?.message || 'Error dispatching SMS code via Firebase Phone Auth.');
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. Verify OTP natively via Firebase Phone Auth SDK
+  // 2. Verify OTP directly via Firebase Phone Authentication
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -120,52 +103,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     try {
       const clean = phone.replace(/[^0-9]/g, '').slice(-10);
-      let appUser: AppUser | null = null;
-
-      // 1. Verify through Firebase Phone Auth SDK
-      try {
-        const firebaseUser = await verifyFirebasePhoneOtp(otp.trim());
-        if (firebaseUser) {
-          appUser = {
-            id: firebaseUser.uid,
-            phone: `+91 ${clean}`,
-            name: name.trim(),
-            role: 'customer',
-            verified: true,
-            createdAt: new Date().toISOString()
-          };
-          // Persist directly to Cloud Firestore
-          await saveUserToCloud(appUser).catch((e) => console.warn('Firestore user save note:', e));
-        }
-      } catch (fbVerifyErr: any) {
-        console.warn('Firebase Phone Auth verify, trying server verification:', fbVerifyErr);
-        // Fallback to server verify if code was dispatched via backend
-        const res = await fetch('/api/auth/verify-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: clean,
-            code: otp.trim(),
-            name: name.trim() || undefined
-          })
-        });
-        const data = await res.json();
-        if (res.ok && data.user) {
-          appUser = data.user;
-        } else {
-          throw new Error(fbVerifyErr?.message || data.error || 'Invalid OTP code');
-        }
+      // Connect verify directly to Firebase Phone Authentication
+      const firebaseUser = await verifyFirebasePhoneOtp(otp.trim());
+      if (!firebaseUser?.uid) {
+        throw new Error('Verification failed. Invalid OTP response.');
       }
 
-      if (!appUser) {
-        throw new Error('Verification failed. Please check the code and try again.');
-      }
+      const appUser: AppUser = {
+        id: firebaseUser.uid,
+        phone: `+91 ${clean}`,
+        name: name.trim(),
+        role: 'customer',
+        verified: true,
+        createdAt: new Date().toISOString()
+      };
+
+      // Persist directly to Cloud Firestore
+      await saveUserToCloud(appUser).catch((e) => console.warn('Firestore user save note:', e));
 
       setVerifiedUser(appUser);
       setStep('role_selection');
       setError(null);
     } catch (err: any) {
-      setError(err?.message || 'Verification failed');
+      console.warn('Firebase Phone Auth verify error:', err?.message || err);
+      setError(err?.message || 'Verification failed. Please check your code and try again.');
     } finally {
       setLoading(false);
     }
@@ -177,8 +138,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
 
     try {
-      // Update role on backend
-      const res = await fetch('/api/auth/profile', {
+      // Update role on backend using verified absolute base URL
+      const res = await fetch(getApiUrl('/api/auth/profile'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

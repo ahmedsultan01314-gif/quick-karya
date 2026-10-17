@@ -1,4 +1,5 @@
 // Web notification implementation without importing native expo-notifications
+import { getApiUrl } from '../config';
 export type NotificationBannerData = {
   id: string;
   title: string;
@@ -78,7 +79,7 @@ export async function triggerCallWorkerNotification(
   const callerPhone = customerPhone || '';
 
   try {
-    await fetch('/api/notifications/notify-worker', {
+    await fetch(getApiUrl('/api/notifications/notify-worker'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -52,6 +52,7 @@ import {
   triggerRegistrationNotification,
   triggerCallWorkerNotification
 } from './src/utils/notifications';
+import { getApiUrl } from './src/config';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
 const AUTH_STORAGE_KEY = '@quickkarya_user_session_v1';
@@ -169,31 +170,15 @@ function NativeApp() {
     setAuthLoading(true);
 
     try {
-      // Primary: Dispatch natively via Firebase Phone Auth SDK
-      try {
-        await sendFirebasePhoneOtp(clean);
-        setAuthSuccessMsg(`SMS verification code dispatched natively via Firebase Phone Auth to +91 ${clean}.`);
-      } catch (fbErr: any) {
-        console.warn('Firebase Phone Auth native dispatch note:', fbErr);
-        // Seamless fallback to server dispatch
-        const res = await fetch('/api/auth/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: clean })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setAuthSuccessMsg(data.message || `6-digit verification code sent directly to +91 ${clean}`);
-        } else {
-          throw new Error(fbErr?.message || 'Failed to dispatch verification code');
-        }
-      }
-
+      // Direct Firebase Phone Authentication native dispatch
+      await sendFirebasePhoneOtp(clean);
+      setAuthSuccessMsg(`SMS verification code dispatched via Firebase Phone Auth to +91 ${clean}.`);
       setLoginOtp(''); // Strictly empty, requiring real SMS verification code from SMS inbox
       setAuthStep('otp');
       setOtpCooldown(60);
     } catch (err: any) {
-      setAuthError(err?.message || 'Error sending verification code. Please check your network.');
+      console.warn('Firebase Phone Auth send error:', err?.message || err);
+      setAuthError(err?.message || 'Error dispatching SMS code via Firebase Phone Auth.');
     } finally {
       setAuthLoading(false);
     }
@@ -208,55 +193,31 @@ function NativeApp() {
 
     setAuthLoading(true);
     const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
-    let verifiedUserObj: AppUser | null = null;
 
     try {
-      // 1. Verify directly via Firebase Phone Auth SDK
-      try {
-        const firebaseUser = await verifyFirebasePhoneOtp(loginOtp.trim());
-        if (firebaseUser) {
-          verifiedUserObj = {
-            id: firebaseUser.uid,
-            phone: `+91 ${clean}`,
-            name: loginName.trim(),
-            role: 'customer',
-            verified: true,
-            createdAt: new Date().toISOString()
-          };
-          await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
-        }
-      } catch (fbVerifyErr: any) {
-        console.warn('Firebase Phone Auth verify, checking server verification:', fbVerifyErr);
-        // Fallback to server verification
-        const res = await fetch('/api/auth/verify-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: clean,
-            code: loginOtp.trim(),
-            name: loginName.trim()
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.user) {
-            verifiedUserObj = data.user;
-          }
-        } else {
-          throw new Error(fbVerifyErr?.message || 'Invalid OTP code.');
-        }
+      // Direct Firebase Phone Authentication verification
+      const firebaseUser = await verifyFirebasePhoneOtp(loginOtp.trim());
+      if (!firebaseUser?.uid) {
+        throw new Error('Verification failed. Invalid OTP response.');
       }
 
-      if (!verifiedUserObj) {
-        setAuthError('Invalid OTP code. Please check and try again.');
-        setAuthLoading(false);
-        return;
-      }
+      const verifiedUserObj: AppUser = {
+        id: firebaseUser.uid,
+        phone: `+91 ${clean}`,
+        name: loginName.trim(),
+        role: 'customer',
+        verified: true,
+        createdAt: new Date().toISOString()
+      };
+
+      // Persist directly to Cloud Firestore
+      await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
 
       setPendingVerifiedUser(verifiedUserObj);
       setAuthStep('role_selection');
     } catch (err: any) {
-      setAuthError(err?.message || 'Verification failed. Please check your code.');
+      console.warn('Firebase Phone Auth verify error:', err?.message || err);
+      setAuthError(err?.message || 'Verification failed. Please check your code and try again.');
     } finally {
       setAuthLoading(false);
     }
@@ -517,7 +478,7 @@ Please dispatch assistance immediately!`;
       if (!detectedCity || !detectedState) {
         try {
           const res = await fetch(
-            `/api/reverse-geocode?lat=${loc.coords.latitude}&lng=${loc.coords.longitude}`
+            getApiUrl(`/api/reverse-geocode?lat=${loc.coords.latitude}&lng=${loc.coords.longitude}`)
           );
           if (res.ok) {
             const data = await res.json();

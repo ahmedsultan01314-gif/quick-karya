@@ -6,6 +6,7 @@ import {
   UserLocation,
   WorkerProfile
 } from '../types';
+import { getApiUrl } from '../config';
 import {
   UserPlus,
   CheckCircle2,
@@ -277,7 +278,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         userId: currentUserId
       };
 
-      const res = await fetch('/api/workers', {
+      const res = await fetch(getApiUrl('/api/workers'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

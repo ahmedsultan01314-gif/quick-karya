@@ -37,10 +37,12 @@ export const auth = getAuth(firebaseApp);
  * Firebase Phone Authentication (Native SMS Dispatch without 3rd party API keys)
  */
 let confirmationResultStore: ConfirmationResult | null = null;
+let sessionInfoStore: string | null = null;
 
-export function setupRecaptchaVerifier(containerId: string = 'recaptcha-container'): RecaptchaVerifier {
-  if (typeof window === 'undefined') {
-    throw new Error('reCAPTCHA can only be initialized in a browser environment');
+export function setupRecaptchaVerifier(containerId: string = 'recaptcha-container'): RecaptchaVerifier | null {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    // Running in native environment without DOM
+    return null;
   }
 
   let container = document.getElementById(containerId);
@@ -74,17 +76,74 @@ export function setupRecaptchaVerifier(containerId: string = 'recaptcha-containe
 }
 
 /**
- * Send SMS OTP natively through Firebase Phone Auth
+ * Send SMS OTP directly through Firebase Phone Auth (Web SDK or Firebase Identity Toolkit REST)
  */
-export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<ConfirmationResult> {
+export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<{ success: boolean; sessionInfo?: string }> {
   const clean = phoneNumber.replace(/[^0-9]/g, '').slice(-10);
   const formattedPhone = `+91${clean}`;
 
-  const verifier = setupRecaptchaVerifier('recaptcha-container');
-  const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, verifier);
-  confirmationResultStore = confirmationResult;
-  (window as any).firebaseConfirmationResult = confirmationResult;
-  return confirmationResult;
+  // 1. If in browser environment with DOM, try Firebase Web SDK
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      const verifier = setupRecaptchaVerifier('recaptcha-container');
+      if (verifier) {
+        const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+        confirmationResultStore = confirmationResult;
+        (window as any).firebaseConfirmationResult = confirmationResult;
+        return { success: true };
+      }
+    } catch (webErr: any) {
+      console.warn('Firebase Web SDK Phone Auth attempt:', webErr?.code, webErr?.message);
+      if (webErr?.code === 'auth/operation-not-allowed') {
+        throw new Error(
+          'Firebase Phone Authentication is not enabled in Firebase Console. Please enable "Phone" under Firebase Console -> Authentication -> Sign-in method for project: ' +
+            firebaseConfig.projectId
+        );
+      }
+      if (webErr?.code === 'auth/invalid-phone-number') {
+        throw new Error('Invalid mobile number format. Please provide a valid 10-digit mobile number.');
+      }
+      // If other client error, proceed to try Firebase REST endpoint
+    }
+  }
+
+  // 2. Call Firebase Identity Toolkit REST API (Works on Android Native and Web with full protocol)
+  const restUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendVerificationCode?key=${firebaseConfig.apiKey}`;
+  const response = await fetch(restUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phoneNumber: formattedPhone
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    const errMsg = data?.error?.message || 'Failed to dispatch Firebase SMS OTP';
+    if (errMsg.includes('OPERATION_NOT_ALLOWED')) {
+      throw new Error(
+        'Firebase Phone Authentication is not enabled in project ' +
+          firebaseConfig.projectId +
+          '. Enable "Phone" under Firebase Console -> Authentication -> Sign-in method.'
+      );
+    }
+    if (errMsg.includes('TOO_MANY_ATTEMPTS_TRY_LATER') || errMsg.includes('QUOTA_EXCEEDED')) {
+      throw new Error('Firebase SMS quota exceeded or too many attempts. Please try again later.');
+    }
+    if (errMsg.includes('INVALID_PHONE_NUMBER')) {
+      throw new Error('The phone number provided is invalid.');
+    }
+    throw new Error(`Firebase Phone Auth: ${errMsg}`);
+  }
+
+  if (data?.sessionInfo) {
+    sessionInfoStore = data.sessionInfo;
+    if (typeof window !== 'undefined') {
+      (window as any).firebaseSessionInfo = data.sessionInfo;
+    }
+  }
+
+  return { success: true, sessionInfo: data?.sessionInfo };
 }
 
 /**
@@ -93,15 +152,59 @@ export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<Confirm
 export async function verifyFirebasePhoneOtp(
   otpCode: string,
   confirmationResult?: ConfirmationResult
-): Promise<FirebaseUser> {
+): Promise<{ uid: string; phoneNumber?: string }> {
+  // 1. Try Firebase Web SDK confirmationResult if available
   const activeConfirmation =
-    confirmationResult || confirmationResultStore || (window as any).firebaseConfirmationResult;
-  if (!activeConfirmation) {
+    confirmationResult || confirmationResultStore || (typeof window !== 'undefined' ? (window as any).firebaseConfirmationResult : null);
+  if (activeConfirmation) {
+    try {
+      const userCredential = await activeConfirmation.confirm(otpCode);
+      return {
+        uid: userCredential.user.uid,
+        phoneNumber: userCredential.user.phoneNumber || undefined
+      };
+    } catch (confErr: any) {
+      console.warn('Firebase confirmationResult error:', confErr?.code, confErr?.message);
+      if (confErr?.code === 'auth/invalid-verification-code') {
+        throw new Error('Invalid OTP code. Please check and re-enter the 6-digit code.');
+      }
+      // If other error, check REST session below
+    }
+  }
+
+  // 2. Try Firebase Identity Toolkit REST signInWithPhoneNumber
+  const activeSessionInfo =
+    sessionInfoStore || (typeof window !== 'undefined' ? (window as any).firebaseSessionInfo : null);
+  if (!activeSessionInfo) {
     throw new Error('No active SMS verification session found. Please request a new verification code.');
   }
 
-  const userCredential = await activeConfirmation.confirm(otpCode);
-  return userCredential.user;
+  const restUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPhoneNumber?key=${firebaseConfig.apiKey}`;
+  const response = await fetch(restUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionInfo: activeSessionInfo,
+      code: otpCode.trim()
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    const errMsg = data?.error?.message || 'Verification failed';
+    if (errMsg.includes('INVALID_CODE')) {
+      throw new Error('Invalid OTP code. Please enter the correct 6-digit code sent via SMS.');
+    }
+    if (errMsg.includes('SESSION_EXPIRED')) {
+      throw new Error('OTP session has expired. Please request a new verification code.');
+    }
+    throw new Error(`Firebase Phone Verification: ${errMsg}`);
+  }
+
+  return {
+    uid: data.localId || `fb_${Date.now()}`,
+    phoneNumber: data.phoneNumber
+  };
 }
 
 export { firebaseSignOut, onAuthStateChanged };

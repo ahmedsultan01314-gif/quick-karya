@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { getApiUrl } from '../config';
 
 export type NotificationBannerData = {
   id: string;
@@ -106,7 +107,7 @@ export async function triggerCallWorkerNotification(
   const callerPhone = customerPhone || '';
 
   try {
-    await fetch('/api/notifications/notify-worker', {
+    await fetch(getApiUrl('/api/notifications/notify-worker'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

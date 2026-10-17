@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WorkerProfile, ServiceRequest, AppUser } from '../types';
 import { Star, X, Check, AlertCircle, MessageSquare } from 'lucide-react';
+import { getApiUrl } from '../config';
 
 interface RatingModalProps {
   isOpen: boolean;
@@ -53,7 +54,7 @@ export const RatingModal: React.FC<RatingModalProps> = ({
       const customerName = currentUser?.name || serviceRequest?.customerName || 'Verified Customer';
       const customerId = currentUser?.id || serviceRequest?.customerId || `cust-${Date.now()}`;
 
-      const res = await fetch('/api/reviews', {
+      const res = await fetch(getApiUrl('/api/reviews'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

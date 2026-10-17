@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WorkerProfile, UserLocation, AppUser, ServiceRequest } from '../types';
+import { getApiUrl } from '../config';
 import {
   Phone,
   Check,
@@ -188,7 +189,7 @@ export const CallModal: React.FC<CallModalProps> = ({
 
     // Record service request to enable rating and location sharing
     if (currentUser) {
-      fetch('/api/service-requests', {
+      fetch(getApiUrl('/api/service-requests'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
