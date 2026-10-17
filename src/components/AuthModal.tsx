@@ -13,6 +13,11 @@ import {
   Briefcase,
   Users
 } from 'lucide-react';
+import {
+  sendFirebasePhoneOtp,
+  verifyFirebasePhoneOtp,
+  saveUserToCloud
+} from '../firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -51,7 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 1. Send OTP
+  // 1. Send OTP natively via Firebase Phone Auth SDK
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
@@ -71,20 +76,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: clean })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to send OTP');
-      }
+      // Direct Firebase Phone Auth SDK native dispatch
+      try {
+        await sendFirebasePhoneOtp(clean);
+        setStep('otp');
+        setResendCooldown(60);
+        setSuccessMsg(`SMS verification code dispatched natively via Firebase Phone Auth to +91 ${clean}.`);
+        setOtp('');
+      } catch (fbErr: any) {
+        console.warn('Firebase Phone Auth attempt:', fbErr);
+        // Seamless fallback to server-side SMS dispatch if Firebase auth restrictions occur in preview sandbox
+        const res = await fetch('/api/auth/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: clean })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(fbErr?.message || data.error || 'Failed to dispatch verification code');
+        }
 
-      setStep('otp');
-      setResendCooldown(45);
-      setSuccessMsg(data.message || '6-digit verification code sent directly to your phone SMS inbox.');
-      setOtp('');
+        setStep('otp');
+        setResendCooldown(45);
+        setSuccessMsg(data.message || `6-digit verification code sent directly to +91 ${clean}.`);
+        setOtp('');
+      }
     } catch (err: any) {
       setError(err?.message || 'Network error while sending OTP');
     } finally {
@@ -92,7 +108,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // 2. Verify OTP
+  // 2. Verify OTP natively via Firebase Phone Auth SDK
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -104,22 +120,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     try {
       const clean = phone.replace(/[^0-9]/g, '').slice(-10);
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: clean,
-          code: otp.trim(),
-          name: name.trim() || undefined
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Invalid OTP code');
+      let appUser: AppUser | null = null;
+
+      // 1. Verify through Firebase Phone Auth SDK
+      try {
+        const firebaseUser = await verifyFirebasePhoneOtp(otp.trim());
+        if (firebaseUser) {
+          appUser = {
+            id: firebaseUser.uid,
+            phone: `+91 ${clean}`,
+            name: name.trim(),
+            role: 'customer',
+            verified: true,
+            createdAt: new Date().toISOString()
+          };
+          // Persist directly to Cloud Firestore
+          await saveUserToCloud(appUser).catch((e) => console.warn('Firestore user save note:', e));
+        }
+      } catch (fbVerifyErr: any) {
+        console.warn('Firebase Phone Auth verify, trying server verification:', fbVerifyErr);
+        // Fallback to server verify if code was dispatched via backend
+        const res = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: clean,
+            code: otp.trim(),
+            name: name.trim() || undefined
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.user) {
+          appUser = data.user;
+        } else {
+          throw new Error(fbVerifyErr?.message || data.error || 'Invalid OTP code');
+        }
       }
 
-      setVerifiedUser(data.user);
-      // Move to mandatory Role Selection screen
+      if (!appUser) {
+        throw new Error('Verification failed. Please check the code and try again.');
+      }
+
+      setVerifiedUser(appUser);
       setStep('role_selection');
       setError(null);
     } catch (err: any) {
@@ -146,15 +188,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         })
       });
 
-      let updatedUser = verifiedUser;
+      let updatedUser: AppUser = {
+        ...verifiedUser,
+        role: selectedRole,
+        name: name.trim() || verifiedUser.name
+      };
+
       if (res.ok) {
         const data = await res.json();
         if (data.user) updatedUser = data.user;
-      } else {
-        updatedUser.role = selectedRole;
       }
 
-      // Save user session in localStorage
+      // Persist to Cloud Firestore and localStorage
+      await saveUserToCloud(updatedUser).catch((e) => console.warn('Firestore user update note:', e));
       localStorage.setItem('quick_karya_user', JSON.stringify(updatedUser));
       onLoginSuccess(updatedUser, selectedRole);
       onClose();
@@ -267,9 +313,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-1">
-                  A real 6-digit SMS OTP will be generated for your mobile number.
+                  A real 6-digit SMS OTP will be dispatched via Firebase Phone Auth to your mobile inbox.
                 </p>
               </div>
+
+              {/* Invisible / AppCheck Firebase Recaptcha Container */}
+              <div id="recaptcha-container" className="flex justify-center"></div>
 
               <button
                 type="submit"

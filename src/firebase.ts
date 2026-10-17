@@ -11,6 +11,15 @@ import {
   where,
   onSnapshot
 } from 'firebase/firestore';
+import {
+  getAuth,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  ConfirmationResult,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  User as FirebaseUser
+} from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 import { WorkerProfile, AppUser, WorkerReview, ServiceRequest } from './types';
 
@@ -21,6 +30,82 @@ export const db = getFirestore(
   firebaseApp,
   firebaseConfig.firestoreDatabaseId || '(default)'
 );
+
+export const auth = getAuth(firebaseApp);
+
+/**
+ * Firebase Phone Authentication (Native SMS Dispatch without 3rd party API keys)
+ */
+let confirmationResultStore: ConfirmationResult | null = null;
+
+export function setupRecaptchaVerifier(containerId: string = 'recaptcha-container'): RecaptchaVerifier {
+  if (typeof window === 'undefined') {
+    throw new Error('reCAPTCHA can only be initialized in a browser environment');
+  }
+
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    document.body.appendChild(container);
+  }
+
+  if ((window as any).recaptchaVerifier) {
+    try {
+      (window as any).recaptchaVerifier.clear();
+    } catch {
+      // ignore
+    }
+    (window as any).recaptchaVerifier = null;
+  }
+
+  const verifier = new RecaptchaVerifier(auth, containerId, {
+    size: 'invisible',
+    callback: () => {
+      // reCAPTCHA solved automatically
+    },
+    'expired-callback': () => {
+      console.warn('reCAPTCHA expired, please request code again.');
+    }
+  });
+
+  (window as any).recaptchaVerifier = verifier;
+  return verifier;
+}
+
+/**
+ * Send SMS OTP natively through Firebase Phone Auth
+ */
+export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<ConfirmationResult> {
+  const clean = phoneNumber.replace(/[^0-9]/g, '').slice(-10);
+  const formattedPhone = `+91${clean}`;
+
+  const verifier = setupRecaptchaVerifier('recaptcha-container');
+  const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+  confirmationResultStore = confirmationResult;
+  (window as any).firebaseConfirmationResult = confirmationResult;
+  return confirmationResult;
+}
+
+/**
+ * Verify OTP entered by user through Firebase Phone Auth
+ */
+export async function verifyFirebasePhoneOtp(
+  otpCode: string,
+  confirmationResult?: ConfirmationResult
+): Promise<FirebaseUser> {
+  const activeConfirmation =
+    confirmationResult || confirmationResultStore || (window as any).firebaseConfirmationResult;
+  if (!activeConfirmation) {
+    throw new Error('No active SMS verification session found. Please request a new verification code.');
+  }
+
+  const userCredential = await activeConfirmation.confirm(otpCode);
+  return userCredential.user;
+}
+
+export { firebaseSignOut, onAuthStateChanged };
+export type { ConfirmationResult, FirebaseUser };
 
 export const WORKERS_COLLECTION = 'workers';
 export const USERS_COLLECTION = 'users';

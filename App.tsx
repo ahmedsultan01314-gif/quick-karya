@@ -41,7 +41,11 @@ import {
   saveWorkerToCloud,
   subscribeWorkersFromCloud,
   saveReviewToCloud,
-  fetchReviewsForWorker
+  fetchReviewsForWorker,
+  saveUserToCloud,
+  sendFirebasePhoneOtp,
+  verifyFirebasePhoneOtp,
+  auth
 } from './src/firebase';
 import {
   setupNotifications,
@@ -165,25 +169,34 @@ function NativeApp() {
     setAuthLoading(true);
 
     try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: clean })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAuthSuccessMsg(data.message || `6-digit verification code sent directly to +91 ${clean}`);
-      } else {
-        setAuthSuccessMsg(`6-digit verification code sent to +91 ${clean}`);
+      // Primary: Dispatch natively via Firebase Phone Auth SDK
+      try {
+        await sendFirebasePhoneOtp(clean);
+        setAuthSuccessMsg(`SMS verification code dispatched natively via Firebase Phone Auth to +91 ${clean}.`);
+      } catch (fbErr: any) {
+        console.warn('Firebase Phone Auth native dispatch note:', fbErr);
+        // Seamless fallback to server dispatch
+        const res = await fetch('/api/auth/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: clean })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAuthSuccessMsg(data.message || `6-digit verification code sent directly to +91 ${clean}`);
+        } else {
+          throw new Error(fbErr?.message || 'Failed to dispatch verification code');
+        }
       }
-    } catch {
-      setAuthSuccessMsg(`6-digit verification code sent to +91 ${clean}`);
-    }
 
-    setLoginOtp(''); // Strictly empty, requiring real SMS verification code from SMS inbox
-    setAuthStep('otp');
-    setOtpCooldown(45);
-    setAuthLoading(false);
+      setLoginOtp(''); // Strictly empty, requiring real SMS verification code from SMS inbox
+      setAuthStep('otp');
+      setOtpCooldown(60);
+    } catch (err: any) {
+      setAuthError(err?.message || 'Error sending verification code. Please check your network.');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleNativeVerifyOtp = async () => {
@@ -198,45 +211,55 @@ function NativeApp() {
     let verifiedUserObj: AppUser | null = null;
 
     try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: clean,
-          code: loginOtp.trim(),
-          name: loginName.trim()
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          verifiedUserObj = data.user;
+      // 1. Verify directly via Firebase Phone Auth SDK
+      try {
+        const firebaseUser = await verifyFirebasePhoneOtp(loginOtp.trim());
+        if (firebaseUser) {
+          verifiedUserObj = {
+            id: firebaseUser.uid,
+            phone: `+91 ${clean}`,
+            name: loginName.trim(),
+            role: 'customer',
+            verified: true,
+            createdAt: new Date().toISOString()
+          };
+          await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
+        }
+      } catch (fbVerifyErr: any) {
+        console.warn('Firebase Phone Auth verify, checking server verification:', fbVerifyErr);
+        // Fallback to server verification
+        const res = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: clean,
+            code: loginOtp.trim(),
+            name: loginName.trim()
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            verifiedUserObj = data.user;
+          }
+        } else {
+          throw new Error(fbVerifyErr?.message || 'Invalid OTP code.');
         }
       }
-    } catch {
-      // Fallback
-    }
 
-    if (!verifiedUserObj) {
-      if (loginOtp.trim() === generatedOtp || loginOtp.trim().length === 6) {
-        verifiedUserObj = {
-          id: `usr_${clean}`,
-          phone: `+91 ${clean}`,
-          name: loginName.trim(),
-          role: 'customer',
-          verified: true,
-          createdAt: new Date().toISOString()
-        };
-      } else {
+      if (!verifiedUserObj) {
         setAuthError('Invalid OTP code. Please check and try again.');
         setAuthLoading(false);
         return;
       }
-    }
 
-    setPendingVerifiedUser(verifiedUserObj);
-    setAuthLoading(false);
-    setAuthStep('role_selection');
+      setPendingVerifiedUser(verifiedUserObj);
+      setAuthStep('role_selection');
+    } catch (err: any) {
+      setAuthError(err?.message || 'Verification failed. Please check your code.');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleConfirmRole = async (role: UserRole) => {
@@ -257,9 +280,10 @@ function NativeApp() {
     setRegPhone(clean);
 
     try {
+      await saveUserToCloud(finalUser);
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalUser));
     } catch (e) {
-      console.warn('AsyncStorage session save error:', e);
+      console.warn('User session save error:', e);
     }
 
     setIsAuthModalOpen(false);
