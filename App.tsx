@@ -83,6 +83,7 @@ function NativeApp() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   // Workers starts empty - pure directory with real registrations only
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
+  const [avatarErrors, setAvatarErrors] = useState<Record<string, boolean>>({});
 
   // User Auth & Session Gate
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
@@ -1087,6 +1088,11 @@ Please dispatch assistance immediately!`;
                   .slice(0, 2)
                   .join('')
                   .toUpperCase() || 'WK';
+                const workerAvatarUri =
+                  worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
+                const hasValidAvatar = Boolean(
+                  workerAvatarUri && !avatarErrors[worker.id]
+                );
 
                 return (
                   <View
@@ -1117,12 +1123,19 @@ Please dispatch assistance immediately!`;
                         onPress={() => handleOpenDetail(worker)}
                         style={styles.cardHeaderRow}
                       >
-                        {/* Avatar */}
+                        {/* Avatar inside Circular Frame with Golden/Orange Rim */}
                         <View style={styles.avatarContainer}>
-                          {worker.photo ? (
+                          {hasValidAvatar ? (
                             <Image
-                              source={{ uri: worker.photo }}
+                              source={{ uri: workerAvatarUri }}
                               style={styles.avatarImg}
+                              resizeMode="cover"
+                              onError={() => {
+                                setAvatarErrors((prev) => ({
+                                  ...prev,
+                                  [worker.id]: true
+                                }));
+                              }}
                             />
                           ) : (
                             <View style={styles.avatarInitialBox}>
@@ -1899,8 +1912,17 @@ Please dispatch assistance immediately!`;
           <View style={styles.profileCard}>
             <View style={styles.profileHeaderBanner}>
               <View style={styles.profileAvatarLarge}>
-                {regPhoto ? (
-                  <Image source={{ uri: regPhoto }} style={styles.profileAvatarImg} />
+                {regPhoto || currentUser?.profilePhoto || currentUser?.avatar ? (
+                  <Image
+                    source={{
+                      uri:
+                        regPhoto ||
+                        currentUser?.profilePhoto ||
+                        currentUser?.avatar
+                    }}
+                    style={styles.profileAvatarImg}
+                    resizeMode="cover"
+                  />
                 ) : (
                   <Text style={styles.profileAvatarText}>
                     {regName ? regName.slice(0, 2).toUpperCase() : 'QK'}
@@ -2129,7 +2151,7 @@ Please dispatch assistance immediately!`;
         }}
       >
         <SafeAreaView style={styles.authGateContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="#064e3b" />
+          <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
           <ScrollView
             contentContainerStyle={styles.authGateScroll}
             keyboardShouldPersistTaps="handled"
@@ -2137,7 +2159,11 @@ Please dispatch assistance immediately!`;
             {/* Top Hero Brand Header */}
             <View style={styles.authHeroHeader}>
               <View style={styles.authLogoBadge}>
-                <Text style={styles.authLogoText}>QK</Text>
+                <Image
+                  source={require('./assets/icon.png')}
+                  style={styles.authLogoImg}
+                  resizeMode="cover"
+                />
               </View>
               <Text style={styles.authAppTitle}>Quick Karya</Text>
               <Text style={styles.authAppSubtitle}>
@@ -2346,7 +2372,7 @@ Please dispatch assistance immediately!`;
       >
         {detailWorker && (
           <SafeAreaView style={styles.detailModalContainer}>
-            <StatusBar barStyle="light-content" backgroundColor="#064e3b" />
+            <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
             {/* Header */}
             <View style={styles.detailHeader}>
               <View style={styles.detailHeaderTop}>
@@ -2361,24 +2387,41 @@ Please dispatch assistance immediately!`;
               </View>
 
               <View style={styles.detailProfileRow}>
-                {detailWorker.photo ? (
-                  <Image
-                    source={{ uri: detailWorker.photo }}
-                    style={styles.detailAvatar}
-                  />
-                ) : (
-                  <View style={styles.detailAvatarInitial}>
-                    <Text style={styles.detailAvatarInitialText}>
-                      {detailWorker.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .join('')
-                        .toUpperCase() || 'WK'}
-                    </Text>
-                  </View>
-                )}
+                {(() => {
+                  const detailAvatarUri =
+                    detailWorker.photo ||
+                    detailWorker.avatar ||
+                    detailWorker.avatarUrl ||
+                    detailWorker.photoUrl;
+                  const hasValidDetailAvatar = Boolean(
+                    detailAvatarUri && !avatarErrors[detailWorker.id]
+                  );
+                  return hasValidDetailAvatar ? (
+                    <Image
+                      source={{ uri: detailAvatarUri }}
+                      style={styles.detailAvatar}
+                      resizeMode="cover"
+                      onError={() => {
+                        setAvatarErrors((prev) => ({
+                          ...prev,
+                          [detailWorker.id]: true
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <View style={styles.detailAvatarInitial}>
+                      <Text style={styles.detailAvatarInitialText}>
+                        {detailWorker.name
+                          .split(' ')
+                          .map((n) => n[0])
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .join('')
+                          .toUpperCase() || 'WK'}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 <View style={styles.detailNameCol}>
                   <Text style={styles.detailWorkerName} numberOfLines={1}>
@@ -2939,20 +2982,83 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#064e3b'
+    backgroundColor: '#001F3F'
+  },
+  splashFullScreen: {
+    flex: 1,
+    backgroundColor: '#001F3F',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  splashContent: {
+    alignItems: 'center',
+    paddingHorizontal: 32
+  },
+  splashEmblemRing: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 3,
+    borderColor: '#FFA500',
+    backgroundColor: '#00162e',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#FFA500',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8
+  },
+  splashEmblemImg: {
+    width: 134,
+    height: 134,
+    borderRadius: 67
+  },
+  splashTitle: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 1,
+    marginBottom: 6
+  },
+  splashSubtitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFD700',
+    letterSpacing: 2,
+    textAlign: 'center'
+  },
+  splashDivider: {
+    width: 60,
+    height: 3,
+    backgroundColor: '#FFA500',
+    borderRadius: 2,
+    marginVertical: 14
+  },
+  splashTagline: {
+    fontSize: 12,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginBottom: 24,
+    fontWeight: '500'
+  },
+  splashLoader: {
+    marginTop: 8
   },
   bodyFlex: {
     flex: 1
   },
   topEmergencyStrip: {
-    backgroundColor: '#022c22',
+    backgroundColor: '#00162e',
     paddingHorizontal: 16,
     paddingVertical: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(5, 150, 105, 0.3)'
+    borderBottomColor: 'rgba(255, 165, 0, 0.2)'
   },
   dotRow: {
     flexDirection: 'row',
@@ -2966,7 +3072,7 @@ const styles = StyleSheet.create({
     marginRight: 6
   },
   topStripText: {
-    color: '#a7f3d0',
+    color: '#cbd5e1',
     fontSize: 11,
     fontWeight: '500'
   },
@@ -2984,14 +3090,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   header: {
-    backgroundColor: '#064e3b',
+    backgroundColor: '#001F3F',
     paddingHorizontal: 16,
     paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#047857'
+    borderBottomColor: '#0a2e5c'
   },
   brandRow: {
     flexDirection: 'row',
@@ -3001,12 +3107,23 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: '#059669',
+    backgroundColor: '#001F3F',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
     borderWidth: 1.5,
-    borderColor: '#34d399'
+    borderColor: '#FFA500',
+    overflow: 'hidden'
+  },
+  headerLogoImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 8
+  },
+  authLogoImg: {
+    width: 66,
+    height: 66,
+    borderRadius: 18
   },
   logoBadgeText: {
     color: '#ffffff',
@@ -3020,18 +3137,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5
   },
   brandSubtitle: {
-    color: '#6ee7b7',
+    color: '#FFD700',
     fontSize: 9,
-    fontWeight: '600',
-    letterSpacing: 0.5
+    fontWeight: '900',
+    letterSpacing: 0.8
   },
   locationPill: {
-    backgroundColor: '#047857',
+    backgroundColor: '#0a2e5c',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#059669'
+    borderColor: '#1e4d8c'
   },
   locationPillText: {
     color: '#ffffff',
@@ -3041,46 +3158,46 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#065f46'
+    backgroundColor: '#001F3F'
   },
   searchInput: {
-    backgroundColor: '#064e3b',
+    backgroundColor: '#00162e',
     color: '#ffffff',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
     fontSize: 13,
     borderWidth: 1,
-    borderColor: '#047857'
+    borderColor: '#0a2e5c'
   },
   categoryContainer: {
-    backgroundColor: '#065f46',
+    backgroundColor: '#001F3F',
     paddingBottom: 10
   },
   categoryScroll: {
     paddingHorizontal: 16
   },
   categoryPill: {
-    backgroundColor: '#047857',
+    backgroundColor: '#0a2e5c',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: 'transparent'
+    borderColor: '#1e4d8c'
   },
   categoryPillActive: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff'
+    backgroundColor: '#FFA500',
+    borderColor: '#FFD700'
   },
   categoryPillText: {
-    color: '#a7f3d0',
+    color: '#cbd5e1',
     fontSize: 12,
     fontWeight: '600'
   },
   categoryPillTextActive: {
-    color: '#064e3b',
-    fontWeight: '800'
+    color: '#001F3F',
+    fontWeight: '900'
   },
   listContainer: {
     flex: 1,
@@ -3215,27 +3332,34 @@ const styles = StyleSheet.create({
     gap: 12
   },
   avatarContainer: {
-    position: 'relative'
+    position: 'relative',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 2,
+    borderColor: '#FFA500',
+    backgroundColor: '#001F3F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden'
   },
   avatarImg: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#e5e7eb'
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#001F3F'
   },
   avatarInitialBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#064e3b',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#001F3F',
     justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#047857'
+    alignItems: 'center'
   },
   avatarInitialText: {
-    color: '#ffffff',
-    fontSize: 18,
+    color: '#FFD700',
+    fontSize: 16,
     fontWeight: 'bold'
   },
   avatarOnlineDot: {
@@ -3393,7 +3517,7 @@ const styles = StyleSheet.create({
     color: '#9ca3af'
   },
   callNowButton: {
-    backgroundColor: '#064e3b',
+    backgroundColor: '#001F3F',
     borderRadius: 12,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -3793,24 +3917,24 @@ const styles = StyleSheet.create({
     elevation: 2
   },
   categoryChipUnselected: {
-    backgroundColor: '#FFD700',
+    backgroundColor: '#0a2e5c',
     borderWidth: 1.5,
-    borderColor: '#eab308'
+    borderColor: '#1e4d8c'
   },
   categoryChipActive: {
-    backgroundColor: '#064e3b',
+    backgroundColor: '#FFA500',
     borderWidth: 1.5,
-    borderColor: '#022c22'
+    borderColor: '#FFD700'
   },
   categoryChipText: {
     fontSize: 11,
     fontWeight: '700'
   },
   categoryChipTextUnselected: {
-    color: '#000000'
+    color: '#cbd5e1'
   },
   categoryChipTextActive: {
-    color: '#ffffff'
+    color: '#001F3F'
   },
   categoryTickIcon: {
     width: 15,
@@ -4483,7 +4607,7 @@ const styles = StyleSheet.create({
   /* AUTH GATE & ONBOARDING MODAL STYLES */
   authGateContainer: {
     flex: 1,
-    backgroundColor: '#064e3b'
+    backgroundColor: '#001F3F'
   },
   authGateScroll: {
     flexGrow: 1,
@@ -4495,14 +4619,15 @@ const styles = StyleSheet.create({
     marginBottom: 20
   },
   authLogoBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    backgroundColor: '#059669',
+    width: 68,
+    height: 68,
+    borderRadius: 20,
+    backgroundColor: '#001F3F',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#34d399',
+    borderColor: '#FFA500',
+    overflow: 'hidden',
     marginBottom: 10
   },
   authLogoText: {
@@ -4517,10 +4642,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5
   },
   authAppSubtitle: {
-    color: '#6ee7b7',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.2,
     marginTop: 2
   },
   authTrustBadgeRow: {
@@ -4529,15 +4654,15 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
   authTrustBadge: {
-    backgroundColor: 'rgba(5, 150, 105, 0.4)',
-    color: '#a7f3d0',
+    backgroundColor: '#0a2e5c',
+    color: '#FFD700',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.3)'
+    borderColor: '#1e4d8c'
   },
   authCard: {
     backgroundColor: '#ffffff',
@@ -4645,23 +4770,23 @@ const styles = StyleSheet.create({
   authOtpInput: {
     backgroundColor: '#f9fafb',
     borderWidth: 2,
-    borderColor: '#059669',
+    borderColor: '#FFA500',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 22,
-    color: '#064e3b',
+    color: '#001F3F',
     fontWeight: '800',
     letterSpacing: 8,
     textAlign: 'center'
   },
   authPrimaryBtn: {
-    backgroundColor: '#064e3b',
+    backgroundColor: '#001F3F',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 6,
-    shadowColor: '#064e3b',
+    shadowColor: '#001F3F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -4827,7 +4952,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb'
   },
   detailHeader: {
-    backgroundColor: '#064e3b',
+    backgroundColor: '#001F3F',
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'android' ? 12 : 8,
     paddingBottom: 16
@@ -4852,7 +4977,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   detailHeaderBadge: {
-    color: '#a7f3d0',
+    color: '#FFD700',
     fontSize: 12,
     fontWeight: '700'
   },
@@ -4864,22 +4989,23 @@ const styles = StyleSheet.create({
   detailAvatar: {
     width: 64,
     height: 64,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: '#34d399'
+    borderRadius: 32,
+    borderWidth: 2.5,
+    borderColor: '#FFA500',
+    backgroundColor: '#001F3F'
   },
   detailAvatarInitial: {
     width: 64,
     height: 64,
-    borderRadius: 18,
-    backgroundColor: '#047857',
-    borderWidth: 2,
-    borderColor: '#34d399',
+    borderRadius: 32,
+    backgroundColor: '#001F3F',
+    borderWidth: 2.5,
+    borderColor: '#FFA500',
     justifyContent: 'center',
     alignItems: 'center'
   },
   detailAvatarInitialText: {
-    color: '#ffffff',
+    color: '#FFD700',
     fontSize: 22,
     fontWeight: 'bold'
   },

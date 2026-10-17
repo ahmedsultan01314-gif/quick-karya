@@ -74,6 +74,7 @@ export interface WorkerProfile {
   vehicleType?: DriverVehicleType; // mandatory when category is 'Driver'
   subRole?: string; // sub-role e.g. 'Laundry Person', 'Ironing', 'Waiter', 'Housekeeping', 'Chef/Cook', 'Receptionist', 'Helper'
   lateNightAvailable?: boolean;
+  emergencyAvailable?: boolean;
   nightRates?: NightRateConfig;
   phone: string;
   city: string;

@@ -51,7 +51,7 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
         className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-emerald-900/10 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Top Header */}
-        <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-emerald-800 p-5 text-white relative">
+        <div className="bg-gradient-to-r from-[#001428] via-[#001F3F] to-[#002b57] p-5 text-white relative border-b border-[#0a2e5c]">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 bg-black/30 hover:bg-black/50 text-white p-1.5 rounded-full cursor-pointer transition-colors"
@@ -60,22 +60,26 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
           </button>
 
           <div className="flex items-center gap-4">
-            {/* Worker Avatar / Photo */}
-            <div className="relative shrink-0">
-              {worker.photo ? (
-                <img
-                  src={worker.photo}
-                  alt={worker.name}
-                  referrerPolicy="no-referrer"
-                  className="w-18 h-18 rounded-2xl object-cover border-2 border-emerald-400 shadow-md"
-                />
-              ) : (
-                <div className="w-18 h-18 rounded-2xl bg-emerald-800 border-2 border-emerald-400/50 flex items-center justify-center font-bold text-xl text-white shadow-md">
-                  {initials}
-                </div>
-              )}
+            {/* Worker Avatar / Photo inside Circular Frame with Orange Rim */}
+            <div className="relative shrink-0 w-18 h-18 rounded-full bg-[#001F3F] border-2 border-[#FFA500] shadow-md overflow-hidden flex items-center justify-center">
+              {(() => {
+                const avatarUrl = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
+                return avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={worker.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full rounded-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <span className="font-black text-xl text-amber-300">{initials}</span>
+                );
+              })()}
               {worker.available && (
-                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
+                <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white z-10" />
               )}
             </div>
 
@@ -228,8 +232,9 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
         <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center gap-2">
           <button
             onClick={() => onOpenRating(worker)}
-            className="flex-1 py-3 px-3 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-amber-300 shadow-xs"
+            className="flex-1 py-3 px-3 bg-amber-50 hover:bg-amber-100 text-[#001F3F] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border-2 border-[#FFA500] hover:border-[#FFD700] shadow-xs active:scale-[0.98]"
           >
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
             <span>Rate Artisan ⭐</span>
           </button>
           <button
@@ -237,9 +242,9 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
               onClose();
               onCallWorker(worker);
             }}
-            className="flex-1 py-3 px-3 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            className="flex-1 py-3 px-3 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-[0.98]"
           >
-            <Phone className="w-3.5 h-3.5 fill-current" />
+            <Phone className="w-3.5 h-3.5 fill-current text-amber-400" />
             <span>Call Worker</span>
           </button>
         </div>

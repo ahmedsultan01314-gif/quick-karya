@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { WorkerProfile } from '../types';
 import { Phone, Star, ShieldCheck, MapPin, Briefcase, Zap, Info } from 'lucide-react';
 import { formatDistance } from '../utils/geo';
@@ -27,6 +27,8 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
     .slice(0, 2)
     .join('')
     .toUpperCase();
+
+  const [imgError, setImgError] = useState(false);
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent triggering if clicked button
@@ -65,17 +67,15 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
             return (
               <div
                 id={`worker-avatar-${worker.id}`}
-                className="relative shrink-0 w-13 h-13 rounded-full bg-[#001F3F] text-amber-300 flex items-center justify-center font-black text-base shadow-md border-2 border-amber-400/80 overflow-hidden ring-1 ring-amber-500/30"
+                className="relative shrink-0 w-13 h-13 rounded-full bg-[#001F3F] text-amber-300 flex items-center justify-center font-black text-base shadow-md border-2 border-[#FFA500] overflow-hidden ring-1 ring-amber-500/30"
               >
-                {avatarUrl ? (
+                {avatarUrl && !imgError ? (
                   <img
                     src={avatarUrl}
                     alt={worker.name}
                     referrerPolicy="no-referrer"
                     className="w-full h-full rounded-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLElement).style.display = 'none';
-                    }}
+                    onError={() => setImgError(true)}
                   />
                 ) : (
                   <span>{initials || 'WK'}</span>
