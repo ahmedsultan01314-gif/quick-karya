@@ -170,15 +170,20 @@ function NativeApp() {
     setAuthLoading(true);
 
     try {
-      // Direct Firebase Phone Authentication native dispatch
-      await sendFirebasePhoneOtp(clean);
-      setAuthSuccessMsg(`SMS verification code dispatched via Firebase Phone Auth to +91 ${clean}.`);
-      setLoginOtp(''); // Strictly empty, requiring real SMS verification code from SMS inbox
+      // Optional non-blocking background dispatch via Firebase Phone Auth if enabled
+      sendFirebasePhoneOtp(clean).catch((fbErr) => {
+        console.log('Firebase background Phone Auth notice (using Demo OTP):', fbErr?.message || fbErr);
+      });
+
+      // Restore Demo Auto-Fill OTP Mode: Auto-fill '123456' immediately
+      setLoginOtp('123456');
+      setAuthSuccessMsg(`Demo Mode: 123456 auto-filled for +91 ${clean}. Press Verify to continue.`);
       setAuthStep('otp');
-      setOtpCooldown(60);
-    } catch (err: any) {
-      console.warn('Firebase Phone Auth send error:', err?.message || err);
-      setAuthError(err?.message || 'Error dispatching SMS code via Firebase Phone Auth.');
+      setOtpCooldown(30);
+    } catch {
+      setLoginOtp('123456');
+      setAuthSuccessMsg(`Demo Mode: 123456 auto-filled. Press Verify to continue.`);
+      setAuthStep('otp');
     } finally {
       setAuthLoading(false);
     }
@@ -186,7 +191,8 @@ function NativeApp() {
 
   const handleNativeVerifyOtp = async () => {
     setAuthError(null);
-    if (!loginOtp.trim() || loginOtp.trim().length !== 6) {
+    const enteredOtp = loginOtp.trim();
+    if (!enteredOtp || enteredOtp.length !== 6) {
       setAuthError('Please enter the 6-digit OTP code.');
       return;
     }
@@ -195,14 +201,20 @@ function NativeApp() {
     const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
 
     try {
-      // Direct Firebase Phone Authentication verification
-      const firebaseUser = await verifyFirebasePhoneOtp(loginOtp.trim());
-      if (!firebaseUser?.uid) {
-        throw new Error('Verification failed. Invalid OTP response.');
+      let uid = `usr_${clean}_${Date.now().toString(36)}`;
+
+      // Attempt Firebase verification if session is active
+      try {
+        const firebaseUser = await verifyFirebasePhoneOtp(enteredOtp);
+        if (firebaseUser?.uid) {
+          uid = firebaseUser.uid;
+        }
+      } catch {
+        // Demo mode accepts 123456 or any 6-digit entered OTP
       }
 
       const verifiedUserObj: AppUser = {
-        id: firebaseUser.uid,
+        id: uid,
         phone: `+91 ${clean}`,
         name: loginName.trim(),
         role: 'customer',
@@ -210,13 +222,12 @@ function NativeApp() {
         createdAt: new Date().toISOString()
       };
 
-      // Persist directly to Cloud Firestore
+      // Persist directly to Cloud Firestore & session
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
 
       setPendingVerifiedUser(verifiedUserObj);
       setAuthStep('role_selection');
     } catch (err: any) {
-      console.warn('Firebase Phone Auth verify error:', err?.message || err);
       setAuthError(err?.message || 'Verification failed. Please check your code and try again.');
     } finally {
       setAuthLoading(false);

@@ -77,25 +77,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true);
     try {
-      // Connect send-OTP button directly to Firebase Phone Authentication
-      await sendFirebasePhoneOtp(clean);
+      // Optional non-blocking background dispatch via Firebase Phone Auth if enabled
+      sendFirebasePhoneOtp(clean).catch((fbErr) => {
+        console.log('Firebase background Phone Auth notice (using Demo OTP):', fbErr?.message || fbErr);
+      });
+
+      // Restore Demo Auto-Fill OTP Mode: Auto-fill '123456' immediately
+      setOtp('123456');
+      setSuccessMsg(`Demo Mode: 123456 auto-filled for +91 ${clean}. Click Verify to continue.`);
       setStep('otp');
-      setResendCooldown(60);
-      setSuccessMsg(`SMS verification code dispatched via Firebase Phone Auth to +91 ${clean}.`);
-      setOtp('');
-    } catch (err: any) {
-      console.warn('Firebase Phone Auth send error:', err?.message || err);
-      setError(err?.message || 'Error dispatching SMS code via Firebase Phone Auth.');
+      setResendCooldown(30);
+    } catch {
+      setOtp('123456');
+      setSuccessMsg(`Demo Mode: 123456 auto-filled. Click Verify to continue.`);
+      setStep('otp');
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. Verify OTP directly via Firebase Phone Authentication
+  // 2. Verify OTP
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!otp.trim()) {
+    const enteredOtp = otp.trim();
+    if (!enteredOtp || enteredOtp.length !== 6) {
       setError('Please enter the 6-digit OTP');
       return;
     }
@@ -103,14 +109,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     try {
       const clean = phone.replace(/[^0-9]/g, '').slice(-10);
-      // Connect verify directly to Firebase Phone Authentication
-      const firebaseUser = await verifyFirebasePhoneOtp(otp.trim());
-      if (!firebaseUser?.uid) {
-        throw new Error('Verification failed. Invalid OTP response.');
+      let uid = `usr_${clean}_${Date.now().toString(36)}`;
+
+      // Attempt Firebase verification if session is active
+      try {
+        const firebaseUser = await verifyFirebasePhoneOtp(enteredOtp);
+        if (firebaseUser?.uid) {
+          uid = firebaseUser.uid;
+        }
+      } catch {
+        // Demo mode accepts 123456 or any valid 6-digit OTP
       }
 
       const appUser: AppUser = {
-        id: firebaseUser.uid,
+        id: uid,
         phone: `+91 ${clean}`,
         name: name.trim(),
         role: 'customer',
@@ -125,7 +137,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setStep('role_selection');
       setError(null);
     } catch (err: any) {
-      console.warn('Firebase Phone Auth verify error:', err?.message || err);
       setError(err?.message || 'Verification failed. Please check your code and try again.');
     } finally {
       setLoading(false);
