@@ -113,15 +113,19 @@ function NativeApp() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Check persistent session on initial mount
+  // Check persistent session on initial mount: Never ask for phone number again if verified
   useEffect(() => {
     const checkUserSession = async () => {
       try {
-        const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        let stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY).catch(() => null);
+        if (!stored && typeof localStorage !== 'undefined') {
+          stored = localStorage.getItem('quick_karya_user') || localStorage.getItem(AUTH_STORAGE_KEY);
+        }
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (parsed?.phone && parsed?.verified) {
+          if (parsed?.phone && parsed?.verified !== false) {
             setCurrentUser(parsed);
+            setIsAuthModalOpen(false); // Explicitly ensure auth modal is CLOSED
             if (parsed.name) setRegName(parsed.name);
             if (parsed.phone) {
               setRegPhone(parsed.phone.replace(/[^0-9]/g, '').slice(-10));
@@ -129,13 +133,13 @@ function NativeApp() {
             if (parsed.profilePhoto || parsed.avatar) {
               setRegPhoto(parsed.profilePhoto || parsed.avatar);
             }
-            return;
+            return; // Launch directly into main Home Directory screen
           }
         }
       } catch (err) {
         console.warn('Session check error:', err);
       }
-      // Mandatory Startup Gate: No verified session exists
+      // Mandatory Startup Gate: Only for brand-new users on first run with zero stored session
       setIsAuthModalOpen(true);
       setAuthStep('phone');
     };
@@ -222,7 +226,13 @@ function NativeApp() {
         createdAt: new Date().toISOString()
       };
 
-      // Persist directly to Cloud Firestore & session
+      // Persist directly to local storage & Cloud Firestore immediately
+      setCurrentUser(verifiedUserObj);
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj)).catch(() => {});
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('quick_karya_user', JSON.stringify(verifiedUserObj));
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj));
+      }
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
 
       setPendingVerifiedUser(verifiedUserObj);
@@ -244,7 +254,8 @@ function NativeApp() {
       role,
       workerId,
       name: loginName.trim() || pendingVerifiedUser.name,
-      phone: `+91 ${clean}`
+      phone: `+91 ${clean}`,
+      verified: true
     };
 
     setCurrentUser(finalUser);
@@ -254,6 +265,10 @@ function NativeApp() {
     try {
       await saveUserToCloud(finalUser);
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalUser));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('quick_karya_user', JSON.stringify(finalUser));
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalUser));
+      }
     } catch (e) {
       console.warn('User session save error:', e);
     }
@@ -536,7 +551,9 @@ Please dispatch assistance immediately!`;
             const clean = parsed.filter(
               (w) =>
                 !w.name?.toLowerCase().includes('kastu') &&
-                !w.name?.toLowerCase().includes('santirkey')
+                !w.name?.toLowerCase().includes('santirkey') &&
+                !w.name?.toLowerCase().includes('mujib') &&
+                w.id !== 'w-local-1791669750641'
             );
             setWorkers(clean);
             if (clean.length !== parsed.length) {
@@ -557,7 +574,9 @@ Please dispatch assistance immediately!`;
           const clean = cloudWorkers.filter(
             (w) =>
               !w.name?.toLowerCase().includes('kastu') &&
-              !w.name?.toLowerCase().includes('santirkey')
+              !w.name?.toLowerCase().includes('santirkey') &&
+              !w.name?.toLowerCase().includes('mujib') &&
+              w.id !== 'w-local-1791669750641'
           );
           setWorkers(clean);
           // Persist to local offline cache
@@ -1403,10 +1422,21 @@ Please dispatch assistance immediately!`;
 
       {/* TAB 3: WORKER ONBOARDING / REGISTRATION (PURE DIRECTORY FIELDS ONLY) */}
       {activeTab === 'register' && (
-        <ScrollView
-          style={styles.listContainer}
-          contentContainerStyle={styles.listContent}
-        >
+        <View style={styles.tabScreenWrapper}>
+          {/* Instagram-Style Navigation Header with Bold Done Action Button */}
+          <View style={styles.instaHeaderBar}>
+            <TouchableOpacity onPress={() => setActiveTab('home')} style={styles.instaHeaderLeftBtn} activeOpacity={0.7}>
+              <Text style={styles.instaHeaderBackText}>‹ Home</Text>
+            </TouchableOpacity>
+            <Text style={styles.instaHeaderTitle}>Register Artisan</Text>
+            <TouchableOpacity onPress={handleRegisterSubmit} style={styles.instaHeaderDoneBtn} activeOpacity={0.8}>
+              <Text style={styles.instaHeaderDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={styles.listContainer}
+            contentContainerStyle={styles.listContent}
+          >
           {regSuccessWorker ? (
             /* SUCCESS CONFIRMATION CARD */
             <View style={styles.successCard}>
@@ -1896,14 +1926,33 @@ Please dispatch assistance immediately!`;
             </View>
           </Modal>
         </ScrollView>
+      </View>
       )}
 
       {/* TAB 4: MY PROFILE (PERMANENT WORKER ID & VERIFIED SESSION) */}
       {activeTab === 'profile' && (
-        <ScrollView
-          style={styles.listContainer}
-          contentContainerStyle={styles.listContent}
-        >
+        <View style={styles.tabScreenWrapper}>
+          {/* Instagram-Style Navigation Header with Bold Done Action Button */}
+          <View style={styles.instaHeaderBar}>
+            <TouchableOpacity onPress={() => setActiveTab('home')} style={styles.instaHeaderLeftBtn} activeOpacity={0.7}>
+              <Text style={styles.instaHeaderBackText}>‹ Home</Text>
+            </TouchableOpacity>
+            <Text style={styles.instaHeaderTitle}>Profile</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert('Profile Saved', '✓ Your profile details are up to date.');
+                setActiveTab('home');
+              }}
+              style={styles.instaHeaderDoneBtn}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.instaHeaderDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={styles.listContainer}
+            contentContainerStyle={styles.listContent}
+          >
           {/* Profile Header Banner */}
           <View style={styles.profileCard}>
             <View style={styles.profileHeaderBanner}>
@@ -1997,6 +2046,7 @@ Please dispatch assistance immediately!`;
             </TouchableOpacity>
           </View>
         </ScrollView>
+      </View>
       )}
 
       {/* FIXED BOTTOM NAVIGATION BAR */}
@@ -2979,6 +3029,52 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#001F3F'
+  },
+  tabScreenWrapper: {
+    flex: 1,
+    backgroundColor: '#001F3F'
+  },
+  instaHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#001933',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 165, 0, 0.25)'
+  },
+  instaHeaderLeftBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8
+  },
+  instaHeaderBackText: {
+    color: '#FFD700',
+    fontSize: 15,
+    fontWeight: '600'
+  },
+  instaHeaderTitle: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3
+  },
+  instaHeaderDoneBtn: {
+    backgroundColor: '#FFA500',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 18,
+    shadowColor: '#FFA500',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 3
+  },
+  instaHeaderDoneText: {
+    color: '#001F3F',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5
   },
   splashFullScreen: {
     flex: 1,

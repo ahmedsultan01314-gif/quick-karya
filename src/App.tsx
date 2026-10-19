@@ -51,8 +51,9 @@ export default function App() {
       const stored = localStorage.getItem('quick_karya_user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.phone && parsed?.verified) {
+        if (parsed?.phone && parsed?.verified !== false) {
           setCurrentUser(parsed);
+          setIsAuthModalOpen(false);
           return;
         }
       }
@@ -104,7 +105,9 @@ export default function App() {
         const clean = data.filter(
           (w) =>
             !w.name?.toLowerCase().includes('kastu') &&
-            !w.name?.toLowerCase().includes('santirkey')
+            !w.name?.toLowerCase().includes('santirkey') &&
+            !w.name?.toLowerCase().includes('mujib') &&
+            w.id !== 'w-local-1791669750641'
         );
         setWorkers(clean);
       }

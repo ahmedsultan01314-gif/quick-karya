@@ -42,7 +42,9 @@ try {
       workers = cloudWorkers.filter(
         (w) =>
           !w.name?.toLowerCase().includes('kastu') &&
-          !w.name?.toLowerCase().includes('santirkey')
+          !w.name?.toLowerCase().includes('santirkey') &&
+          !w.name?.toLowerCase().includes('mujib') &&
+          w.id !== 'w-local-1791669750641'
       );
     },
     (err) => {
@@ -413,10 +415,10 @@ app.post('/api/notifications/notify-worker', async (req, res) => {
   const callerName = customerName?.trim() || 'Customer';
   const callerPhone = customerPhone?.trim() || 'Mobile Caller';
 
-  // Exact requested notification format:
-  // "Quick Karya: New call request from [Customer Name] ([Customer Phone])"
+  // Exact requested push notification alert:
+  // "New Customer Call Alert: A client from Quick Karya is calling you for work!"
   const notificationTitle = 'Quick Karya';
-  const notificationBody = `Quick Karya: New call request from ${callerName} (${callerPhone})`;
+  const notificationBody = 'New Customer Call Alert: A client from Quick Karya is calling you for work!';
 
   // Lookup target worker's registered FCM / Expo device token
   let targetToken = (workerId && deviceTokenStore.get(workerId)) || (cleanWorkerPhone && deviceTokenStore.get(cleanWorkerPhone));

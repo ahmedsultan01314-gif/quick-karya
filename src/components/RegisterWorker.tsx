@@ -401,6 +401,21 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
 
   return (
     <div className="pb-24 pt-2 space-y-4">
+      {/* Instagram-Style Navigation Bar with bold 'Done' action button */}
+      <div className="flex items-center justify-between px-3 py-2.5 bg-[#001933] border border-[#FFA500]/30 rounded-2xl shadow-sm text-white">
+        <span className="text-xs font-semibold text-[#FFD700]">Directory</span>
+        <h2 className="text-sm font-bold text-white tracking-wide">Register Artisan</h2>
+        <button
+          type="button"
+          onClick={() => {
+            const form = document.querySelector('form');
+            if (form) form.requestSubmit();
+          }}
+          className="text-xs font-extrabold text-[#001F3F] bg-[#FFA500] hover:bg-[#FF8C00] px-4 py-1.5 rounded-full cursor-pointer shadow-md transition-all active:scale-95"
+        >
+          Done
+        </button>
+      </div>
       {/* Banner */}
       <div className="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">
         <div className="flex items-center gap-3">

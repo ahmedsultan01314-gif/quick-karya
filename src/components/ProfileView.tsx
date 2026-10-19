@@ -164,6 +164,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   return (
     <div id="my-profile-container" className="space-y-4 pb-12 animate-in fade-in duration-150">
+      {/* Instagram-Style Navigation Header with bold 'Done' action button */}
+      <div className="flex items-center justify-between px-3 py-2.5 bg-[#001933] border border-[#FFA500]/30 rounded-2xl shadow-sm text-white">
+        <span className="text-xs font-semibold text-[#FFD700]">Account</span>
+        <h2 className="text-sm font-bold text-white tracking-wide">My Profile</h2>
+        <button
+          type="button"
+          onClick={(e) => {
+            if (isEditingPhoto) {
+              if (photoUrlInput.trim()) {
+                handleUpdatePhoto(e);
+              } else {
+                setIsEditingPhoto(false);
+              }
+            } else {
+              alert('✓ Profile settings are up to date.');
+            }
+          }}
+          className="text-xs font-extrabold text-[#001F3F] bg-[#FFA500] hover:bg-[#FF8C00] px-4 py-1.5 rounded-full cursor-pointer shadow-md transition-all active:scale-95"
+        >
+          Done
+        </button>
+      </div>
       {/* Profile Card Header */}
       <div className="bg-white rounded-2xl border border-emerald-900/10 shadow-xs overflow-hidden">
         <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-950 p-5 text-white">

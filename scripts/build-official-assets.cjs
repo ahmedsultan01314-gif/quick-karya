@@ -47,9 +47,12 @@ console.log('Favicon generated');
 // 3. Full-Bleed Adaptive Icon (1024x1024)
 // Full-bleed edge-to-edge foreground image without squircle borders or excess transparent padding
 const adaptiveIconPath = path.join(assetsDir, 'adaptive-icon.png');
+const watermarkedIconPath = path.join(assetsDir, 'watermarked_img_14700063438706443329.png');
 execSync(`convert "${masterPng}" -resize 1024x1024 "${adaptiveIconPath}"`);
+fs.copyFileSync(adaptiveIconPath, watermarkedIconPath);
 fs.copyFileSync(adaptiveIconPath, path.join(publicAssetsDir, 'adaptive-icon.png'));
-console.log('Full-bleed adaptive icon generated');
+fs.copyFileSync(adaptiveIconPath, path.join(publicAssetsDir, 'watermarked_img_14700063438706443329.png'));
+console.log('Full-bleed adaptive icon generated at watermarked_img_14700063438706443329.png');
 
 // 4. Splash Screen (1242x2436)
 // Solid Deep Navy Blue #001F3F with official emblem centered

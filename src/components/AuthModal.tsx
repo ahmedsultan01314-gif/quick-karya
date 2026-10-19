@@ -130,8 +130,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         createdAt: new Date().toISOString()
       };
 
-      // Persist directly to Cloud Firestore
+      // Persist directly to Cloud Firestore & localStorage immediately
       await saveUserToCloud(appUser).catch((e) => console.warn('Firestore user save note:', e));
+      try {
+        localStorage.setItem('quick_karya_user', JSON.stringify(appUser));
+      } catch {}
 
       setVerifiedUser(appUser);
       setStep('role_selection');

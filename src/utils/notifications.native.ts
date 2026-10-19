@@ -106,6 +106,22 @@ export async function triggerCallWorkerNotification(
   const callerName = customerName || 'Customer';
   const callerPhone = customerPhone || '';
 
+  // Trigger banner event for immediate in-app feedback
+  const banner: NotificationBannerData = {
+    id: `call-alert-${Date.now()}`,
+    title: 'Quick Karya - Call Alert',
+    body: 'New Customer Call Alert: A client from Quick Karya is calling you for work!',
+    type: 'call',
+    timestamp: Date.now()
+  };
+  bannerListeners.forEach((fn) => {
+    try {
+      fn(banner);
+    } catch {
+      // ignore
+    }
+  });
+
   try {
     await fetch(getApiUrl('/api/notifications/notify-worker'), {
       method: 'POST',
