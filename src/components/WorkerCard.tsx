@@ -44,12 +44,12 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
       className={`rounded-2xl bg-white border transition-all duration-200 overflow-hidden shadow-xs hover:shadow-md cursor-pointer ${
         isEmergency
           ? 'border-amber-400/80 ring-1 ring-amber-300/40 bg-gradient-to-b from-amber-50/20 to-white'
-          : 'border-emerald-900/10 hover:border-emerald-700/40'
+          : 'border-gray-200 hover:border-[#FFA500]/50'
       }`}
     >
       {/* Top Banner for Emergency Highway Assistance */}
       {isEmergency && (
-        <div className="bg-gradient-to-r from-amber-600 to-emerald-800 text-white text-[11px] font-bold px-3 py-1 flex items-center justify-between tracking-wide">
+        <div className="bg-gradient-to-r from-[#001F3F] to-[#002d5c] text-white text-[11px] font-bold px-3 py-1 flex items-center justify-between tracking-wide">
           <span className="flex items-center gap-1">
             <Zap className="w-3.5 h-3.5 fill-white text-white" />
             24/7 RAPID HIGHWAY RESPONSE
@@ -83,7 +83,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
                 {worker.available && (
                   <span
                     title="Available Now"
-                    className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs z-10"
+                    className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#FFA500] border-2 border-white rounded-full shadow-xs z-10"
                   />
                 )}
               </div>
@@ -101,9 +101,9 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
                   <span
                     id={`verified-badge-${worker.id}`}
                     title="Quick Karya Verified Artisan"
-                    className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300 shrink-0"
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-100/80 text-[#001F3F] text-[10px] font-bold border border-amber-300 shrink-0"
                   >
-                    <ShieldCheck className="w-3 h-3 text-emerald-700" />
+                    <ShieldCheck className="w-3 h-3 text-[#FFA500]" />
                     Verified
                   </span>
                 )}
@@ -112,7 +112,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
 
             {/* Sub-role & Experience */}
             <div className="flex items-center gap-1.5 text-xs text-gray-600 mt-0.5 flex-wrap">
-              <span className="font-semibold text-emerald-900 bg-emerald-50 px-1.5 py-0.2 rounded text-[11px]">
+              <span className="font-semibold text-[#001F3F] bg-amber-50 px-1.5 py-0.2 rounded text-[11px]">
                 {worker.category}
               </span>
               {worker.subRole && (
@@ -131,7 +131,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
 
             {/* Location & GPS Proximity */}
             <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
-              <MapPin className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <MapPin className="w-3.5 h-3.5 text-[#FFA500] shrink-0" />
               <span className="truncate text-[11px]">
                 {worker.city}{worker.state ? `, ${worker.state}` : ''}
               </span>
@@ -141,7 +141,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
                   <span className="text-gray-300">•</span>
                   <span
                     id={`worker-distance-${worker.id}`}
-                    className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-emerald-100/70 text-emerald-900 font-bold text-[11px]"
+                    className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-100/80/70 text-[#001F3F] font-bold text-[11px]"
                   >
                     {formatDistance(worker.distanceKm)}
                   </span>
@@ -167,8 +167,8 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
           {/* Availability Status */}
           <div>
             {worker.available ? (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#001F3F] bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#FFA500] animate-pulse" />
                 Available Now
               </span>
             ) : (
@@ -220,9 +220,9 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
               e.stopPropagation();
               onCallNow(worker);
             }}
-            className="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white shadow-md transition-all active:scale-[0.98] cursor-pointer ring-1 ring-blue-900/50"
+            className="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#FFA500] hover:bg-[#FF8C00] active:bg-[#e07b00] text-[#001F3F] font-black shadow-md transition-all active:scale-[0.98] cursor-pointer"
           >
-            <Phone className="w-3.5 h-3.5 fill-current text-amber-400" />
+            <Phone className="w-3.5 h-3.5 fill-current text-[#001F3F]" />
             <span>Call Worker</span>
           </button>
         </div>

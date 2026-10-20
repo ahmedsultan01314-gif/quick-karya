@@ -47,9 +47,9 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search by worker, skill, or area (e.g. Agartala, Plumber)..."
-          className="w-full pl-9 pr-8 py-2.5 rounded-2xl bg-white border border-emerald-950/15 shadow-xs text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-700 focus:border-transparent transition-all"
+          className="w-full pl-9 pr-8 py-2.5 rounded-2xl bg-white border border-gray-200 shadow-xs text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#001F3F] focus:border-transparent transition-all"
         />
-        <Search className="w-4 h-4 text-emerald-800 absolute left-3 top-3" />
+        <Search className="w-4 h-4 text-[#001F3F] absolute left-3 top-3" />
         {searchQuery && (
           <button
             id="clear-search-btn"
@@ -69,8 +69,8 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           onClick={onRequestLiveGps}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
             userLocation.isLiveGps
-              ? 'bg-emerald-800 text-white shadow-xs'
-              : 'bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100'
+              ? 'bg-[#001F3F] text-white shadow-xs'
+              : 'bg-amber-50 text-[#001F3F] border border-amber-300 hover:bg-amber-100'
           }`}
         >
           <Navigation className={`w-3.5 h-3.5 ${userLocation.isLiveGps ? 'fill-white' : ''}`} />
@@ -86,8 +86,8 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           }}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
             !userLocation.isLiveGps && userLocation.city === 'Agartala'
-              ? 'bg-emerald-800 text-white font-semibold'
-              : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50 hover:text-emerald-900'
+              ? 'bg-[#001F3F] text-white font-semibold'
+              : 'bg-white border border-gray-200 text-gray-700 hover:bg-amber-50 hover:text-[#001F3F]'
           }`}
         >
           Agartala, Tripura
@@ -101,8 +101,8 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           }}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
             !userLocation.isLiveGps && userLocation.city === 'Bengaluru'
-              ? 'bg-emerald-800 text-white font-semibold'
-              : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50 hover:text-emerald-900'
+              ? 'bg-[#001F3F] text-white font-semibold'
+              : 'bg-white border border-gray-200 text-gray-700 hover:bg-amber-50 hover:text-[#001F3F]'
           }`}
         >
           Bengaluru
@@ -116,8 +116,8 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           }}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
             !userLocation.isLiveGps && userLocation.city === 'Delhi'
-              ? 'bg-emerald-800 text-white font-semibold'
-              : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50 hover:text-emerald-900'
+              ? 'bg-[#001F3F] text-white font-semibold'
+              : 'bg-white border border-gray-200 text-gray-700 hover:bg-amber-50 hover:text-[#001F3F]'
           }`}
         >
           Delhi NCR
@@ -131,8 +131,8 @@ export const LocationBar: React.FC<LocationBarProps> = ({
           }}
           className={`px-2.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
             !userLocation.isLiveGps && userLocation.city === 'Mumbai'
-              ? 'bg-emerald-800 text-white font-semibold'
-              : 'bg-white border border-gray-200 text-gray-700 hover:bg-emerald-50 hover:text-emerald-900'
+              ? 'bg-[#001F3F] text-white font-semibold'
+              : 'bg-white border border-gray-200 text-gray-700 hover:bg-amber-50 hover:text-[#001F3F]'
           }`}
         >
           Mumbai
@@ -140,9 +140,9 @@ export const LocationBar: React.FC<LocationBarProps> = ({
       </div>
 
       {/* Proximity Sorting Notification */}
-      <div className="flex items-center justify-between text-[11px] text-emerald-900/80 px-1">
+      <div className="flex items-center justify-between text-[11px] text-[#001F3F]/80 px-1">
         <span className="flex items-center gap-1 font-medium">
-          <Compass className="w-3.5 h-3.5 text-emerald-700" />
+          <Compass className="w-3.5 h-3.5 text-[#FFA500]" />
           <span>Showing nearest verified providers first</span>
         </span>
 

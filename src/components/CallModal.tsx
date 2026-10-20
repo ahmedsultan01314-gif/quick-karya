@@ -407,7 +407,7 @@ export const CallModal: React.FC<CallModalProps> = ({
                     placeholder="Enter pickup address, landmark, or street name..."
                     className="w-full pl-8 pr-3 py-2 text-xs bg-white rounded-xl border border-emerald-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs font-medium"
                   />
-                  <MapPin className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5 top-2.5" />
+                  <MapPin className="w-3.5 h-3.5 text-[#001F3F] absolute left-2.5 top-2.5" />
                 </div>
               </div>
 
@@ -597,7 +597,7 @@ export const CallModal: React.FC<CallModalProps> = ({
             >
               {copiedSummary ? (
                 <>
-                  <Check className="w-4 h-4 text-emerald-600" />
+                  <Check className="w-4 h-4 text-[#FFA500]" />
                   <span className="text-emerald-700">Copied Details!</span>
                 </>
               ) : (

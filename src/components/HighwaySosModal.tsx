@@ -109,7 +109,7 @@ Please dispatch assistance immediately!`;
       phone: '+919862154323',
       dispatchTime: 'Rapid Canister Delivery',
       icon: Fuel,
-      color: 'emerald'
+      color: 'amber'
     }
   ];
 
@@ -179,7 +179,7 @@ Please dispatch assistance immediately!`;
                 onClick={copyCoordinates}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-200/80 hover:bg-amber-300 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
               >
-                {copiedCoords ? <Check className="w-3 h-3 text-emerald-700" /> : <Copy className="w-3 h-3" />}
+                {copiedCoords ? <Check className="w-3 h-3 text-[#FFA500]" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedCoords ? 'Copied!' : 'Copy GPS'}</span>
               </button>
             </div>
@@ -242,7 +242,7 @@ Please dispatch assistance immediately!`;
                     <button
                       type="button"
                       onClick={() => handleSosWhatsApp(srv.phone, srv.title)}
-                      className="py-2.5 px-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                      className="py-2.5 px-3 bg-[#FFA500] hover:bg-[#FF8C00] active:bg-[#e07b00] text-[#001F3F] font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-colors cursor-pointer"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                       <span>WhatsApp SOS</span>
@@ -259,7 +259,7 @@ Please dispatch assistance immediately!`;
               <span className="font-bold text-gray-700">
                 Independent Highway Rescue Artisans ({emergencyWorkers.length})
               </span>
-              <span className="text-[10px] text-emerald-800 font-semibold">100% Genuine Direct Contacts</span>
+              <span className="text-[10px] text-[#001F3F] font-semibold">100% Genuine Direct Contacts</span>
             </div>
 
             {emergencyWorkers.length > 0 ? (
@@ -278,7 +278,7 @@ Please dispatch assistance immediately!`;
                     <button
                       type="button"
                       onClick={() => onCallWorker(w)}
-                      className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 bg-[#FFA500] hover:bg-[#FF8C00] text-[#001F3F] text-xs font-black rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <Phone className="w-3 h-3" />
                       <span>Call Artisan</span>
@@ -289,7 +289,7 @@ Please dispatch assistance immediately!`;
             ) : (
               /* Clean Empty State - Zero fake/dummy listings */
               <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 text-center space-y-1.5">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto text-sm font-bold">
+                <div className="w-8 h-8 rounded-full bg-amber-100 text-[#001F3F] flex items-center justify-center mx-auto text-sm font-bold">
                   ✓
                 </div>
                 <div className="text-xs font-bold text-gray-800">

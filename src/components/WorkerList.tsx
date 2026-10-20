@@ -109,7 +109,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs px-1">
           <span className="font-bold text-gray-700 flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5 text-emerald-800" />
+            <Filter className="w-3.5 h-3.5 text-[#001F3F]" />
             Category Filter
           </span>
           {selectedCategory !== 'All' && (
@@ -118,7 +118,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 onSelectCategory('All');
                 setDriverSubFilter('all');
               }}
-              className="text-[11px] text-emerald-800 hover:text-emerald-950 font-semibold cursor-pointer"
+              className="text-[11px] text-[#001F3F] hover:text-[#001F3F] font-semibold cursor-pointer"
             >
               Reset to All
             </button>
@@ -187,17 +187,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
       {selectedCategory === 'Driver' && (
         <div
           id="driver-specialization-filters"
-          className="bg-emerald-50/70 p-2.5 rounded-2xl border border-emerald-200 space-y-2 animate-in fade-in duration-200"
+          className="bg-amber-50/60 p-2.5 rounded-2xl border border-amber-200 space-y-2 animate-in fade-in duration-200"
         >
           <div className="flex items-center justify-between text-xs px-1">
-            <span className="font-bold text-emerald-950 flex items-center gap-1.5 text-[11px]">
-              <Truck className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="font-bold text-[#001F3F] flex items-center gap-1.5 text-[11px]">
+              <Truck className="w-3.5 h-3.5 text-[#FFA500]" />
               Driver Specialization / Vehicle Category:
             </span>
             {driverSubFilter !== 'all' && (
               <button
                 onClick={() => setDriverSubFilter('all')}
-                className="text-[10px] text-emerald-800 font-bold hover:underline cursor-pointer"
+                className="text-[10px] text-[#001F3F] font-bold hover:underline cursor-pointer"
               >
                 Show All ({driverWorkers.length})
               </button>
@@ -212,8 +212,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               onClick={() => setDriverSubFilter('all')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 driverSubFilter === 'all'
-                  ? 'bg-emerald-800 text-white shadow-xs'
-                  : 'bg-white border border-emerald-200 text-emerald-950 hover:bg-emerald-100/60'
+                  ? 'bg-[#001F3F] text-white shadow-xs'
+                  : 'bg-white border border-amber-200 text-[#001F3F] hover:bg-amber-100/60'
               }`}
             >
               <span>All Drivers</span>
@@ -221,7 +221,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                   driverSubFilter === 'all'
                     ? 'bg-white/20 text-white'
-                    : 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-[#001F3F]'
                 }`}
               >
                 {driverWorkers.length}
@@ -235,17 +235,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               onClick={() => setDriverSubFilter('personal')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 driverSubFilter === 'personal'
-                  ? 'bg-emerald-800 text-white shadow-xs'
-                  : 'bg-white border border-emerald-200 text-emerald-950 hover:bg-emerald-100/60'
+                  ? 'bg-[#001F3F] text-white shadow-xs'
+                  : 'bg-white border border-amber-200 text-[#001F3F] hover:bg-amber-100/60'
               }`}
             >
-              <Car className="w-3.5 h-3.5 text-emerald-600" />
+              <Car className="w-3.5 h-3.5 text-[#FFA500]" />
               <span>Personal &amp; Family Car</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                   driverSubFilter === 'personal'
                     ? 'bg-white/20 text-white'
-                    : 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-[#001F3F]'
                 }`}
               >
                 {personalDriversCount}
@@ -259,17 +259,17 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               onClick={() => setDriverSubFilter('commercial')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 driverSubFilter === 'commercial'
-                  ? 'bg-emerald-800 text-white shadow-xs'
-                  : 'bg-white border border-emerald-200 text-emerald-950 hover:bg-emerald-100/60'
+                  ? 'bg-[#001F3F] text-white shadow-xs'
+                  : 'bg-white border border-amber-200 text-[#001F3F] hover:bg-amber-100/60'
               }`}
             >
-              <Truck className="w-3.5 h-3.5 text-emerald-600" />
+              <Truck className="w-3.5 h-3.5 text-[#FFA500]" />
               <span>Commercial Freight &amp; Trucks</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                   driverSubFilter === 'commercial'
                     ? 'bg-white/20 text-white'
-                    : 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-[#001F3F]'
                 }`}
               >
                 {commercialDriversCount}
@@ -283,8 +283,8 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               onClick={() => setDriverSubFilter('heavy')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                 driverSubFilter === 'heavy'
-                  ? 'bg-emerald-800 text-white shadow-xs'
-                  : 'bg-white border border-emerald-200 text-emerald-950 hover:bg-emerald-100/60'
+                  ? 'bg-[#001F3F] text-white shadow-xs'
+                  : 'bg-white border border-amber-200 text-[#001F3F] hover:bg-amber-100/60'
               }`}
             >
               <HardHat className="w-3.5 h-3.5 text-amber-600" />
@@ -293,7 +293,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                   driverSubFilter === 'heavy'
                     ? 'bg-white/20 text-white'
-                    : 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-[#001F3F]'
                 }`}
               >
                 {heavyMachineryCount}
@@ -305,7 +305,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
 
       {/* Loading state */}
       {isLoading && (
-        <div className="py-12 flex flex-col items-center justify-center text-emerald-800 gap-2">
+        <div className="py-12 flex flex-col items-center justify-center text-[#001F3F] gap-2">
           <RefreshCw className="w-6 h-6 animate-spin" />
           <span className="text-xs font-semibold">Updating nearest providers...</span>
         </div>
@@ -332,7 +332,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
           id="no-workers-found-state"
           className="bg-white rounded-2xl p-6 border border-gray-200 text-center space-y-3 shadow-xs my-4"
         >
-          <div className="w-12 h-12 bg-emerald-50 text-emerald-800 rounded-full flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 bg-amber-50 text-[#001F3F] rounded-full flex items-center justify-center mx-auto">
             <Users className="w-6 h-6" />
           </div>
           <div>
@@ -354,7 +354,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
             {selectedCategory === 'Driver' && driverSubFilter !== 'all' ? (
               <button
                 onClick={() => setDriverSubFilter('all')}
-                className="w-full sm:w-auto px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-xs"
+                className="w-full sm:w-auto px-4 py-2 bg-[#001F3F] hover:bg-[#002d5c] text-white text-xs font-semibold rounded-xl cursor-pointer shadow-xs"
               >
                 View All Drivers ({driverWorkers.length})
               </button>
@@ -368,7 +368,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
                 </button>
                 <button
                   onClick={onGoToRegister}
-                  className="w-full sm:w-auto px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-xs"
+                  className="w-full sm:w-auto px-4 py-2 bg-[#001F3F] hover:bg-[#002d5c] text-white text-xs font-semibold rounded-xl cursor-pointer shadow-xs"
                 >
                   Register as First Worker Here
                 </button>

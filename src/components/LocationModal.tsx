@@ -40,23 +40,23 @@ export const LocationModal: React.FC<LocationModalProps> = ({
     >
       <div
         id="location-modal-container"
-        className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden border border-emerald-950/10 transform transition-all animate-in slide-in-from-bottom-5 duration-200"
+        className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden border border-gray-200 transform transition-all animate-in slide-in-from-bottom-5 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-emerald-900 text-white p-4 flex items-center justify-between">
+        <div className="bg-[#001F3F] text-white p-4 border-b border-[#FFA500]/30 flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-emerald-300" />
+              <MapPin className="w-4 h-4 text-[#FFD700]" />
               Select Your Location
             </h3>
-            <p className="text-xs text-emerald-200">
+            <p className="text-xs text-[#FFD700]">
               Find nearest artisans with real GPS distance filtering
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-emerald-800 text-emerald-200"
+            className="p-1.5 rounded-full hover:bg-[#002d5c] text-[#FFD700] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -70,30 +70,30 @@ export const LocationModal: React.FC<LocationModalProps> = ({
               onRequestLiveGps();
               onClose();
             }}
-            className="w-full p-3.5 rounded-xl border-2 border-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-between group transition-colors cursor-pointer"
+            className="w-full p-3.5 rounded-xl border-2 border-[#FFA500] bg-amber-50/70 hover:bg-amber-100/70 flex items-center justify-between group transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center shrink-0">
+              <div className="w-9 h-9 rounded-lg bg-[#001F3F] text-[#FFD700] flex items-center justify-center shrink-0">
                 <Navigation className="w-5 h-5 group-hover:rotate-45 transition-transform" />
               </div>
               <div className="text-left">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-emerald-950">
+                  <span className="text-sm font-bold text-[#001F3F]">
                     Use Live Device GPS
                   </span>
                   {currentLocation.isLiveGps && (
-                    <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded bg-[#FFA500] text-[#001F3F] text-[10px] font-bold">
                       ACTIVE
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-emerald-800">
+                <p className="text-xs text-[#001F3F]">
                   Detect current latitude/longitude &amp; pincode dynamically
                 </p>
               </div>
             </div>
             {currentLocation.isLiveGps && (
-              <Check className="w-5 h-5 text-emerald-700 shrink-0" />
+              <Check className="w-5 h-5 text-[#FFA500] shrink-0" />
             )}
           </button>
 
@@ -109,12 +109,12 @@ export const LocationModal: React.FC<LocationModalProps> = ({
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="e.g., Agartala, Tripura or 799001"
-                className="w-full pl-9 pr-20 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm"
+                className="w-full pl-9 pr-20 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#001F3F] text-sm"
               />
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
               <button
                 type="submit"
-                className="absolute right-1.5 top-1.5 px-3 py-1 bg-emerald-800 text-white text-xs font-semibold rounded-lg hover:bg-emerald-900"
+                className="absolute right-1.5 top-1.5 px-3 py-1 bg-[#001F3F] text-white text-xs font-semibold rounded-lg hover:bg-[#002d5c]"
               >
                 Search
               </button>
@@ -142,14 +142,14 @@ export const LocationModal: React.FC<LocationModalProps> = ({
                     }}
                     className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-left transition-colors cursor-pointer ${
                       isSelected
-                        ? 'border-emerald-700 bg-emerald-50 text-emerald-900 font-bold'
+                        ? 'border-[#001F3F] bg-amber-50/60 text-[#001F3F] font-bold'
                         : 'border-gray-200 hover:bg-gray-50 text-gray-800'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <MapPin
                         className={`w-4 h-4 ${
-                          isSelected ? 'text-emerald-700' : 'text-gray-400'
+                          isSelected ? 'text-[#FFA500]' : 'text-gray-400'
                         }`}
                       />
                       <div>
@@ -161,7 +161,7 @@ export const LocationModal: React.FC<LocationModalProps> = ({
                         </span>
                       </div>
                     </div>
-                    {isSelected && <Check className="w-4 h-4 text-emerald-700" />}
+                    {isSelected && <Check className="w-4 h-4 text-[#FFA500]" />}
                   </button>
                 );
               })}

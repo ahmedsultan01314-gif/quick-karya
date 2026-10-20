@@ -33,35 +33,35 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const getIcon = (iconName: string) => {
     switch (iconName) {
       case 'Wrench':
-        return <Wrench className="w-6 h-6 text-emerald-800" />;
+        return <Wrench className="w-6 h-6 text-[#001F3F]" />;
       case 'Zap':
-        return <Zap className="w-6 h-6 text-emerald-800" />;
+        return <Zap className="w-6 h-6 text-[#001F3F]" />;
       case 'Hammer':
-        return <Hammer className="w-6 h-6 text-emerald-800" />;
+        return <Hammer className="w-6 h-6 text-[#001F3F]" />;
       case 'UtensilsCrossed':
-        return <UtensilsCrossed className="w-6 h-6 text-emerald-800" />;
+        return <UtensilsCrossed className="w-6 h-6 text-[#001F3F]" />;
       case 'Paintbrush':
-        return <Paintbrush className="w-6 h-6 text-emerald-800" />;
+        return <Paintbrush className="w-6 h-6 text-[#001F3F]" />;
       case 'Car':
-        return <Car className="w-6 h-6 text-emerald-800" />;
+        return <Car className="w-6 h-6 text-[#001F3F]" />;
       case 'HardHat':
-        return <HardHat className="w-6 h-6 text-emerald-800" />;
+        return <HardHat className="w-6 h-6 text-[#001F3F]" />;
       case 'Users':
-        return <Users className="w-6 h-6 text-emerald-800" />;
+        return <Users className="w-6 h-6 text-[#001F3F]" />;
       case 'Flame':
         return <Flame className="w-6 h-6 text-amber-600" />;
       case 'Bug':
-        return <Bug className="w-6 h-6 text-emerald-800" />;
+        return <Bug className="w-6 h-6 text-[#001F3F]" />;
       case 'Shirt':
-        return <Shirt className="w-6 h-6 text-emerald-800" />;
+        return <Shirt className="w-6 h-6 text-[#001F3F]" />;
       case 'Building2':
-        return <Building2 className="w-6 h-6 text-emerald-800" />;
+        return <Building2 className="w-6 h-6 text-[#001F3F]" />;
       case 'Utensils':
-        return <Utensils className="w-6 h-6 text-emerald-800" />;
+        return <Utensils className="w-6 h-6 text-[#001F3F]" />;
       case 'ShieldAlert':
         return <ShieldAlert className="w-6 h-6 text-amber-600" />;
       default:
-        return <Sparkles className="w-6 h-6 text-emerald-800" />;
+        return <Sparkles className="w-6 h-6 text-[#001F3F]" />;
     }
   };
 
@@ -109,7 +109,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             className="rounded-2xl border-2 border-amber-500 bg-gradient-to-br from-amber-50/90 via-white to-amber-100/60 p-4 shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer relative overflow-hidden ring-2 ring-amber-400/20"
           >
             {/* Top alert badge bar */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-emerald-600 to-amber-600" />
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-[#FFD700] to-amber-600" />
 
             <div className="flex items-start justify-between gap-3 pt-0.5">
               <div className="flex items-center gap-3">
@@ -145,8 +145,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                 {getWorkerCount(emergencyCategory.name)} active rescue teams on call
               </span>
-              <span className="inline-flex items-center gap-1 text-emerald-950 font-bold bg-amber-200/80 hover:bg-amber-300/80 px-2.5 py-1 rounded-lg border border-amber-300">
-                <PhoneCall className="w-3 h-3 text-emerald-800" />
+              <span className="inline-flex items-center gap-1 text-[#001F3F] font-bold bg-amber-200/80 hover:bg-amber-300/80 px-2.5 py-1 rounded-lg border border-amber-300">
+                <PhoneCall className="w-3 h-3 text-[#001F3F]" />
                 Instant Dispatch
               </span>
             </div>
@@ -171,14 +171,14 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
               key={cat.id}
               id={`category-card-${cat.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
               onClick={() => onSelectCategory(cat.name)}
-              className="bg-white rounded-2xl p-4 border border-emerald-950/10 hover:border-emerald-700/50 shadow-xs hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between group"
+              className="bg-white rounded-2xl p-4 border border-gray-200 hover:border-[#FFA500]/60 shadow-xs hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between group"
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200/70 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <div className="w-11 h-11 rounded-xl bg-[#001F3F]/5 border border-[#001F3F]/15 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                     {getIcon(cat.iconName)}
                   </div>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 bg-emerald-100/60 text-emerald-900 rounded-full">
+                  <span className="text-[11px] font-semibold px-2 py-0.5 bg-[#001F3F]/10 text-[#001F3F] rounded-full">
                     {count} {count === 1 ? 'worker' : 'workers'}
                   </span>
                 </div>
@@ -186,7 +186,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 <h3 className="text-base font-bold text-gray-900 leading-tight">
                   {cat.name}
                 </h3>
-                <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                <p className="text-xs text-[#001F3F] font-medium mt-0.5">
                   {cat.hindiName}
                 </p>
                 <p className="text-xs text-gray-500 mt-1.5 line-clamp-2 leading-relaxed">
@@ -196,7 +196,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 
               <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs">
                 <span className="text-gray-500 font-medium">Direct Dial Contact</span>
-                <span className="text-emerald-800 font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                <span className="text-[#001F3F] font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
                   View <ArrowRight className="w-3.5 h-3.5" />
                 </span>
               </div>

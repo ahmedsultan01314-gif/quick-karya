@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#002d5c" />
+      <stop offset="60%" stop-color="#001F3F" />
+      <stop offset="100%" stop-color="#00142b" />
+    </radialGradient>
+
+    <!-- Golden Orange Emblem Gradient -->
+    <linearGradient id="primaryGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE066" />
+      <stop offset="35%" stop-color="#FFD700" />
+      <stop offset="70%" stop-color="#FFA500" />
+      <stop offset="100%" stop-color="#FF7A00" />
+    </linearGradient>
+
+    <!-- Energy Glow Gradient -->
+    <linearGradient id="energyGrad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#FFD700" />
+      <stop offset="100%" stop-color="#FF8C00" />
+    </linearGradient>
+
+    <!-- Shield / Badge Gradient -->
+    <linearGradient id="badgeGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#002b54" />
+      <stop offset="100%" stop-color="#00162e" />
+    </linearGradient>
+
+    <!-- Drop Shadow Filter -->
+    <filter id="glowDrop" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6" />
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#FFA500" flood-opacity="0.35" />
+    </filter>
+
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="24" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Base Canvas (Deep Navy Blue #001F3F) -->
+  <rect width="1024" height="1024" fill="url(#bgGrad)" />
+
+  <!-- Ambient Golden Aura in Center -->
+  <circle cx="512" cy="512" r="380" fill="#FFA500" opacity="0.08" filter="url(#softGlow)" />
+
+  <!-- Outer Dynamic Ring with Speed Breaks -->
+  <circle cx="512" cy="512" r="455" fill="none" stroke="url(#primaryGoldGrad)" stroke-width="14" opacity="0.4" />
+  <circle cx="512" cy="512" r="435" fill="none" stroke="url(#primaryGoldGrad)" stroke-width="8" stroke-dasharray="180 40 320 60 140 30" opacity="0.85" />
+
+  <!-- Geometric Speed Trails in Background -->
+  <path d="M 120 420 L 320 420 L 260 460 L 100 460 Z" fill="#FFA500" opacity="0.25" />
+  <path d="M 80 500 L 280 500 L 220 540 L 70 540 Z" fill="#FFD700" opacity="0.3" />
+  <path d="M 140 580 L 300 580 L 250 620 L 120 620 Z" fill="#FFA500" opacity="0.2" />
+
+  <!-- Central Dynamic Hexagonal Shield Emblem Badge -->
+  <polygon points="512,120 840,290 840,734 512,904 184,734 184,290" 
+           fill="url(#badgeGrad)" 
+           stroke="url(#primaryGoldGrad)" 
+           stroke-width="16" 
+           stroke-linejoin="round"
+           filter="url(#glowDrop)" />
+
+  <!-- Inner Badge Accent Line -->
+  <polygon points="512,155 810,310 810,714 512,869 214,714 214,310" 
+           fill="none" 
+           stroke="#FFD700" 
+           stroke-width="3" 
+           stroke-dasharray="40 15 80 15"
+           opacity="0.5" />
+
+  <!-- DYNAMIC RUNNING ARTISAN / TECHNICIAN SILHOUETTE & TOOLS -->
+  <g id="artisan-figure" transform="translate(40, -10)">
+    <!-- Electric Flash / Action Speed Trail Behind Feet -->
+    <path d="M 280 730 L 380 670 L 330 730 L 440 680 L 360 770 Z" fill="#FFD700" opacity="0.9" filter="url(#softGlow)" />
+
+    <!-- Back Leg Running (Lunging back) -->
+    <path d="M 430 610 L 310 700 L 270 690 L 260 740 L 340 735 L 470 635 Z" fill="#FFA500" />
+
+    <!-- Front Leg Running (Driving forward powerfully) -->
+    <path d="M 520 590 L 590 690 L 670 710 L 680 750 L 580 740 L 480 620 Z" fill="url(#primaryGoldGrad)" filter="url(#glowDrop)" />
+
+    <!-- Torso & Dynamic Work Jacket -->
+    <path d="M 460 380 L 580 390 L 560 590 L 450 580 Z" fill="#ffffff" />
+    <!-- Safety Vest Over Torso in Vibrant Orange -->
+    <path d="M 470 385 L 570 395 L 555 580 L 460 575 Z" fill="url(#primaryGoldGrad)" />
+    <!-- Reflective Safety Strip on Vest -->
+    <path d="M 465 470 L 565 480 L 562 505 L 462 495 Z" fill="#ffffff" />
+    <path d="M 505 390 L 525 392 L 515 580 L 495 578 Z" fill="#ffffff" opacity="0.9" />
+
+    <!-- Technician Hardhat / Cap (Forward tilted in rapid action) -->
+    <path d="M 480 320 Q 560 250 630 310 L 660 325 L 610 350 L 470 345 Z" fill="#FFD700" filter="url(#glowDrop)" />
+    <!-- Head Silhouette -->
+    <ellipse cx="535" cy="355" rx="42" ry="45" fill="#FFE0B2" />
+
+    <!-- Trailing Left Arm with Quick Karya Tool Box -->
+    <path d="M 460 410 L 370 480 L 395 510 L 475 440 Z" fill="#FFA500" />
+    <!-- Heavy Duty Tool Box -->
+    <rect x="300" y="480" width="110" height="75" rx="12" fill="#001F3F" stroke="#FFD700" stroke-width="6" />
+    <rect x="335" y="460" width="40" height="25" rx="5" fill="none" stroke="#FFD700" stroke-width="5" />
+    <line x1="300" y1="515" x2="410" y2="515" stroke="#FFA500" stroke-width="4" />
+    <circle cx="355" cy="515" r="5" fill="#FFD700" />
+
+    <!-- Driving Right Arm Thrusting Powerful Wrench Forward -->
+    <path d="M 560 420 L 680 440 L 720 400 L 740 425 L 680 480 L 550 460 Z" fill="#ffffff" />
+    <!-- Golden Gleaming Wrench -->
+    <g transform="translate(680, 310) rotate(35)">
+      <!-- Wrench Shaft -->
+      <rect x="-14" y="0" width="28" height="150" rx="8" fill="url(#primaryGoldGrad)" stroke="#ffffff" stroke-width="3" filter="url(#glowDrop)" />
+      <!-- Wrench Top Head (Open ended) -->
+      <path d="M -40 -30 A 42 42 0 1 1 40 -30 L 22 -5 L -22 -5 Z" fill="url(#primaryGoldGrad)" stroke="#ffffff" stroke-width="3" />
+      <polygon points="-16,-45 0,-15 16,-45 -16,-45" fill="#002b54" />
+      <!-- Sparkle on Wrench Head -->
+      <polygon points="0,-60 6,-35 30,-35 10,-20 18,5 0,-10 -18,5 -10,-20 -30,-35 -6,-35" fill="#ffffff" />
+    </g>
+  </g>
+
+  <!-- Bottom Brand Ribbon Banner -->
+  <g transform="translate(512, 850)">
+    <!-- Ribbon Background -->
+    <path d="M -260 -40 L 260 -40 L 230 40 L -230 40 Z" fill="#FFA500" filter="url(#glowDrop)" />
+    <path d="M -250 -32 L 250 -32 L 224 32 L -224 32 Z" fill="#001F3F" />
+    
+    <!-- Bold Typography: QUICK KARYA -->
+    <text x="0" y="8" 
+          font-family="system-ui, -apple-system, sans-serif" 
+          font-size="44" 
+          font-weight="900" 
+          letter-spacing="5" 
+          fill="#FFD700" 
+          text-anchor="middle"
+          dominant-baseline="central">QUICK KARYA</text>
+    
+    <!-- Mini Tagline under brand -->
+    <text x="0" y="48" 
+          font-family="system-ui, -apple-system, sans-serif" 
+          font-size="16" 
+          font-weight="800" 
+          letter-spacing="3" 
+          fill="#FFA500" 
+          text-anchor="middle">DIRECT ARTISAN DIRECTORY</text>
+  </g>
+
+  <!-- Modern Corner Tech Brackets -->
+  <path d="M 60 140 L 60 60 L 140 60" fill="none" stroke="#FFD700" stroke-width="6" opacity="0.6" />
+  <path d="M 964 140 L 964 60 L 884 60" fill="none" stroke="#FFD700" stroke-width="6" opacity="0.6" />
+  <path d="M 60 884 L 60 964 L 140 964" fill="none" stroke="#FFD700" stroke-width="6" opacity="0.6" />
+  <path d="M 964 884 L 964 964 L 884 964" fill="none" stroke="#FFD700" stroke-width="6" opacity="0.6" />
+</svg>

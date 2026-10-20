@@ -34,25 +34,25 @@ export const NotificationToast: React.FC = () => {
       <div
         className={`p-3.5 rounded-2xl shadow-xl border backdrop-blur-md flex items-start gap-3 text-left ${
           isSuccess
-            ? 'bg-emerald-950/95 border-emerald-500/50 text-white'
+            ? 'bg-[#001F3F]/95 border-[#FFA500]/50 text-white'
             : isCall
-            ? 'bg-emerald-900/95 border-emerald-400/50 text-white'
+            ? 'bg-[#002d5c]/95 border-[#FFD700]/50 text-white'
             : 'bg-gray-900/95 border-gray-700 text-white'
         }`}
       >
         <div
           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
             isSuccess
-              ? 'bg-emerald-600 text-white'
+              ? 'bg-[#FFA500] text-white'
               : isCall
-              ? 'bg-emerald-700 text-white'
+              ? 'bg-[#FF8C00] text-white'
               : 'bg-gray-800 text-white'
           }`}
         >
           {isSuccess ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-200" />
+            <CheckCircle2 className="w-5 h-5 text-[#FFD700]" />
           ) : isCall ? (
-            <Phone className="w-5 h-5 text-emerald-200" />
+            <Phone className="w-5 h-5 text-[#FFD700]" />
           ) : (
             <Bell className="w-5 h-5 text-gray-200" />
           )}
@@ -62,10 +62,10 @@ export const NotificationToast: React.FC = () => {
           <h4 className="text-xs font-bold leading-tight tracking-tight text-white">
             {activeBanner.title}
           </h4>
-          <p className="text-[11px] text-emerald-100/90 mt-0.5 leading-snug">
+          <p className="text-[11px] text-gray-100 mt-0.5 leading-snug">
             {activeBanner.body}
           </p>
-          <span className="text-[9px] text-emerald-300 font-mono mt-1 block">
+          <span className="text-[9px] text-[#FFA500] font-mono mt-1 block">
             Just now • Quick Karya Alert
           </span>
         </div>

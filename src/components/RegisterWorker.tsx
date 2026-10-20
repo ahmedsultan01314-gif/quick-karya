@@ -307,7 +307,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       <div className="pb-20 pt-4 space-y-4">
         <div
           id="registration-success-card"
-          className="bg-white rounded-3xl p-6 border border-emerald-300 shadow-lg text-center space-y-4"
+          className="bg-white rounded-3xl p-6 border border-amber-300 shadow-lg text-center space-y-4"
         >
           {/* Avatar / Photo with Checkmark Badge */}
           <div className="relative w-20 h-20 mx-auto">
@@ -316,10 +316,10 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 src={successWorker.photo}
                 alt={successWorker.name}
                 referrerPolicy="no-referrer"
-                className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-600 shadow-md"
+                className="w-20 h-20 rounded-2xl object-cover border-2 border-[#FFA500] shadow-md"
               />
             ) : (
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-emerald-800 to-emerald-950 text-white flex items-center justify-center font-bold text-2xl shadow-md border border-emerald-700/30">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#001F3F] to-[#001428] text-white flex items-center justify-center font-bold text-2xl shadow-md border border-[#FFA500]/30">
                 {successWorker.name
                   .split(' ')
                   .map((n) => n[0])
@@ -329,29 +329,29 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                   .toUpperCase() || 'WK'}
               </div>
             )}
-            <div className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-emerald-600 rounded-full flex items-center justify-center text-white border-2 border-white shadow-xs">
+            <div className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-[#FFA500] rounded-full flex items-center justify-center text-white border-2 border-white shadow-xs">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
 
           <div>
-            <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-semibold">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-50 text-[#001F3F] border border-amber-200 rounded-full text-xs font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#FFA500]" />
               Published Active Listing
             </span>
             <h2 className="text-xl font-extrabold text-gray-900 mt-2">
               Welcome to Quick Karya!
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              Your profile for <strong className="text-emerald-900">{successWorker.name}</strong> is now live in the 100% free contact directory. Clients can find and call you directly!
+              Your profile for <strong className="text-[#001F3F]">{successWorker.name}</strong> is now live in the 100% free contact directory. Clients can find and call you directly!
             </p>
           </div>
 
           {/* Directory Details Breakdown */}
-          <div className="bg-emerald-50 rounded-2xl p-4 text-left border border-emerald-100 space-y-2 text-xs">
+          <div className="bg-amber-50 rounded-2xl p-4 text-left border border-amber-200 space-y-2 text-xs">
             <div className="flex justify-between items-center">
               <span className="text-gray-500">Service Category:</span>
-              <span className="font-bold text-emerald-900">{successWorker.category}</span>
+              <span className="font-bold text-[#001F3F]">{successWorker.category}</span>
             </div>
 
             <div className="flex justify-between items-center">
@@ -376,7 +376,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
             <button
               id="view-in-workers-btn"
               onClick={onGoToWorkers}
-              className="w-full py-3.5 px-4 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-xl shadow-md text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              className="w-full py-3.5 px-4 bg-[#001F3F] hover:bg-[#002e5d] text-white font-bold rounded-xl shadow-md text-sm flex items-center justify-center gap-2 cursor-pointer transition-colors"
             >
               <span>View Your Profile in Directory</span>
               <ArrowRight className="w-4 h-4" />
@@ -389,7 +389,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 setPhone('');
                 setPhoto('');
               }}
-              className="w-full py-2.5 px-4 text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+              className="w-full py-2.5 px-4 text-[#001F3F] hover:bg-amber-50 rounded-xl text-xs font-semibold cursor-pointer transition-colors"
             >
               Register Another Worker
             </button>
@@ -417,14 +417,14 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         </button>
       </div>
       {/* Banner */}
-      <div className="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white rounded-2xl p-4 shadow-sm relative overflow-hidden">
+      <div className="bg-[#001F3F] text-white rounded-2xl p-4 shadow-sm relative overflow-hidden border border-[#FFA500]/25">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-emerald-700/80 border border-emerald-500/40 flex items-center justify-center shrink-0">
-            <UserPlus className="w-6 h-6 text-emerald-200" />
+          <div className="w-12 h-12 rounded-xl bg-[#002d5c] border border-amber-400/40 flex items-center justify-center shrink-0">
+            <UserPlus className="w-6 h-6 text-[#FFD700]" />
           </div>
           <div>
             <h2 className="text-lg font-bold">Worker Registration</h2>
-            <p className="text-xs text-emerald-200 mt-0.5">
+            <p className="text-xs text-[#FFD700] mt-0.5">
               100% free proximity contact directory — connect directly with clients
             </p>
           </div>
@@ -446,16 +446,16 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       <form
         id="worker-registration-form"
         onSubmit={handleSubmit}
-        className="bg-white rounded-2xl p-4 border border-emerald-900/10 shadow-xs space-y-4"
+        className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs space-y-4"
       >
         {/* Profile Photo Upload Field */}
         <div>
           <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
-              <Camera className="w-3.5 h-3.5 text-emerald-700" />
+              <Camera className="w-3.5 h-3.5 text-[#FFA500]" />
               Profile Photo
             </span>
-            <span className="text-[11px] font-normal text-emerald-800">
+            <span className="text-[11px] font-normal text-[#001F3F]">
               Verified badge booster
             </span>
           </label>
@@ -470,16 +470,16 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
           />
 
           {photo ? (
-            <div className="flex items-center gap-3.5 p-3 rounded-xl border border-emerald-300 bg-emerald-50/50">
+            <div className="flex items-center gap-3.5 p-3 rounded-xl border border-amber-300 bg-amber-50/50">
               <img
                 src={photo}
                 alt="Selected profile preview"
                 referrerPolicy="no-referrer"
-                className="w-16 h-16 rounded-xl object-cover border-2 border-emerald-600 shadow-xs shrink-0"
+                className="w-16 h-16 rounded-xl object-cover border-2 border-[#FFA500] shadow-xs shrink-0"
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 text-emerald-900 text-xs font-bold">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                <div className="flex items-center gap-1 text-[#001F3F] text-xs font-bold">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#FFA500]" />
                   Photo Attached
                 </div>
                 <p className="text-[11px] text-gray-500 truncate mt-0.5">
@@ -489,7 +489,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-[11px] font-semibold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                    className="text-[11px] font-semibold text-[#001F3F] hover:text-[#001F3F] underline cursor-pointer"
                   >
                     Change photo
                   </button>
@@ -515,11 +515,11 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
               onClick={() => fileInputRef.current?.click()}
               className={`p-4 rounded-xl border-2 border-dashed transition-all text-center cursor-pointer flex flex-col items-center justify-center ${
                 isDragging
-                  ? 'border-emerald-600 bg-emerald-50'
-                  : 'border-gray-300 hover:border-emerald-600 hover:bg-emerald-50/30'
+                  ? 'border-[#FFA500] bg-amber-50'
+                  : 'border-gray-300 hover:border-[#FFA500] hover:bg-amber-50/30'
               }`}
             >
-              <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-800 mb-2">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-[#001F3F] mb-2">
                 <Upload className="w-5 h-5" />
               </div>
               <p className="text-xs font-bold text-gray-800">
@@ -545,7 +545,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Rajesh Sharma"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-transparent text-sm"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#001F3F] focus:border-transparent text-sm"
           />
         </div>
 
@@ -580,7 +580,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                     }}
                     className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-150 flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs ${
                       isSelected
-                        ? 'bg-[#064e3b] text-white border-2 border-emerald-950 shadow-sm scale-102 ring-1 ring-emerald-700/50'
+                        ? 'bg-[#001F3F] text-white border-2 border-[#001F3F] shadow-sm scale-102 ring-1 ring-amber-400/50'
                         : 'bg-[#FFD700] hover:bg-[#ffe033] text-black border-2 border-yellow-400 active:scale-95'
                     }`}
                   >
@@ -646,7 +646,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                   onClick={() => setSubRole(subRole === role ? '' : role)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
                     subRole === role
-                      ? 'bg-emerald-800 text-white border-emerald-800 shadow-xs'
+                      ? 'bg-[#001F3F] text-white border-[#001F3F] shadow-xs'
                       : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 >
@@ -672,7 +672,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
               value={experience}
               onChange={(e) => setExperience(e.target.value)}
               placeholder="4"
-              className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white"
+              className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#001F3F] text-sm bg-white"
             />
             <Briefcase className="w-4 h-4 text-gray-400 absolute left-2.5 top-3" />
           </div>
@@ -691,7 +691,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="10-digit mobile number"
-              className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white font-medium"
+              className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#001F3F] text-sm bg-white font-medium"
             />
             <Phone className="w-4 h-4 text-gray-400 absolute left-2.5 top-3" />
           </div>
@@ -701,7 +701,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         <div className="pt-2 border-t border-gray-100">
           <div className="flex items-center justify-between gap-2 mb-2">
             <label className="text-xs font-bold text-gray-700 flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-emerald-800" />
+              <MapPin className="w-3.5 h-3.5 text-[#001F3F]" />
               <span>Service Location Details</span>
             </label>
             <button
@@ -709,17 +709,17 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
               type="button"
               onClick={handleUseGpsLocation}
               disabled={gpsDetecting}
-              className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[#001F3F] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               title="Auto-detect State, City, and Pincode using device GPS"
             >
               {gpsDetecting ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin text-emerald-700" />
+                  <Loader2 className="w-3 h-3 animate-spin text-[#FFA500]" />
                   <span>Locating...</span>
                 </>
               ) : (
                 <>
-                  <Navigation className="w-3 h-3 text-emerald-700" />
+                  <Navigation className="w-3 h-3 text-[#FFA500]" />
                   <span>Use GPS Location</span>
                 </>
               )}
@@ -728,12 +728,12 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
 
           {/* GPS Detection Confirmation Banner */}
           {gpsNotice && (
-            <div className="mb-2 p-2 rounded-lg bg-emerald-50/80 border border-emerald-200 text-[11px] text-emerald-800 font-medium flex items-center justify-between">
+            <div className="mb-2 p-2 rounded-lg bg-amber-50/80 border border-amber-200 text-[11px] text-[#001F3F] font-medium flex items-center justify-between">
               <span>{gpsNotice}</span>
               <button
                 type="button"
                 onClick={() => setGpsNotice(null)}
-                className="text-emerald-700 hover:text-emerald-900 ml-2"
+                className="text-[#FFA500] hover:text-[#001F3F] ml-2"
               >
                 ✕
               </button>
@@ -758,7 +758,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                   setCity(newCities[0]);
                 }
               }}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm font-medium text-gray-900 cursor-pointer appearance-none pr-9"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#001F3F] text-sm font-medium text-gray-900 cursor-pointer appearance-none pr-9"
             >
               {INDIAN_STATES.map((st) => (
                 <option key={st} value={st}>
@@ -776,7 +776,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
             <label className="text-xs font-bold text-gray-700">
               City / Town <span className="text-red-500">*</span>
             </label>
-            <span className="text-[11px] text-emerald-800 font-medium">
+            <span className="text-[11px] text-[#001F3F] font-medium">
               Pick from {state} or type custom
             </span>
           </div>
@@ -793,12 +793,12 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
               }}
               onFocus={() => setCityDropdownOpen(true)}
               placeholder={`Type or pick city in ${state}...`}
-              className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white font-medium"
+              className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#001F3F] text-sm bg-white font-medium"
             />
             <button
               type="button"
               onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
-              className="absolute right-2 top-2 p-1 text-gray-500 hover:text-emerald-800 cursor-pointer"
+              className="absolute right-2 top-2 p-1 text-gray-500 hover:text-[#001F3F] cursor-pointer"
               title="Toggle city suggestions"
             >
               <ChevronDown className={`w-4 h-4 transition-transform ${cityDropdownOpen ? 'rotate-180' : ''}`} />
@@ -818,8 +818,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 }}
                 className={`px-2 py-0.5 text-[11px] rounded-md font-medium whitespace-nowrap transition-colors cursor-pointer border ${
                   city === quickCity
-                    ? 'bg-emerald-800 text-white border-emerald-800'
-                    : 'bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                    ? 'bg-[#001F3F] text-white border-[#001F3F]'
+                    : 'bg-amber-50/70 text-[#001F3F] border-amber-200 hover:bg-amber-100'
                 }`}
               >
                 {quickCity}
@@ -846,10 +846,10 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 <button
                   type="button"
                   onClick={() => setCityDropdownOpen(false)}
-                  className="w-full text-left px-3.5 py-2 text-xs text-emerald-800 font-bold bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-100 flex items-center justify-between cursor-pointer"
+                  className="w-full text-left px-3.5 py-2 text-xs text-[#001F3F] font-bold bg-amber-50 hover:bg-amber-100 border-b border-amber-200 flex items-center justify-between cursor-pointer"
                 >
                   <span>✍️ Use custom: &quot;{city.trim()}&quot;</span>
-                  <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded">Custom</span>
+                  <span className="text-[10px] bg-amber-200 text-[#001F3F] px-1.5 py-0.5 rounded">Custom</span>
                 </button>
               )}
 
@@ -863,8 +863,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                   }}
                   className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between transition-colors cursor-pointer ${
                     city === item
-                      ? 'bg-emerald-800 text-white font-bold'
-                      : 'hover:bg-emerald-50 text-gray-800'
+                      ? 'bg-[#001F3F] text-white font-bold'
+                      : 'hover:bg-amber-50 text-gray-800'
                   }`}
                 >
                   <span>{item}</span>
@@ -878,7 +878,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                   <button
                     type="button"
                     onClick={() => setCityDropdownOpen(false)}
-                    className="mt-1 text-[11px] text-emerald-800 font-bold underline cursor-pointer"
+                    className="mt-1 text-[11px] text-[#001F3F] font-bold underline cursor-pointer"
                   >
                     Keep custom city name &quot;{city}&quot;
                   </button>
@@ -901,7 +901,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
             value={pincode}
             onChange={(e) => setPincode(e.target.value)}
             placeholder="e.g. 799001"
-            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 text-sm bg-white font-mono"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#001F3F] text-sm bg-white font-mono"
           />
         </div>
 
@@ -911,7 +911,7 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
             id="submit-worker-btn"
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 px-4 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white font-bold rounded-xl shadow-md text-sm flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60"
+            className="w-full py-3.5 px-4 bg-[#FFA500] hover:bg-[#FF8C00] active:bg-[#e07b00] text-[#001F3F] font-black rounded-xl shadow-lg text-sm flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60"
           >
             {loading ? (
               <span>Saving Profile...</span>

@@ -259,7 +259,7 @@ export default function App() {
     setWorkers((prev) => [newWorker, ...prev]);
     setSelectedCategory(newWorker.category);
     // Switch to profile tab to show worker card & ID
-    setActiveTab('profile');
+    setSelectedCategory('All'); setActiveTab('home');
   };
 
   const handleResetFilters = () => {
@@ -273,9 +273,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-emerald-950/5 text-gray-900 flex flex-col items-center">
+    <div className="min-h-screen bg-[#001F3F]/5 text-gray-900 flex flex-col items-center">
       {/* Mobile-contained shell for authentic React Native / Expo experience */}
-      <div className="w-full max-w-md min-h-screen bg-[#f7faf8] flex flex-col shadow-2xl relative border-x border-emerald-950/10">
+      <div className="w-full max-w-md min-h-screen bg-[#f7faf8] flex flex-col shadow-2xl relative border-x border-[#001F3F]/15">
         {/* Top Header */}
         <Header
           userLocation={userLocation}

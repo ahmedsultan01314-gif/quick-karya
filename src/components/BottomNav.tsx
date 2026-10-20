@@ -148,7 +148,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               />
             </div>
             {isLoggedIn && (
-              <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-[#001F3F] shadow-xs" />
+              <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-[#FFA500] border border-[#001F3F] shadow-xs" />
             )}
           </div>
           <span className="text-[11px] mt-0.5 tracking-tight">My Profile</span>

@@ -48,7 +48,7 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
     >
       <div
         id="worker-detail-card"
-        className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-emerald-900/10 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+        className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Top Header */}
         <div className="bg-gradient-to-r from-[#001428] via-[#001F3F] to-[#002b57] p-5 text-white relative border-b border-[#0a2e5c]">
@@ -88,13 +88,13 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h3 className="text-lg font-bold truncate text-white">{worker.name}</h3>
                 {(worker.isVerified ?? worker.verified) && (
-                  <span className="inline-flex items-center gap-1 bg-emerald-400/20 border border-emerald-400/50 text-emerald-200 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                    <ShieldCheck className="w-3 h-3 text-emerald-300" />
+                  <span className="inline-flex items-center gap-1 bg-amber-400/20 border border-amber-400/50 text-[#FFD700] text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    <ShieldCheck className="w-3 h-3 text-[#FFD700]" />
                     Verified
                   </span>
                 )}
               </div>
-              <p className="text-xs text-emerald-200 mt-0.5">
+              <p className="text-xs text-[#FFD700] mt-0.5">
                 {worker.category} {worker.subRole ? `• ${worker.subRole}` : ''}
               </p>
               <div className="flex items-center gap-2 mt-2">
@@ -102,10 +102,10 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                   {(worker.rating || 5.0).toFixed(1)}
                 </span>
-                <span className="text-[11px] text-emerald-200">
+                <span className="text-[11px] text-[#FFD700]">
                   ({worker.reviewCount || 0} reviews)
                 </span>
-                <span className="text-[11px] px-1.5 py-0.5 bg-emerald-800/80 rounded text-emerald-300 font-mono text-[10px]">
+                <span className="text-[11px] px-1.5 py-0.5 bg-[#002d5c] rounded text-[#FFD700] font-mono text-[10px]">
                   {worker.workerId || `QK-${worker.id.slice(-5).toUpperCase()}`}
                 </span>
               </div>
@@ -118,14 +118,14 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
           {/* Key Facts Grid */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-emerald-800 shrink-0" />
+              <Briefcase className="w-4 h-4 text-[#001F3F] shrink-0" />
               <div>
                 <span className="text-gray-400 text-[10px] block">Experience</span>
                 <span className="font-bold text-gray-800">{worker.experience} Years</span>
               </div>
             </div>
             <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-emerald-800 shrink-0" />
+              <MapPin className="w-4 h-4 text-[#001F3F] shrink-0" />
               <div className="min-w-0">
                 <span className="text-gray-400 text-[10px] block">Location</span>
                 <span className="font-bold text-gray-800 truncate block">
@@ -136,14 +136,14 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
           </div>
 
           {/* Service Rates & Direct Call Guarantee */}
-          <div className="p-3 bg-emerald-50/70 border border-emerald-200/70 rounded-2xl flex items-center justify-between">
+          <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-2xl flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-emerald-900 font-bold block">Service Charges</span>
+              <span className="text-[11px] text-[#001F3F] font-bold block">Service Charges</span>
               <span className="text-xs text-gray-600">
                 100% Free Directory • Fair rate agreed upon call
               </span>
             </div>
-            <span className="px-2.5 py-1 bg-emerald-800 text-white rounded-lg text-xs font-bold shrink-0">
+            <span className="px-2.5 py-1 bg-[#001F3F] text-white rounded-lg text-xs font-bold shrink-0">
               Direct Contact
             </span>
           </div>
@@ -170,7 +170,7 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                  <MessageSquare className="w-4 h-4 text-emerald-800" />
+                  <MessageSquare className="w-4 h-4 text-[#001F3F]" />
                   Customer Reviews & Ratings
                 </h4>
                 <p className="text-[11px] text-gray-500">
@@ -194,7 +194,7 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
                 </p>
                 <button
                   onClick={() => onOpenRating(worker)}
-                  className="text-xs font-bold text-emerald-800 hover:underline cursor-pointer"
+                  className="text-xs font-bold text-[#001F3F] hover:underline cursor-pointer"
                 >
                   Be the first to submit a review →
                 </button>
