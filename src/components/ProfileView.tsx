@@ -45,10 +45,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Match worker profile by phone number or Worker ID
   useEffect(() => {
     if (user) {
-      const cleanUserPhone = user.phone.replace(/[^0-9]/g, '').slice(-10);
+      const cleanUserPhone = user.phone ? user.phone.replace(/[^0-9]/g, '').slice(-10) : '';
       const found = workers.find((w) => {
-        const cleanWPhone = w.phone.replace(/[^0-9]/g, '').slice(-10);
-        return cleanWPhone === cleanUserPhone || (user.workerId && w.workerId === user.workerId);
+        const cleanWPhone = w.phone ? w.phone.replace(/[^0-9]/g, '').slice(-10) : '';
+        return (cleanUserPhone && cleanWPhone === cleanUserPhone) || (user.workerId && w.workerId === user.workerId);
       });
       if (found) {
         setWorkerProfile(found);
@@ -76,13 +76,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
         <h3 className="text-lg font-bold text-gray-900">Welcome to Quick Karya</h3>
         <p className="text-xs text-gray-500 max-w-xs mx-auto">
-          Sign in with your mobile number to view your permanent Worker ID, reviews, manage profile photos, and track service calls.
+          Sign in with your Google Account to view your permanent Worker ID, reviews, manage profile photos, and track service calls.
         </p>
         <button
           onClick={onLoginClick}
-          className="px-6 py-3 bg-[#001F3F] hover:bg-[#002b54] text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+          className="px-6 py-3 bg-[#001F3F] hover:bg-[#002b54] text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer inline-flex items-center gap-2"
         >
-          Sign In with Mobile OTP
+          <span>Continue with Google</span>
         </button>
       </div>
     );

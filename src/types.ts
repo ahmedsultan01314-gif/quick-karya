@@ -113,12 +113,14 @@ export type UserRole = 'customer' | 'worker';
 
 export interface AppUser {
   id: string;
-  phone: string;
+  phone?: string;
   name: string;
+  email?: string;
   role: UserRole;
   workerId?: string; // Permanent Quick Karya Worker ID, e.g. QK-78901
   profilePhoto?: string;
   avatar?: string;
+  authProvider?: 'google' | 'phone';
   fcmToken?: string;
   pushToken?: string;
   verified: boolean;

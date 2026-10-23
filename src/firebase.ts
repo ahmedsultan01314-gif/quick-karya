@@ -18,7 +18,9 @@ import {
   ConfirmationResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  User as FirebaseUser
+  User as FirebaseUser,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 import { WorkerProfile, AppUser, WorkerReview, ServiceRequest } from './types';
@@ -32,6 +34,43 @@ export const db = getFirestore(
 );
 
 export const auth = getAuth(firebaseApp);
+
+export interface GoogleAuthResult {
+  uid: string;
+  name: string;
+  email: string;
+  photoUrl: string;
+}
+
+export async function signInWithGoogle(): Promise<GoogleAuthResult> {
+  const provider = new GoogleAuthProvider();
+  provider.addScope('profile');
+  provider.addScope('email');
+  provider.setCustomParameters({
+    prompt: 'select_account'
+  });
+
+  if (typeof window !== 'undefined') {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      return {
+        uid: user.uid,
+        name: user.displayName || user.email?.split('@')[0] || 'Quick Karya Member',
+        email: user.email || '',
+        photoUrl: user.photoURL || ''
+      };
+    } catch (popupErr: any) {
+      console.warn('Firebase signInWithPopup error:', popupErr?.code, popupErr?.message);
+      if (popupErr?.code === 'auth/popup-closed-by-user') {
+        throw new Error('Google Sign-In was cancelled.');
+      }
+      throw popupErr;
+    }
+  }
+
+  throw new Error('Google Sign-In is available in client environment.');
+}
 
 /**
  * Firebase Phone Authentication (Native SMS Dispatch without 3rd party API keys)

@@ -41,10 +41,8 @@ try {
     (cloudWorkers) => {
       workers = cloudWorkers.filter(
         (w) =>
-          !w.name?.toLowerCase().includes('kastu') &&
-          !w.name?.toLowerCase().includes('santirkey') &&
-          !w.name?.toLowerCase().includes('mujib') &&
-          w.id !== 'w-local-1791669750641'
+          !w.name?.toLowerCase().includes('santosh sharma') &&
+          w.id !== 'MnZmnMfibdTUNGD6mvfc'
       );
     },
     (err) => {
@@ -515,9 +513,9 @@ app.put('/api/auth/profile', async (req, res) => {
     existing.avatar = profilePhoto;
 
     // Immediately propagate photo to worker directory in memory & Firestore
-    const cleanPhone = existing.phone.replace(/[^0-9]/g, '').slice(-10);
+    const cleanPhone = existing.phone ? existing.phone.replace(/[^0-9]/g, '').slice(-10) : '';
     const workerMatch = workers.find(
-      (w) => w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone || (existing.workerId && w.workerId === existing.workerId)
+      (w) => (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) || (existing.workerId && w.workerId === existing.workerId)
     );
     if (workerMatch) {
       workerMatch.photo = profilePhoto;
@@ -744,6 +742,7 @@ app.post('/api/workers', async (req, res) => {
     if (user) {
       user.workerId = permanentWorkerId;
       user.role = 'worker';
+      user.phone = `+91${cleanPhone}`;
       if (profilePhoto) user.profilePhoto = profilePhoto;
       await saveUserToCloud(user).catch(() => {});
     }

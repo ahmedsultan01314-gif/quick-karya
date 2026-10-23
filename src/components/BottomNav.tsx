@@ -8,6 +8,7 @@ interface BottomNavProps {
   workersCount?: number;
   userName?: string;
   isLoggedIn?: boolean;
+  userPhoto?: string;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
@@ -15,7 +16,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onChangeTab,
   workersCount,
   userName,
-  isLoggedIn
+  isLoggedIn,
+  userPhoto
 }) => {
   const isHomeActive = activeTab === 'home' || activeTab === 'workers';
 
@@ -134,20 +136,37 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           }`}
         >
           <div className="relative">
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
-                activeTab === 'profile'
-                  ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
-                  : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
-              }`}
-            >
-              <User
-                className={`w-4.5 h-4.5 transition-transform ${
-                  activeTab === 'profile' ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
+            {userPhoto ? (
+              <div
+                className={`w-8 h-8 rounded-full overflow-hidden transition-all ${
+                  activeTab === 'profile'
+                    ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-[#001F3F] scale-105 shadow-[0_0_8px_rgba(255,165,0,0.6)]'
+                    : 'border border-slate-400/60 opacity-90'
                 }`}
-              />
-            </div>
-            {isLoggedIn && (
+              >
+                <img
+                  src={userPhoto}
+                  alt={userName || 'Profile'}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                  activeTab === 'profile'
+                    ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
+                    : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
+                }`}
+              >
+                <User
+                  className={`w-4.5 h-4.5 transition-transform ${
+                    activeTab === 'profile' ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
+                  }`}
+                />
+              </div>
+            )}
+            {isLoggedIn && !userPhoto && (
               <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-[#FFA500] border border-[#001F3F] shadow-xs" />
             )}
           </div>

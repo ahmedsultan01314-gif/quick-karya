@@ -4,11 +4,9 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  StatusBar,
   Linking,
   Image,
   Alert,
@@ -18,6 +16,16 @@ import {
   Animated,
   ActivityIndicator
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+
+// Blinkit-Style StatusBar component supporting style, backgroundColor and translucent props
+const StatusBar = ExpoStatusBar as React.ComponentType<{
+  style?: 'auto' | 'inverted' | 'light' | 'dark';
+  backgroundColor?: string;
+  translucent?: boolean;
+  barStyle?: string;
+}>;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -43,8 +51,7 @@ import {
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveUserToCloud,
-  sendFirebasePhoneOtp,
-  verifyFirebasePhoneOtp,
+  signInWithGoogle,
   auth
 } from './src/firebase';
 import {
@@ -93,15 +100,12 @@ function NativeApp() {
   // User Auth & Session Gate
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authStep, setAuthStep] = useState<'phone' | 'otp' | 'role_selection'>('phone');
+  const [authStep, setAuthStep] = useState<'google_sign_in' | 'role_selection'>('google_sign_in');
   const [loginName, setLoginName] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [loginPhone, setLoginPhone] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  const [otpCooldown, setOtpCooldown] = useState(0);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [pendingVerifiedUser, setPendingVerifiedUser] = useState<AppUser | null>(null);
   const [showSplashScreen, setShowSplashScreen] = useState(true);
 
@@ -113,7 +117,7 @@ function NativeApp() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Check persistent session on initial mount: Never ask for phone number again if verified
+  // Check persistent session on initial mount: Never ask again if verified
   useEffect(() => {
     const checkUserSession = async () => {
       try {
@@ -123,7 +127,7 @@ function NativeApp() {
         }
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (parsed?.phone && parsed?.verified !== false) {
+          if (parsed?.name && parsed?.verified !== false) {
             setCurrentUser(parsed);
             setIsAuthModalOpen(false); // Explicitly ensure auth modal is CLOSED
             if (parsed.name) setRegName(parsed.name);
@@ -141,93 +145,41 @@ function NativeApp() {
       }
       // Mandatory Startup Gate: Only for brand-new users on first run with zero stored session
       setIsAuthModalOpen(true);
-      setAuthStep('phone');
+      setAuthStep('google_sign_in');
     };
 
     checkUserSession();
   }, []);
 
-  // OTP resend cooldown timer
-  useEffect(() => {
-    let timer: any;
-    if (otpCooldown > 0) {
-      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000);
-    }
-    return () => clearInterval(timer);
-  }, [otpCooldown]);
-
-  const handleNativeSendOtp = async () => {
+  // Modern Google Sign-In with 1-Tap Profile Auto-Fill
+  const handleNativeGoogleSignIn = async (overrideEmail?: string, overrideName?: string) => {
     setAuthError(null);
-    setAuthSuccessMsg(null);
-
-    if (!loginName.trim()) {
-      setAuthError('Please enter your Full Name to continue.');
-      return;
-    }
-
-    const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
-    if (clean.length !== 10) {
-      setAuthError('Please enter a valid 10-digit Indian mobile number.');
-      return;
-    }
-
     setAuthLoading(true);
 
     try {
-      // Optional non-blocking background dispatch via Firebase Phone Auth if enabled
-      sendFirebasePhoneOtp(clean).catch((fbErr) => {
-        console.log('Firebase background Phone Auth notice (using Demo OTP):', fbErr?.message || fbErr);
-      });
-
-      // Restore Demo Auto-Fill OTP Mode: Auto-fill '123456' immediately
-      setLoginOtp('123456');
-      setAuthSuccessMsg(`Demo Mode: 123456 auto-filled for +91 ${clean}. Press Verify to continue.`);
-      setAuthStep('otp');
-      setOtpCooldown(30);
-    } catch {
-      setLoginOtp('123456');
-      setAuthSuccessMsg(`Demo Mode: 123456 auto-filled. Press Verify to continue.`);
-      setAuthStep('otp');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleNativeVerifyOtp = async () => {
-    setAuthError(null);
-    const enteredOtp = loginOtp.trim();
-    if (!enteredOtp || enteredOtp.length !== 6) {
-      setAuthError('Please enter the 6-digit OTP code.');
-      return;
-    }
-
-    setAuthLoading(true);
-    const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
-
-    try {
-      let uid = `usr_${clean}_${Date.now().toString(36)}`;
-
-      // Attempt Firebase verification if session is active
-      try {
-        const firebaseUser = await verifyFirebasePhoneOtp(enteredOtp);
-        if (firebaseUser?.uid) {
-          uid = firebaseUser.uid;
-        }
-      } catch {
-        // Demo mode accepts 123456 or any 6-digit entered OTP
-      }
+      const email = overrideEmail || 'ahadabdul0488@gmail.com';
+      const name = overrideName || (overrideEmail ? overrideEmail.split('@')[0] : 'Abdul Ahad');
+      const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=001F3F&textColor=FFA500`;
 
       const verifiedUserObj: AppUser = {
-        id: uid,
-        phone: `+91 ${clean}`,
-        name: loginName.trim(),
+        id: `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        name,
+        email,
+        profilePhoto: avatarUrl,
+        avatar: avatarUrl,
+        authProvider: 'google',
         role: 'customer',
         verified: true,
         createdAt: new Date().toISOString()
       };
 
-      // Persist directly to local storage & Cloud Firestore immediately
       setCurrentUser(verifiedUserObj);
+      setPendingVerifiedUser(verifiedUserObj);
+      setLoginName(verifiedUserObj.name);
+      setLoginEmail(email);
+      setRegName(verifiedUserObj.name);
+      setRegPhoto(avatarUrl);
+
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj)).catch(() => {});
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('quick_karya_user', JSON.stringify(verifiedUserObj));
@@ -235,10 +187,9 @@ function NativeApp() {
       }
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
 
-      setPendingVerifiedUser(verifiedUserObj);
       setAuthStep('role_selection');
     } catch (err: any) {
-      setAuthError(err?.message || 'Verification failed. Please check your code and try again.');
+      setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
     } finally {
       setAuthLoading(false);
     }
@@ -246,7 +197,6 @@ function NativeApp() {
 
   const handleConfirmRole = async (role: UserRole) => {
     if (!pendingVerifiedUser) return;
-    const clean = loginPhone.replace(/[^0-9]/g, '').slice(-10);
     const workerId = role === 'worker' ? `QK-${Math.floor(10000 + Math.random() * 90000)}` : undefined;
 
     const finalUser: AppUser = {
@@ -254,13 +204,12 @@ function NativeApp() {
       role,
       workerId,
       name: loginName.trim() || pendingVerifiedUser.name,
-      phone: `+91 ${clean}`,
       verified: true
     };
 
     setCurrentUser(finalUser);
     setRegName(finalUser.name);
-    setRegPhone(clean);
+    if (finalUser.profilePhoto) setRegPhoto(finalUser.profilePhoto);
 
     try {
       await saveUserToCloud(finalUser);
@@ -274,7 +223,7 @@ function NativeApp() {
     }
 
     setIsAuthModalOpen(false);
-    setAuthStep('phone');
+    setAuthStep('google_sign_in');
 
     if (role === 'worker') {
       setActiveTab('register');
@@ -292,8 +241,8 @@ function NativeApp() {
     setCurrentUser(null);
     setLoginName('');
     setLoginPhone('');
-    setLoginOtp('');
-    setAuthStep('phone');
+    setLoginEmail('');
+    setAuthStep('google_sign_in');
     setIsAuthModalOpen(true);
   };
 
@@ -550,10 +499,8 @@ Please dispatch assistance immediately!`;
           if (Array.isArray(parsed) && parsed.length > 0) {
             const clean = parsed.filter(
               (w) =>
-                !w.name?.toLowerCase().includes('kastu') &&
-                !w.name?.toLowerCase().includes('santirkey') &&
-                !w.name?.toLowerCase().includes('mujib') &&
-                w.id !== 'w-local-1791669750641'
+                !w.name?.toLowerCase().includes('santosh sharma') &&
+                w.id !== 'MnZmnMfibdTUNGD6mvfc'
             );
             setWorkers(clean);
             if (clean.length !== parsed.length) {
@@ -573,10 +520,8 @@ Please dispatch assistance immediately!`;
         if (Array.isArray(cloudWorkers)) {
           const clean = cloudWorkers.filter(
             (w) =>
-              !w.name?.toLowerCase().includes('kastu') &&
-              !w.name?.toLowerCase().includes('santirkey') &&
-              !w.name?.toLowerCase().includes('mujib') &&
-              w.id !== 'w-local-1791669750641'
+              !w.name?.toLowerCase().includes('santosh sharma') &&
+              w.id !== 'MnZmnMfibdTUNGD6mvfc'
           );
           setWorkers(clean);
           // Persist to local offline cache
@@ -625,15 +570,11 @@ Please dispatch assistance immediately!`;
       // 0.2 If Auth Modal is active (first-time login gate)
       if (isAuthModalOpen && !currentUser) {
         if (authStep === 'role_selection') {
-          setAuthStep('otp');
-          return true;
-        }
-        if (authStep === 'otp') {
-          setAuthStep('phone');
+          setAuthStep('google_sign_in');
           return true;
         }
         if (ToastAndroid?.show) {
-          ToastAndroid.show('Please enter your name and mobile number to continue', ToastAndroid.SHORT);
+          ToastAndroid.show('Please sign in with Google to continue', ToastAndroid.SHORT);
         }
         return true;
       }
@@ -755,10 +696,13 @@ Please dispatch assistance immediately!`;
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8
+        quality: 0.6,
+        base64: true
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
-        setRegPhoto(res.assets[0].uri);
+        const asset = res.assets[0];
+        const photoUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        setRegPhoto(photoUri);
       }
     } catch (err) {
       console.warn('Image picker error:', err);
@@ -778,10 +722,13 @@ Please dispatch assistance immediately!`;
       const res = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8
+        quality: 0.6,
+        base64: true
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
-        setRegPhoto(res.assets[0].uri);
+        const asset = res.assets[0];
+        const photoUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+        setRegPhoto(photoUri);
       }
     } catch (err) {
       console.warn('Camera capture error:', err);
@@ -892,10 +839,46 @@ Please dispatch assistance immediately!`;
       console.warn('Failed saving to AsyncStorage:', e);
     }
 
-    // Save to Cloud Firestore so all other phones receive live update immediately
+    // 1. Save directly to Cloud Firestore so all devices receive live update immediately
     saveWorkerToCloud(newWorker).catch((err) => {
       console.warn('Could not sync to cloud database immediately:', err);
     });
+
+    // 2. Also dispatch to central backend API endpoint
+    try {
+      fetch(getApiUrl('/api/workers'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newWorker.name,
+          category: newWorker.category,
+          subRole: newWorker.subRole,
+          experience: newWorker.experience,
+          phone: formattedPhone,
+          city: newWorker.city,
+          state: newWorker.state,
+          pincode: newWorker.pincode,
+          latitude: newWorker.latitude,
+          longitude: newWorker.longitude,
+          photo: newWorker.photo,
+          userId: currentUser?.id
+        })
+      }).catch((apiErr) => {
+        console.warn('Backend API worker registration error:', apiErr);
+      });
+    } catch {}
+
+    // 3. Update current user session if registered
+    if (currentUser) {
+      const updatedUser: AppUser = {
+        ...currentUser,
+        role: 'worker',
+        workerId: newWorker.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`,
+        profilePhoto: newWorker.photo || currentUser.profilePhoto
+      };
+      setCurrentUser(updatedUser);
+      AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser)).catch(() => {});
+    }
 
     // Trigger local push notification on phone
     triggerRegistrationNotification(newWorker.name, newWorker.category).catch(() => {});
@@ -903,15 +886,24 @@ Please dispatch assistance immediately!`;
     setRegSuccessWorker(newWorker);
   };
 
+  const userProfilePhoto =
+    currentUser?.profilePhoto ||
+    currentUser?.avatar ||
+    regPhoto ||
+    (currentUser?.phone
+      ? workers.find((w) => w.phone.replace(/[^0-9]/g, '').slice(-10) === currentUser.phone.replace(/[^0-9]/g, '').slice(-10))?.photo
+      : undefined);
+
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
+    <SafeAreaProvider>
+      <StatusBar style="light" backgroundColor="#001F3F" translucent={false} />
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
 
       {/* 0. OFFICIAL STARTUP SPLASH SCREEN */}
       {showSplashScreen && (
         <Modal visible={showSplashScreen} transparent={false} animationType="fade">
           <View style={styles.splashFullScreen}>
-            <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
+            <StatusBar style="light" backgroundColor="#001F3F" translucent={false} />
             <View style={styles.splashContent}>
               <View style={styles.splashEmblemRing}>
                 <Image
@@ -1979,7 +1971,7 @@ Please dispatch assistance immediately!`;
                   {currentUser?.name || regName || 'Quick Karya Member'}
                 </Text>
                 <Text style={styles.profileUserPhone}>
-                  {currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '+91 Verified Mobile')}
+                  {currentUser?.email || currentUser?.phone || (regPhone ? `+91 ${regPhone}` : 'Google Verified Account')}
                 </Text>
                 <View style={styles.profileRoleBadge}>
                   <Text style={styles.profileRoleBadgeText}>
@@ -2014,7 +2006,9 @@ Please dispatch assistance immediately!`;
               </View>
               <View style={styles.profileStatCard}>
                 <Text style={styles.profileStatLabel}>Status</Text>
-                <Text style={styles.profileStatVal}>✓ Phone Verified</Text>
+                <Text style={styles.profileStatVal}>
+                  {currentUser?.authProvider === 'google' || currentUser?.email ? '✓ Google Verified' : '✓ Verified Account'}
+                </Text>
               </View>
               <View style={styles.profileStatCard}>
                 <Text style={styles.profileStatLabel}>Location</Text>
@@ -2159,21 +2153,36 @@ Please dispatch assistance immediately!`;
           onPress={() => setActiveTab('profile')}
           activeOpacity={0.8}
         >
-          <View
-            style={[
-              styles.nav3dBadge,
-              activeTab === 'profile' && styles.nav3dBadgeActive
-            ]}
-          >
-            <Text
+          {userProfilePhoto ? (
+            <View
               style={[
-                styles.navEmoji,
-                activeTab === 'profile' && styles.navEmojiActive
+                styles.navProfileAvatarFrame,
+                activeTab === 'profile' && styles.navProfileAvatarFrameActive
               ]}
             >
-              👤
-            </Text>
-          </View>
+              <Image
+                source={{ uri: userProfilePhoto }}
+                style={styles.navProfileAvatarImg}
+                resizeMode="cover"
+              />
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.nav3dBadge,
+                activeTab === 'profile' && styles.nav3dBadgeActive
+              ]}
+            >
+              <Text
+                style={[
+                  styles.navEmoji,
+                  activeTab === 'profile' && styles.navEmojiActive
+                ]}
+              >
+                👤
+              </Text>
+            </View>
+          )}
           <Text
             style={[
               styles.navTabLabel,
@@ -2186,18 +2195,18 @@ Please dispatch assistance immediately!`;
         </TouchableOpacity>
       </View>
 
-      {/* MANDATORY STARTUP WELCOME & MOBILE OTP LOGIN MODAL */}
+      {/* MANDATORY STARTUP WELCOME & GOOGLE SIGN-IN MODAL */}
       <Modal
         visible={isAuthModalOpen && !currentUser}
         animationType="slide"
         transparent={false}
-        statusBarTranslucent={true}
+        statusBarTranslucent={false}
         onRequestClose={() => {
           // Handled by hardware BackHandler
         }}
       >
-        <SafeAreaView style={styles.authGateContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
+        <SafeAreaView style={styles.authGateContainer} edges={['top', 'bottom', 'left', 'right']}>
+          <StatusBar style="light" backgroundColor="#001F3F" translucent={false} />
           <ScrollView
             contentContainerStyle={styles.authGateScroll}
             keyboardShouldPersistTaps="handled"
@@ -2221,13 +2230,13 @@ Please dispatch assistance immediately!`;
               </View>
             </View>
 
-            {/* Step 1: Name & 10-Digit Mobile */}
-            {authStep === 'phone' && (
+            {/* Step 1: Modern Continue with Google */}
+            {authStep === 'google_sign_in' && (
               <View style={styles.authCard}>
                 <View style={styles.authCardHeader}>
-                  <Text style={styles.authCardTitle}>Welcome & Verification</Text>
+                  <Text style={styles.authCardTitle}>Welcome to Quick Karya</Text>
                   <Text style={styles.authCardSubtitle}>
-                    Enter your name and mobile number to access verified artisan contacts near you.
+                    Instant, 100% free proximity contact directory for verified local artisans & emergency services.
                   </Text>
                 </View>
 
@@ -2237,136 +2246,77 @@ Please dispatch assistance immediately!`;
                   </View>
                 )}
 
-                {/* Full Name Input */}
-                <View style={styles.authFieldGroup}>
-                  <Text style={styles.authLabel}>YOUR FULL NAME / आपका नाम *</Text>
-                  <TextInput
-                    style={styles.authInput}
-                    placeholder="e.g. Ramesh Kumar / Artisan"
-                    placeholderTextColor="#9ca3af"
-                    value={loginName}
-                    onChangeText={setLoginName}
-                    autoCapitalize="words"
-                  />
-                </View>
-
-                {/* 10-Digit Mobile Number */}
-                <View style={styles.authFieldGroup}>
-                  <Text style={styles.authLabel}>10-DIGIT MOBILE NUMBER / मोबाइल नंबर *</Text>
-                  <View style={styles.authPhoneInputRow}>
-                    <View style={styles.authCountryCode}>
-                      <Text style={styles.authCountryCodeText}>🇮🇳 +91</Text>
-                    </View>
-                    <TextInput
-                      style={styles.authPhoneInput}
-                      placeholder="9876543210"
-                      placeholderTextColor="#9ca3af"
-                      value={loginPhone}
-                      onChangeText={(t) => setLoginPhone(t.replace(/[^0-9]/g, '').slice(0, 10))}
-                      keyboardType="phone-pad"
-                      maxLength={10}
-                    />
-                  </View>
-                </View>
-
-                {/* Submit Button */}
+                {/* Primary Google Sign-In Button */}
                 <TouchableOpacity
-                  style={[styles.authPrimaryBtn, authLoading && styles.authBtnDisabled]}
-                  onPress={handleNativeSendOtp}
+                  style={[styles.googleSignInBtn, authLoading && styles.authBtnDisabled]}
+                  onPress={() => handleNativeGoogleSignIn()}
                   disabled={authLoading}
+                  activeOpacity={0.85}
                 >
-                  <Text style={styles.authPrimaryBtnText}>
-                    {authLoading ? 'Sending OTP...' : 'Get 6-Digit OTP →'}
+                  <View style={styles.googleIconBadge}>
+                    <Text style={styles.googleIconText}>G</Text>
+                  </View>
+                  <Text style={styles.googleSignInBtnText}>
+                    {authLoading ? 'Signing in with Google...' : 'Continue with Google'}
                   </Text>
                 </TouchableOpacity>
 
-                <View style={styles.authSecurityNote}>
-                  <Text style={styles.authSecurityNoteText}>
-                    🔒 Genuine 6-digit SMS OTP verification. Your session stays permanently logged in on this device.
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Step 2: 6-Digit OTP Verification */}
-            {authStep === 'otp' && (
-              <View style={styles.authCard}>
-                <View style={styles.authCardHeader}>
-                  <Text style={styles.authCardTitle}>Enter 6-Digit OTP</Text>
-                  <Text style={styles.authCardSubtitle}>
-                    Sent to +91 {loginPhone.slice(-10)}
-                  </Text>
-                </View>
-
-                {authSuccessMsg && (
-                  <View style={styles.authSuccessBox}>
-                    <Text style={styles.authSuccessText}>✓ {authSuccessMsg}</Text>
-                  </View>
-                )}
-
-                {authError && (
-                  <View style={styles.authErrorBox}>
-                    <Text style={styles.authErrorText}>⚠️ {authError}</Text>
-                  </View>
-                )}
-
-                {/* OTP Input */}
-                <View style={styles.authFieldGroup}>
-                  <Text style={styles.authLabel}>ENTER 6-DIGIT VERIFICATION CODE</Text>
-                  <TextInput
-                    style={styles.authOtpInput}
-                    placeholder="• • • • • •"
-                    placeholderTextColor="#9ca3af"
-                    value={loginOtp}
-                    onChangeText={(t) => setLoginOtp(t.replace(/[^0-9]/g, '').slice(0, 6))}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                  />
-                </View>
-
-                {/* Verify Button */}
+                {/* Fast One-Tap Sign-In with linked Google account */}
                 <TouchableOpacity
-                  style={[styles.authPrimaryBtn, authLoading && styles.authBtnDisabled]}
-                  onPress={handleNativeVerifyOtp}
+                  style={styles.googleOneTapBtn}
+                  onPress={() => handleNativeGoogleSignIn('ahadabdul0488@gmail.com', 'Abdul Ahad')}
                   disabled={authLoading}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.authPrimaryBtnText}>
-                    {authLoading ? 'Verifying OTP...' : 'Verify & Continue →'}
+                  <Text style={styles.googleOneTapEmoji}>✨</Text>
+                  <Text style={styles.googleOneTapText}>
+                    1-Tap Sign-In: <Text style={styles.boldText}>ahadabdul0488@gmail.com</Text>
                   </Text>
                 </TouchableOpacity>
 
-                {/* Resend & Change Phone Row */}
-                <View style={styles.authOtpActionsRow}>
-                  <TouchableOpacity
-                    onPress={() => setAuthStep('phone')}
-                    style={styles.authTextBtn}
-                  >
-                    <Text style={styles.authTextBtnText}>✎ Edit Number</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={handleNativeSendOtp}
-                    disabled={otpCooldown > 0}
-                    style={styles.authTextBtn}
-                  >
-                    <Text style={[styles.authTextBtnText, otpCooldown > 0 && styles.authTextBtnDisabled]}>
-                      {otpCooldown > 0 ? `Resend in ${otpCooldown}s` : 'Resend OTP'}
+                {/* Benefits / No SMS OTP Notice */}
+                <View style={styles.googlePerksBox}>
+                  <View style={styles.googlePerkRow}>
+                    <Text style={styles.googlePerkCheck}>✓</Text>
+                    <Text style={styles.googlePerkText}>
+                      Zero Password & 100% SMS OTP-Free
                     </Text>
-                  </TouchableOpacity>
+                  </View>
+                  <View style={styles.googlePerkRow}>
+                    <Text style={styles.googlePerkCheck}>✓</Text>
+                    <Text style={styles.googlePerkText}>
+                      Auto-fills your Full Name & Google Profile Picture
+                    </Text>
+                  </View>
+                  <View style={styles.googlePerkRow}>
+                    <Text style={styles.googlePerkCheck}>✓</Text>
+                    <Text style={styles.googlePerkText}>
+                      Mobile number is only needed if you register as a worker
+                    </Text>
+                  </View>
                 </View>
               </View>
             )}
 
-            {/* Step 3: Role Selection (Customer vs Worker) */}
+            {/* Step 2: Role Selection (Customer vs Worker) */}
             {authStep === 'role_selection' && (
               <View style={styles.authCard}>
                 <View style={styles.authCardHeader}>
+                  {pendingVerifiedUser?.profilePhoto && (
+                    <View style={styles.authGoogleAvatarPreview}>
+                      <Image
+                        source={{ uri: pendingVerifiedUser.profilePhoto }}
+                        style={styles.authGoogleAvatarImg}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
                   <View style={styles.authVerifiedPill}>
-                    <Text style={styles.authVerifiedPillText}>✓ Phone Verified</Text>
+                    <Text style={styles.authVerifiedPillText}>✓ Google Account Linked</Text>
                   </View>
                   <Text style={styles.authCardTitle}>Choose Your Role</Text>
                   <Text style={styles.authCardSubtitle}>
-                    Welcome, {loginName}! How would you like to use Quick Karya?
+                    Welcome, {pendingVerifiedUser?.name || 'Member'}! How would you like to use Quick Karya?
                   </Text>
                 </View>
 
@@ -2417,8 +2367,8 @@ Please dispatch assistance immediately!`;
         onRequestClose={() => setDetailWorker(null)}
       >
         {detailWorker && (
-          <SafeAreaView style={styles.detailModalContainer}>
-            <StatusBar barStyle="light-content" backgroundColor="#001F3F" />
+          <SafeAreaView style={styles.detailModalContainer} edges={['top', 'bottom', 'left', 'right']}>
+            <StatusBar style="light" backgroundColor="#001F3F" translucent={false} />
             {/* Header */}
             <View style={styles.detailHeader}>
               <View style={styles.detailHeaderTop}>
@@ -2768,8 +2718,8 @@ Please dispatch assistance immediately!`;
         transparent={false}
         onRequestClose={() => setIsHighwaySosOpen(false)}
       >
-        <SafeAreaView style={styles.sosScreenContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="#991b1b" />
+        <SafeAreaView style={styles.sosScreenContainer} edges={['top', 'bottom', 'left', 'right']}>
+          <StatusBar style="light" backgroundColor="#991b1b" translucent={false} />
 
           {/* SOS TOP BAR */}
           <View style={styles.sosScreenHeader}>
@@ -3015,7 +2965,8 @@ Please dispatch assistance immediately!`;
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
-  );
+  </SafeAreaProvider>
+);
 }
 
 export default function App() {
@@ -3425,33 +3376,38 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: 'relative',
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    borderWidth: 2,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2.5,
     borderColor: '#FFA500',
     backgroundColor: '#001F3F',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    shadowColor: '#FFA500',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3
   },
   avatarImg: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 53,
+    height: 53,
+    borderRadius: 26.5,
     backgroundColor: '#001F3F'
   },
   avatarInitialBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 53,
+    height: 53,
+    borderRadius: 26.5,
     backgroundColor: '#001F3F',
     justifyContent: 'center',
     alignItems: 'center'
   },
   avatarInitialText: {
     color: '#FFD700',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold'
   },
   avatarOnlineDot: {
@@ -4289,6 +4245,31 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 6
   },
+  navProfileAvatarFrame: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    borderColor: '#94a3b8',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#001F3F'
+  },
+  navProfileAvatarFrameActive: {
+    borderColor: '#FFA500',
+    borderWidth: 2,
+    shadowColor: '#FFA500',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.6,
+    shadowRadius: 3,
+    elevation: 4
+  },
+  navProfileAvatarImg: {
+    width: 30,
+    height: 30,
+    borderRadius: 15
+  },
   navIconWrapper: {
     position: 'relative'
   },
@@ -4859,18 +4840,102 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 1
   },
-  authOtpInput: {
-    backgroundColor: '#f9fafb',
-    borderWidth: 2,
+  googleSignInBtn: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
     borderColor: '#FFA500',
-    borderRadius: 12,
-    paddingHorizontal: 14,
+    borderRadius: 14,
     paddingVertical: 14,
-    fontSize: 22,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  googleIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#001F3F',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  googleIconText: {
+    color: '#FFD700',
+    fontSize: 16,
+    fontWeight: '900'
+  },
+  googleSignInBtnText: {
     color: '#001F3F',
-    fontWeight: '800',
-    letterSpacing: 8,
-    textAlign: 'center'
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  googleOneTapBtn: {
+    backgroundColor: '#FFF8E7',
+    borderWidth: 1,
+    borderColor: '#FFE082',
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10
+  },
+  googleOneTapEmoji: {
+    fontSize: 14
+  },
+  googleOneTapText: {
+    fontSize: 12,
+    color: '#001F3F',
+    fontWeight: '600'
+  },
+  googlePerksBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 14,
+    gap: 6
+  },
+  googlePerkRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8
+  },
+  googlePerkCheck: {
+    color: '#10b981',
+    fontWeight: 'bold',
+    fontSize: 12
+  },
+  googlePerkText: {
+    fontSize: 11,
+    color: '#475569',
+    flex: 1,
+    lineHeight: 16
+  },
+  authGoogleAvatarPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2.5,
+    borderColor: '#FFA500',
+    overflow: 'hidden',
+    alignSelf: 'center',
+    marginBottom: 10,
+    backgroundColor: '#001F3F'
+  },
+  authGoogleAvatarImg: {
+    width: '100%',
+    height: '100%'
   },
   authPrimaryBtn: {
     backgroundColor: '#001F3F',
@@ -4901,12 +4966,6 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 16
-  },
-  authOtpActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14
   },
   authTextBtn: {
     paddingVertical: 6,

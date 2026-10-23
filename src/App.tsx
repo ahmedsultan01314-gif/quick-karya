@@ -61,7 +61,7 @@ export default function App() {
       // Ignore localStorage parse errors
     }
 
-    // New user on first startup: open mandatory mobile number & OTP verification
+    // New user on first startup: open mandatory Google Sign-In
     setIsAuthModalOpen(true);
   }, []);
 
@@ -104,10 +104,8 @@ export default function App() {
         const data = (await res.json()) as WorkerProfile[];
         const clean = data.filter(
           (w) =>
-            !w.name?.toLowerCase().includes('kastu') &&
-            !w.name?.toLowerCase().includes('santirkey') &&
-            !w.name?.toLowerCase().includes('mujib') &&
-            w.id !== 'w-local-1791669750641'
+            !w.name?.toLowerCase().includes('santosh sharma') &&
+            w.id !== 'MnZmnMfibdTUNGD6mvfc'
         );
         setWorkers(clean);
       }
@@ -349,6 +347,7 @@ export default function App() {
           workersCount={workers.length}
           userName={currentUser?.name}
           isLoggedIn={Boolean(currentUser)}
+          userPhoto={currentUser?.profilePhoto || currentUser?.avatar}
         />
 
         {/* Direct Call Dialog Sheet */}
@@ -372,7 +371,7 @@ export default function App() {
           onSearchCustomText={handleSearchCustomText}
         />
 
-        {/* Mobile SMS OTP Login Modal */}
+        {/* Google Sign-In Modal */}
         <AuthModal
           isOpen={isAuthModalOpen}
           onClose={() => {
