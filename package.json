@@ -22,7 +22,7 @@
     "expo-image-picker": "^57.0.20",
     "expo-location": "^57.0.20",
     "expo-notifications": "^57.0.22",
-    "expo-status-bar": "^58.0.3",
+    "expo-status-bar": "~57.0.1",
     "express": "^4.21.2",
     "firebase": "^12.19.0",
     "lucide-react": "^0.546.0",
