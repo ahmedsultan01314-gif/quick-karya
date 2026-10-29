@@ -52,6 +52,8 @@ import {
   fetchReviewsForWorker,
   saveUserToCloud,
   signInWithGoogle,
+  signInWithEmail,
+  signUpWithEmail,
   auth
 } from './src/firebase';
 import {
@@ -108,6 +110,15 @@ function NativeApp() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [pendingVerifiedUser, setPendingVerifiedUser] = useState<AppUser | null>(null);
   const [showSplashScreen, setShowSplashScreen] = useState(true);
+
+  // Email & Password Auth State
+  const [authShowEmailForm, setAuthShowEmailForm] = useState(false);
+  const [authEmailMode, setAuthEmailMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authFullName, setAuthFullName] = useState('');
+  const [authShowPassword, setAuthShowPassword] = useState(false);
+  const [authEmailLoading, setAuthEmailLoading] = useState(false);
 
   // Auto-dismiss initial brand splash after 2 seconds
   useEffect(() => {
@@ -191,6 +202,58 @@ function NativeApp() {
       setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // Alternative Manual Email & Password Authentication
+  const handleNativeEmailAuthSubmit = async () => {
+    setAuthError(null);
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setAuthError('Please fill in your email address and password.');
+      return;
+    }
+    if (authEmailMode === 'register' && !authFullName.trim()) {
+      setAuthError('Please enter your full name to create an account.');
+      return;
+    }
+
+    setAuthEmailLoading(true);
+    try {
+      const authRes =
+        authEmailMode === 'register'
+          ? await signUpWithEmail(authEmail.trim(), authPassword.trim(), authFullName.trim())
+          : await signInWithEmail(authEmail.trim(), authPassword.trim());
+
+      const userObj: AppUser = {
+        id: authRes.uid,
+        name: authRes.name,
+        email: authRes.email,
+        profilePhoto: authRes.photoUrl,
+        avatar: authRes.photoUrl,
+        authProvider: 'email',
+        role: 'customer',
+        verified: true,
+        createdAt: new Date().toISOString()
+      };
+
+      setCurrentUser(userObj);
+      setPendingVerifiedUser(userObj);
+      setLoginName(userObj.name);
+      setLoginEmail(userObj.email || authEmail.trim());
+      setRegName(userObj.name);
+
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userObj)).catch(() => {});
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('quick_karya_user', JSON.stringify(userObj));
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userObj));
+      }
+      await saveUserToCloud(userObj).catch((e) => console.warn('Firestore user save notice:', e));
+
+      setAuthStep('role_selection');
+    } catch (err: any) {
+      setAuthError(err?.message || 'Authentication failed. Please verify credentials.');
+    } finally {
+      setAuthEmailLoading(false);
     }
   };
 
@@ -2321,27 +2384,152 @@ Please dispatch assistance immediately!`;
                   </Text>
                 </TouchableOpacity>
 
-                {/* Benefits / No SMS OTP Notice */}
-                <View style={styles.googlePerksBox}>
-                  <View style={styles.googlePerkRow}>
-                    <Text style={styles.googlePerkCheck}>✓</Text>
-                    <Text style={styles.googlePerkText}>
-                      Zero Password & 100% SMS OTP-Free
-                    </Text>
+                {/* Dual Auth Choice: Sign in with Email & Password */}
+                {!authShowEmailForm ? (
+                  <>
+                    <View style={styles.authDividerRow}>
+                      <View style={styles.authDividerLine} />
+                      <Text style={styles.authDividerText}>OR WITH EMAIL</Text>
+                      <View style={styles.authDividerLine} />
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.emailToggleBtn}
+                      onPress={() => {
+                        setAuthError(null);
+                        setAuthShowEmailForm(true);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.emailToggleBtnIcon}>✉️</Text>
+                      <Text style={styles.emailToggleBtnText}>Sign in with Email & Password</Text>
+                    </TouchableOpacity>
+
+                    {/* Benefits / Instant Access Notice */}
+                    <View style={styles.googlePerksBox}>
+                      <View style={styles.googlePerkRow}>
+                        <Text style={styles.googlePerkCheck}>✓</Text>
+                        <Text style={styles.googlePerkText}>
+                          Zero Password with Google & 100% Free Contact
+                        </Text>
+                      </View>
+                      <View style={styles.googlePerkRow}>
+                        <Text style={styles.googlePerkCheck}>✓</Text>
+                        <Text style={styles.googlePerkText}>
+                          Auto-fills your Full Name & Profile Picture
+                        </Text>
+                      </View>
+                      <View style={styles.googlePerkRow}>
+                        <Text style={styles.googlePerkCheck}>✓</Text>
+                        <Text style={styles.googlePerkText}>
+                          Mobile number is only needed if you register as a worker
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.emailFormContainer}>
+                    <View style={styles.emailTabRow}>
+                      <TouchableOpacity
+                        style={[styles.emailTabBtn, authEmailMode === 'login' && styles.emailTabBtnActive]}
+                        onPress={() => {
+                          setAuthError(null);
+                          setAuthEmailMode('login');
+                        }}
+                      >
+                        <Text style={[styles.emailTabBtnText, authEmailMode === 'login' && styles.emailTabBtnTextActive]}>
+                          Sign In
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.emailTabBtn, authEmailMode === 'register' && styles.emailTabBtnActive]}
+                        onPress={() => {
+                          setAuthError(null);
+                          setAuthEmailMode('register');
+                        }}
+                      >
+                        <Text style={[styles.emailTabBtnText, authEmailMode === 'register' && styles.emailTabBtnTextActive]}>
+                          Create Account
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {authEmailMode === 'register' && (
+                      <View style={styles.emailInputWrapper}>
+                        <Text style={styles.emailInputLabel}>Full Name</Text>
+                        <TextInput
+                          style={styles.emailTextInput}
+                          placeholder="e.g. Sultan Ahamed"
+                          placeholderTextColor="#9ca3af"
+                          value={authFullName}
+                          onChangeText={setAuthFullName}
+                          autoCapitalize="words"
+                        />
+                      </View>
+                    )}
+
+                    <View style={styles.emailInputWrapper}>
+                      <Text style={styles.emailInputLabel}>Email Address</Text>
+                      <TextInput
+                        style={styles.emailTextInput}
+                        placeholder="e.g. name@example.com"
+                        placeholderTextColor="#9ca3af"
+                        value={authEmail}
+                        onChangeText={setAuthEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    </View>
+
+                    <View style={styles.emailInputWrapper}>
+                      <Text style={styles.emailInputLabel}>Password</Text>
+                      <View style={styles.emailPasswordRow}>
+                        <TextInput
+                          style={[styles.emailTextInput, { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]}
+                          placeholder={authEmailMode === 'register' ? 'Min 6 characters' : 'Enter password'}
+                          placeholderTextColor="#9ca3af"
+                          value={authPassword}
+                          onChangeText={setAuthPassword}
+                          secureTextEntry={!authShowPassword}
+                          autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                          style={styles.passwordEyeBtn}
+                          onPress={() => setAuthShowPassword(!authShowPassword)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.passwordEyeText}>{authShowPassword ? '👁️' : '🙈'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.emailSubmitBtn, authEmailLoading && styles.authBtnDisabled]}
+                      onPress={handleNativeEmailAuthSubmit}
+                      disabled={authEmailLoading}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.emailSubmitBtnText}>
+                        {authEmailLoading
+                          ? 'Please wait...'
+                          : authEmailMode === 'login'
+                          ? 'Sign In with Email'
+                          : 'Create Free Account'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.emailCancelBtn}
+                      onPress={() => {
+                        setAuthShowEmailForm(false);
+                        setAuthError(null);
+                      }}
+                    >
+                      <Text style={styles.emailCancelBtnText}>← Back to Google Sign-In</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={styles.googlePerkRow}>
-                    <Text style={styles.googlePerkCheck}>✓</Text>
-                    <Text style={styles.googlePerkText}>
-                      Auto-fills your Full Name & Google Profile Picture
-                    </Text>
-                  </View>
-                  <View style={styles.googlePerkRow}>
-                    <Text style={styles.googlePerkCheck}>✓</Text>
-                    <Text style={styles.googlePerkText}>
-                      Mobile number is only needed if you register as a worker
-                    </Text>
-                  </View>
-                </View>
+                )}
               </View>
             )}
 
@@ -4968,6 +5156,132 @@ const styles = StyleSheet.create({
     color: '#475569',
     flex: 1,
     lineHeight: 16
+  },
+  authDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 14,
+    gap: 10
+  },
+  authDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e7eb'
+  },
+  authDividerText: {
+    color: '#9ca3af',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8
+  },
+  emailToggleBtn: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10
+  },
+  emailToggleBtnIcon: {
+    fontSize: 16
+  },
+  emailToggleBtnText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  emailFormContainer: {
+    marginTop: 10
+  },
+  emailTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 14
+  },
+  emailTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8
+  },
+  emailTabBtnActive: {
+    backgroundColor: '#001F3F'
+  },
+  emailTabBtnText: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  emailTabBtnTextActive: {
+    color: '#FFD700'
+  },
+  emailInputWrapper: {
+    marginBottom: 12
+  },
+  emailInputLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4b5563',
+    marginBottom: 4,
+    letterSpacing: 0.3
+  },
+  emailTextInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827'
+  },
+  emailPasswordRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  passwordEyeBtn: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1.5,
+    borderLeftWidth: 0,
+    borderColor: '#e5e7eb',
+    borderTopRightRadius: 10,
+    borderBottomRightRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  passwordEyeText: {
+    fontSize: 14
+  },
+  emailSubmitBtn: {
+    backgroundColor: '#001F3F',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 6
+  },
+  emailSubmitBtnText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3
+  },
+  emailCancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 6
+  },
+  emailCancelBtnText: {
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '600'
   },
   authGoogleAvatarPreview: {
     width: 64,

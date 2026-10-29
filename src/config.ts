@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 /**
  * Verified Backend Base URL Configuration for Quick Karya
  * In React Native Android / iOS, relative fetch paths (e.g. '/api/...') throw
@@ -28,8 +26,13 @@ export const BACKEND_BASE_URL: string = (() => {
  */
 export function getApiUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  // On web, relative path is safe and avoids any CORS mismatches
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  // On web browser, relative path is safe and avoids any CORS mismatches
+  const isWebBrowser =
+    typeof window !== 'undefined' &&
+    typeof document !== 'undefined' &&
+    typeof window.location?.origin === 'string';
+
+  if (isWebBrowser) {
     return cleanPath;
   }
   // On native Android/iOS, absolute URL with protocol is strictly required

@@ -120,7 +120,7 @@ export interface AppUser {
   workerId?: string; // Permanent Quick Karya Worker ID, e.g. QK-78901
   profilePhoto?: string;
   avatar?: string;
-  authProvider?: 'google' | 'phone';
+  authProvider?: 'google' | 'phone' | 'email';
   fcmToken?: string;
   pushToken?: string;
   verified: boolean;

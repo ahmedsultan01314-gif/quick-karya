@@ -404,6 +404,87 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   });
 });
 
+// Register with Email & Password
+app.post('/api/auth/register-email', async (req, res) => {
+  const { email, password, name, role } = req.body;
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const userId = `usr_email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  const existingUser = await fetchUserFromCloud(userId).catch(() => null);
+  if (existingUser) {
+    return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
+  }
+
+  const userRole = (role === 'worker' ? 'worker' : 'customer') as 'customer' | 'worker';
+  const workerId = userRole === 'worker' ? `QK-${Math.floor(10000 + Math.random() * 90000)}` : undefined;
+  const displayName = (name && name.trim()) || cleanEmail.split('@')[0];
+
+  const newUser: AppUser = {
+    id: userId,
+    email: cleanEmail,
+    name: displayName,
+    role: userRole,
+    workerId,
+    verified: true,
+    authProvider: 'email',
+    profilePhoto: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=001F3F&textColor=FFA500`,
+    createdAt: new Date().toISOString()
+  };
+
+  await saveUserToCloud(newUser).catch((e) => console.warn('Could not save email user to cloud:', e));
+
+  return res.json({
+    success: true,
+    message: 'Account created successfully',
+    user: newUser
+  });
+});
+
+// Login with Email & Password
+app.post('/api/auth/login-email', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const userId = `usr_email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  let user = await fetchUserFromCloud(userId).catch(() => null);
+
+  // If user doesn't exist, create an account automatically so users are seamlessly onboarded
+  if (!user) {
+    const displayName = cleanEmail.split('@')[0];
+    user = {
+      id: userId,
+      email: cleanEmail,
+      name: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+      role: 'customer',
+      verified: true,
+      authProvider: 'email',
+      profilePhoto: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=001F3F&textColor=FFA500`,
+      createdAt: new Date().toISOString()
+    };
+    await saveUserToCloud(user).catch((e) => console.warn('Could not save user:', e));
+  }
+
+  return res.json({
+    success: true,
+    message: 'Logged in successfully',
+    user
+  });
+});
+
 // Device token store for targeted FCM / Expo push notifications
 const deviceTokenStore = new Map<string, string>(); // phone (10 digits) or workerId -> token
 

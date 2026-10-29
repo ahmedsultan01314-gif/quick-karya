@@ -4,13 +4,21 @@ import {
   ShieldCheck,
   ArrowRight,
   Lock,
+  Mail,
+  Eye,
+  EyeOff,
   UserCheck,
   CheckCircle2,
   AlertCircle,
   Briefcase,
   Users
 } from 'lucide-react';
-import { signInWithGoogle, saveUserToCloud } from '../firebase';
+import {
+  signInWithGoogle,
+  signInWithEmail,
+  signUpWithEmail,
+  saveUserToCloud
+} from '../firebase';
 import { getApiUrl } from '../config';
 
 interface AuthModalProps {
@@ -34,7 +42,56 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Dual auth states
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailMode, setEmailMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
   if (!isOpen) return null;
+
+  // Handle Email & Password Login / Register
+  const handleEmailAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      let authUser;
+      if (emailMode === 'register') {
+        authUser = await signUpWithEmail(email, password, fullName);
+      } else {
+        authUser = await signInWithEmail(email, password);
+      }
+
+      const appUser: AppUser = {
+        id: authUser.uid,
+        name: authUser.name,
+        email: authUser.email,
+        profilePhoto: authUser.photoUrl,
+        avatar: authUser.photoUrl,
+        authProvider: 'email',
+        role: 'customer',
+        verified: true,
+        createdAt: new Date().toISOString()
+      };
+
+      await saveUserToCloud(appUser).catch((e) => console.warn('Firestore user save notice:', e));
+      try {
+        localStorage.setItem('quick_karya_user', JSON.stringify(appUser));
+      } catch {}
+
+      setVerifiedUser(appUser);
+      setStep('role_selection');
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || 'Authentication failed. Please verify your email and password.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 1. Primary Google Sign-In Handler
   const handleGoogleSignIn = async () => {
@@ -214,13 +271,144 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
 
 
+              {/* Elegant Divider */}
+              <div className="relative my-3">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-400 font-bold tracking-wider text-[10px]">
+                    Or with Email & Password
+                  </span>
+                </div>
+              </div>
+
+              {/* Email & Password Authentication Form */}
+              {!showEmailForm ? (
+                <button
+                  type="button"
+                  id="btn-show-email-auth"
+                  onClick={() => setShowEmailForm(true)}
+                  className="w-full py-2.5 px-4 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl border border-gray-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                >
+                  <Mail className="w-4 h-4 text-gray-500" />
+                  <span>Sign in with Email & Password</span>
+                </button>
+              ) : (
+                <form onSubmit={handleEmailAuthSubmit} className="space-y-3 text-left animate-in fade-in duration-200">
+                  {/* Login vs Register Mode Tabs */}
+                  <div className="grid grid-cols-2 p-1 bg-gray-100 rounded-xl text-center text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setEmailMode('login')}
+                      className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                        emailMode === 'login'
+                          ? 'bg-white text-[#001F3F] shadow-xs'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailMode('register')}
+                      className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                        emailMode === 'register'
+                          ? 'bg-white text-[#001F3F] shadow-xs'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      Create Account
+                    </button>
+                  </div>
+
+                  {emailMode === 'register' && (
+                    <div>
+                      <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="e.g. Sultan Ahamed"
+                        className="w-full px-3 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="w-full pl-8 pr-3 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                      <Mail className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Min. 6 characters"
+                        className="w-full pl-8 pr-8 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                      <Lock className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 px-4 bg-[#001F3F] hover:bg-[#002e5c] text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    {loading
+                      ? 'Verifying...'
+                      : emailMode === 'register'
+                      ? 'Create Quick Karya Account'
+                      : 'Sign In with Email'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailForm(false)}
+                    className="w-full text-center text-[11px] text-gray-400 hover:text-gray-600 font-semibold cursor-pointer"
+                  >
+                    ← Back to Google Sign-In
+                  </button>
+                </form>
+              )}
+
               <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-left space-y-1 mt-2">
                 <p className="text-[11px] font-bold text-[#001F3F] flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Zero Password & SMS OTP-Free</span>
+                  <span>Free Direct Artisan Contact</span>
                 </p>
                 <p className="text-[10.5px] text-gray-500 leading-relaxed">
-                  Your Google profile picture, name, and email will be securely linked. Mobile number is only required if you register as a worker to receive calls.
+                  Your profile is securely stored. Phone number is only required if you register as a worker to receive incoming calls.
                 </p>
               </div>
             </div>
