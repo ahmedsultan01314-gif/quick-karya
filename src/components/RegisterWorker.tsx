@@ -253,11 +253,13 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
 
       // Get logged in user if available
       let currentUserId: string | undefined;
+      let currentWorkerId: string | undefined;
       try {
         const stored = localStorage.getItem('quick_karya_user');
         if (stored) {
           const parsed = JSON.parse(stored);
           currentUserId = parsed?.id;
+          currentWorkerId = parsed?.workerId;
         }
       } catch {}
 
@@ -275,7 +277,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
         photo: photo || undefined,
-        userId: currentUserId
+        userId: currentUserId,
+        workerId: currentWorkerId
       };
 
       const res = await fetch(getApiUrl('/api/workers'), {
@@ -292,6 +295,19 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
       const data = await res.json();
       setSuccessWorker(data.worker);
       onWorkerRegistered(data.worker);
+
+      // Keep user profile in sync with new name & worker ID
+      try {
+        const stored = localStorage.getItem('quick_karya_user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          u.name = data.worker.name;
+          u.role = 'worker';
+          u.workerId = data.worker.workerId;
+          if (data.worker.photo) u.profilePhoto = data.worker.photo;
+          localStorage.setItem('quick_karya_user', JSON.stringify(u));
+        }
+      } catch {}
 
       // Trigger automatic local push notification & in-app activity alert
       triggerRegistrationNotification(data.worker.name, data.worker.category).catch(() => {});

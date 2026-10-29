@@ -39,11 +39,27 @@ let workers: WorkerProfile[] = [];
 try {
   subscribeWorkersFromCloud(
     (cloudWorkers) => {
-      workers = cloudWorkers.filter(
-        (w) =>
-          !w.name?.toLowerCase().includes('santosh sharma') &&
-          w.id !== 'MnZmnMfibdTUNGD6mvfc'
-      );
+      const seen = new Set<string>();
+      const cleanList: WorkerProfile[] = [];
+      for (const w of cloudWorkers) {
+        const lowerName = (w.name || '').toLowerCase();
+        if (
+          lowerName.includes('santosh sharma') ||
+          lowerName.includes('nagan dhar') ||
+          w.id === 'MnZmnMfibdTUNGD6mvfc'
+        ) {
+          continue;
+        }
+        // Deduplicate by clean phone + category
+        const rawPhone = (w.phone || '').replace(/[^0-9]/g, '').slice(-10);
+        const key = `${rawPhone}_${w.category}`;
+        if (key && seen.has(key)) {
+          continue;
+        }
+        if (key) seen.add(key);
+        cleanList.push(w);
+      }
+      workers = cleanList;
     },
     (err) => {
       console.warn('Server Firestore sync error:', err);
@@ -499,30 +515,48 @@ app.post('/api/notifications/notify-worker', async (req, res) => {
   });
 });
 
-// Update Profile & Sync Worker Profile Avatar Photo
+// Update Profile & Sync Worker Profile Avatar Photo and Name
 app.put('/api/auth/profile', async (req, res) => {
-  const { id, name, profilePhoto, role } = req.body;
+  const { id, name, profilePhoto, role, phone } = req.body;
   if (!id) return res.status(400).json({ error: 'User ID is required' });
 
   const existing = await fetchUserFromCloud(id).catch(() => null);
   if (!existing) return res.status(404).json({ error: 'User profile not found' });
 
-  if (name) existing.name = name.trim();
+  const cleanPhone = (phone || existing.phone || '').replace(/[^0-9]/g, '').slice(-10);
+
+  if (name && name.trim()) {
+    existing.name = name.trim();
+    // Propagate name change to all associated worker records
+    const matched = workers.filter(
+      (w) =>
+        (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) ||
+        (existing.workerId && w.workerId === existing.workerId)
+    );
+    for (const mw of matched) {
+      mw.name = name.trim();
+      await saveWorkerToCloud(mw).catch((e) => console.warn('Could not sync updated name to worker in cloud:', e));
+    }
+  }
+
   if (profilePhoto) {
     existing.profilePhoto = profilePhoto;
     existing.avatar = profilePhoto;
 
     // Immediately propagate photo to worker directory in memory & Firestore
-    const cleanPhone = existing.phone ? existing.phone.replace(/[^0-9]/g, '').slice(-10) : '';
-    const workerMatch = workers.find(
-      (w) => (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) || (existing.workerId && w.workerId === existing.workerId)
+    const matched = workers.filter(
+      (w) =>
+        (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) ||
+        (existing.workerId && w.workerId === existing.workerId)
     );
-    if (workerMatch) {
-      workerMatch.photo = profilePhoto;
-      workerMatch.avatar = profilePhoto;
-      await saveWorkerToCloud(workerMatch).catch((e) => console.warn('Could not sync updated photo to cloud:', e));
+    for (const mw of matched) {
+      mw.photo = profilePhoto;
+      mw.avatar = profilePhoto;
+      await saveWorkerToCloud(mw).catch((e) => console.warn('Could not sync updated photo to cloud:', e));
     }
   }
+
+  if (phone) existing.phone = phone;
   if (role) existing.role = role;
 
   await saveUserToCloud(existing);
@@ -666,15 +700,14 @@ app.post('/api/workers', async (req, res) => {
     return res.status(400).json({ error: 'Missing required worker onboarding fields' });
   }
 
-  // Check for duplicate profile by mobile number
+  // Check for existing profile by mobile number or worker ID to update in-place (no duplicates)
   const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-10);
-  const existingWorker = workers.find((w) => w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone);
-  if (existingWorker) {
-    return res.status(409).json({
-      error: `A worker profile is already registered with mobile number +91${cleanPhone} (Worker ID: ${existingWorker.workerId || existingWorker.id}).`,
-      existingWorker
-    });
-  }
+  const existingWorker = workers.find(
+    (w) =>
+      (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone && w.category === category) ||
+      (req.body.id && w.id === req.body.id) ||
+      (req.body.workerId && w.workerId === req.body.workerId)
+  );
 
   let workerLat = typeof latitude === 'number' ? latitude : null;
   let workerLng = typeof longitude === 'number' ? longitude : null;
@@ -695,7 +728,39 @@ app.post('/api/workers', async (req, res) => {
   const determinedState = state?.trim() || (matched?.state || 'Tripura');
   const profilePhoto = photo || photoUrl || undefined;
 
-  // Generate permanent Worker ID
+  if (existingWorker) {
+    // Update existing worker profile in-place
+    existingWorker.name = name.trim();
+    existingWorker.category = category as ServiceCategory;
+    if (subRole) existingWorker.subRole = subRole.trim();
+    existingWorker.experience = parseInt(experience, 10) || existingWorker.experience;
+    existingWorker.city = city.trim();
+    existingWorker.state = determinedState;
+    existingWorker.pincode = pincode ? pincode.trim() : existingWorker.pincode;
+    existingWorker.latitude = workerLat;
+    existingWorker.longitude = workerLng;
+    if (profilePhoto) {
+      existingWorker.photo = profilePhoto;
+      existingWorker.avatar = profilePhoto;
+    }
+    if (skills) {
+      existingWorker.skills = Array.isArray(skills) ? skills : skills.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+    if (languages) {
+      existingWorker.languages = Array.isArray(languages) ? languages : languages.split(',').map((l: string) => l.trim()).filter(Boolean);
+    }
+
+    await saveWorkerToCloud(existingWorker).catch((e) => console.warn('Could not save updated worker to cloud:', e));
+
+    return res.json({
+      success: true,
+      message: 'Worker profile updated successfully.',
+      worker: existingWorker,
+      isUpdate: true
+    });
+  }
+
+  // Generate permanent Worker ID for genuinely new artisan
   const permanentWorkerId = `QK-${Math.floor(10000 + Math.random() * 90000)}`;
 
   const newWorker: WorkerProfile = {

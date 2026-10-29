@@ -254,10 +254,17 @@ export default function App() {
   };
 
   const handleWorkerRegistered = (newWorker: WorkerProfile) => {
-    setWorkers((prev) => [newWorker, ...prev]);
-    setSelectedCategory(newWorker.category);
-    // Switch to profile tab to show worker card & ID
-    setSelectedCategory('All'); setActiveTab('home');
+    setWorkers((prev) => {
+      const cleanPhone = (newWorker.phone || '').replace(/[^0-9]/g, '').slice(-10);
+      const filtered = prev.filter(
+        (w) =>
+          w.id !== newWorker.id &&
+          !(cleanPhone && (w.phone || '').replace(/[^0-9]/g, '').slice(-10) === cleanPhone && w.category === newWorker.category)
+      );
+      return [newWorker, ...filtered];
+    });
+    setSelectedCategory('All');
+    setActiveTab('home');
   };
 
   const handleResetFilters = () => {

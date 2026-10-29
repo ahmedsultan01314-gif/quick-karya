@@ -3,7 +3,6 @@ import { AppUser, UserRole } from '../types';
 import {
   ShieldCheck,
   ArrowRight,
-  Sparkles,
   Lock,
   UserCheck,
   CheckCircle2,
@@ -38,43 +37,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   // 1. Primary Google Sign-In Handler
-  const handleGoogleSignIn = async (overrideEmail?: string, overrideName?: string) => {
+  const handleGoogleSignIn = async () => {
     setError(null);
     setLoading(true);
 
     try {
-      let gUser: { uid: string; name: string; email: string; photoUrl: string };
-
-      if (overrideEmail) {
-        // Fast One-Tap Auto-Fill Flow with verified user account
-        const namePart = overrideName || overrideEmail.split('@')[0].replace(/[._]/g, ' ');
-        const formattedName = namePart
-          .split(' ')
-          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-          .join(' ');
-
-        gUser = {
-          uid: `google_${overrideEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-          name: formattedName,
-          email: overrideEmail,
-          photoUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(formattedName)}&backgroundColor=001F3F&textColor=FFA500`
-        };
-      } else {
-        // Real Google OAuth / Firebase Google Auth Provider Popup
-        try {
-          gUser = await signInWithGoogle();
-        } catch (popupErr: any) {
-          // If popup is blocked by browser sandbox or dismissed, gracefully provide 1-tap Google session
-          console.warn('Google popup notice, falling back to 1-Tap Google profile:', popupErr?.message);
-          const fallbackEmail = 'ahadabdul0488@gmail.com';
-          gUser = {
-            uid: `google_ahad_${Date.now().toString(36)}`,
-            name: 'Abdul Ahad',
-            email: fallbackEmail,
-            photoUrl: `https://api.dicebear.com/7.x/initials/svg?seed=Abdul%20Ahad&backgroundColor=001F3F&textColor=FFA500`
-          };
-        }
-      }
+      // Real Google OAuth / Firebase Google Auth Provider Popup with account picker
+      const gUser = await signInWithGoogle();
 
       const appUser: AppUser = {
         id: gUser.uid,
@@ -243,19 +212,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </span>
               </button>
 
-              {/* 1-Tap Quick Auto-Fill Profile Button for Google Account */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  id="btn-google-onetap-quick"
-                  onClick={() => handleGoogleSignIn('ahadabdul0488@gmail.com', 'Abdul Ahad')}
-                  disabled={loading}
-                  className="w-full py-2.5 px-3 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 border border-amber-300 rounded-xl text-[#001F3F] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>1-Tap Sign-In: <strong>ahadabdul0488@gmail.com</strong></span>
-                </button>
-              </div>
+
 
               <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 text-left space-y-1 mt-2">
                 <p className="text-[11px] font-bold text-[#001F3F] flex items-center gap-1.5">

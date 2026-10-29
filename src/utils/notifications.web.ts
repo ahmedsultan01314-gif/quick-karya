@@ -78,10 +78,10 @@ export async function triggerCallWorkerNotification(
   const callerName = customerName || 'Customer';
   const callerPhone = customerPhone || '';
 
-  // Trigger immediate in-app banner alert
+  // Trigger immediate in-app banner alert for customer
   dispatchInAppBanner(
-    'Quick Karya - Call Alert',
-    'New Customer Call Alert: A client from Quick Karya is calling you for work!',
+    'Quick Karya - Call Alert Dispatched',
+    `Connecting to ${workerName} (${category || 'Artisan'}). Call alert and customer details logged for this artisan.`,
     'call'
   );
 

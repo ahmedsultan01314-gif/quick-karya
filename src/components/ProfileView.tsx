@@ -42,6 +42,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
+  // Edit Name in-place without duplicate profile/ID creation
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(user?.name || '');
+  const [updatingName, setUpdatingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameSuccess, setNameSuccess] = useState(false);
+
   // Match worker profile by phone number or Worker ID
   useEffect(() => {
     if (user) {
@@ -159,6 +166,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handleSaveName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nameInput.trim()) {
+      setNameError('Please enter a valid name');
+      return;
+    }
+    setUpdatingName(true);
+    setNameError(null);
+    try {
+      const res = await fetch(getApiUrl('/api/auth/profile'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: user.id,
+          name: nameInput.trim()
+        })
+      });
+      if (!res.ok) throw new Error('Could not update profile name');
+
+      user.name = nameInput.trim();
+      localStorage.setItem('quick_karya_user', JSON.stringify(user));
+      if (workerProfile) {
+        workerProfile.name = nameInput.trim();
+      }
+      setIsEditingName(false);
+      setNameSuccess(true);
+      setTimeout(() => setNameSuccess(false), 3000);
+    } catch (err: any) {
+      setNameError(err?.message || 'Failed to update name');
+    } finally {
+      setUpdatingName(false);
+    }
+  };
+
   const isWorker = user.role === 'worker' || Boolean(workerProfile);
   const activeWorkerId = workerProfile?.workerId || user.workerId || `QK-${user.id.slice(-5).toUpperCase()}`;
 
@@ -216,12 +257,61 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <h2 className="text-base font-bold truncate">{user.name}</h2>
-                {user.verified && (
-                  <ShieldCheck className="w-4 h-4 text-[#FFD700] shrink-0" />
-                )}
-              </div>
+              {isEditingName ? (
+                <form onSubmit={handleSaveName} className="space-y-1.5 py-1">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      className="text-xs font-bold text-gray-900 bg-white rounded-lg px-2.5 py-1 border border-amber-400 focus:outline-none w-full"
+                      placeholder="Enter new profile name..."
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      disabled={updatingName}
+                      className="px-2.5 py-1 bg-[#FFA500] hover:bg-[#FF8C00] text-[#001F3F] text-[11px] font-extrabold rounded-lg shrink-0 cursor-pointer disabled:opacity-50"
+                    >
+                      {updatingName ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingName(false)}
+                      className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold rounded-lg shrink-0 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {nameError && <p className="text-[10px] text-red-300">{nameError}</p>}
+                </form>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-base font-bold truncate">{user.name}</h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingName(true);
+                      setNameInput(user.name);
+                    }}
+                    className="p-1 hover:bg-white/10 rounded-md text-amber-300 hover:text-white transition-colors cursor-pointer"
+                    title="Edit Name"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  {user.verified && (
+                    <ShieldCheck className="w-4 h-4 text-[#FFD700] shrink-0" />
+                  )}
+                </div>
+              )}
+
+              {nameSuccess && (
+                <p className="text-[10.5px] text-emerald-300 font-bold flex items-center gap-1 animate-in fade-in">
+                  <Check className="w-3 h-3 text-emerald-300" />
+                  <span>Name updated across directory (ID preserved)</span>
+                </p>
+              )}
+
               <p className="text-xs text-[#FFD700] font-mono mt-0.5">{user.phone}</p>
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#001F3F]/80 text-[#FFD700] border border-[#FFA500]/40">

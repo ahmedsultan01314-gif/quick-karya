@@ -109,8 +109,8 @@ export async function triggerCallWorkerNotification(
   // Trigger banner event for immediate in-app feedback
   const banner: NotificationBannerData = {
     id: `call-alert-${Date.now()}`,
-    title: 'Quick Karya - Call Alert',
-    body: 'New Customer Call Alert: A client from Quick Karya is calling you for work!',
+    title: 'Quick Karya - Call Alert Dispatched',
+    body: `Connecting to ${workerName} (${category || 'Artisan'}). Call alert and customer details logged for this artisan.`,
     type: 'call',
     timestamp: Date.now()
   };

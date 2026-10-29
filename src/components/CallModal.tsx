@@ -45,6 +45,8 @@ export const CallModal: React.FC<CallModalProps> = ({
   const [pickupLocation, setPickupLocation] = useState('');
   const [dropLocation, setDropLocation] = useState('');
   const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [sharedGpsCoords, setSharedGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [callAlertNotice, setCallAlertNotice] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Initialize or reset locations when worker changes
@@ -56,11 +58,15 @@ export const CallModal: React.FC<CallModalProps> = ({
             ? `Live GPS Area (${userLocation.city}${userLocation.state ? ', ' + userLocation.state : ''})`
             : `${userLocation.city}${userLocation.state ? ', ' + userLocation.state : ''}`
         );
+        if (userLocation.latitude && userLocation.longitude) {
+          setSharedGpsCoords({ lat: userLocation.latitude, lng: userLocation.longitude });
+        }
       } else {
         setPickupLocation('');
       }
       setDropLocation('');
       setValidationError(null);
+      setCallAlertNotice(null);
       setCopiedNumber(false);
       setCopiedSummary(false);
     }
@@ -96,6 +102,7 @@ export const CallModal: React.FC<CallModalProps> = ({
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
+        setSharedGpsCoords({ lat: latitude, lng: longitude });
         try {
           const res = await fetch(`/api/reverse-geocode?lat=${latitude}&lng=${longitude}`);
           if (res.ok) {
@@ -155,7 +162,9 @@ export const CallModal: React.FC<CallModalProps> = ({
       ].join('\n');
     } else {
       const addressLine = pickupLocation.trim() ? `\n📍 Service Address: ${pickupLocation.trim()}` : '';
-      return `Hello ${worker.name}, I found your profile on Quick Karya for ${worker.category} service (Rates: ${rateText}).${addressLine}\nPlease confirm if you are available. Thank you!`;
+      const pinCoords = sharedGpsCoords || (userLocation?.latitude && userLocation?.longitude ? { lat: userLocation.latitude, lng: userLocation.longitude } : null);
+      const mapLine = pinCoords ? `\n🗺️ Google Maps Navigation Pin: https://maps.google.com/?q=${pinCoords.lat},${pinCoords.lng}` : '';
+      return `Hello ${worker.name}, I found your profile on Quick Karya for ${worker.category} service (Rates: ${rateText}).${addressLine}${mapLine}\nPlease confirm if you are available. Thank you!`;
     }
   };
 
@@ -182,6 +191,9 @@ export const CallModal: React.FC<CallModalProps> = ({
       return;
     }
 
+    // Set in-app alert toast notification
+    setCallAlertNotice(`📞 Calling ${worker.name}... Alert logged and sent to artisan device!`);
+
     // Auto-copy ride summary to clipboard for convenient reference during the phone call
     const summaryText = isDriver
       ? `Quick Karya Ride Booking\nDriver: ${worker.name} (${worker.phone})\nPickup: ${pickupLocation.trim()}\nDrop: ${dropLocation.trim() || 'Flexible'}\nRate: ${isNightActive ? pricing.displayNightRate : pricing.displayRate}`
@@ -197,10 +209,10 @@ export const CallModal: React.FC<CallModalProps> = ({
           customerName: currentUser.name,
           customerPhone: currentUser.phone,
           workerId: worker.id,
-          customerLat: userLocation?.latitude,
-          customerLng: userLocation?.longitude,
+          customerLat: sharedGpsCoords?.lat || userLocation?.latitude,
+          customerLng: sharedGpsCoords?.lng || userLocation?.longitude,
           serviceAddress: pickupLocation.trim() || undefined,
-          hasLocationPermission: Boolean(userLocation?.isLiveGps)
+          hasLocationPermission: Boolean(userLocation?.isLiveGps || sharedGpsCoords)
         })
       })
         .then((res) => (res.ok ? res.json() : null))
@@ -346,6 +358,22 @@ export const CallModal: React.FC<CallModalProps> = ({
 
         {/* Scrollable Modal Content */}
         <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          {/* In-App Call Notification / Alert Banner */}
+          {callAlertNotice && (
+            <div className="p-3 bg-emerald-50 border-2 border-emerald-400 text-emerald-900 text-xs rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-200 shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                <span className="font-bold">{callAlertNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCallAlertNotice(null)}
+                className="text-xs text-emerald-700 hover:text-emerald-950 font-bold ml-2 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {/* DRIVER RIDE BOOKING: Pickup & Drop Location Fields */}
           {isDriver ? (
             <div
@@ -448,42 +476,64 @@ export const CallModal: React.FC<CallModalProps> = ({
               </div>
             </div>
           ) : (
-            /* Non-Driver: Optional Service Address with GPS button */
+            /* Non-Driver: Customer GPS Location & Service Address Sharing */
             <div
               id="service-location-field-card"
-              className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2"
+              className="p-3.5 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 rounded-2xl border border-emerald-300 space-y-2.5 shadow-2xs"
             >
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="pickup-location-input"
-                  className="text-xs font-bold text-gray-700 flex items-center gap-1"
+                  className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5"
                 >
-                  <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Your Service Address (Optional)</span>
+                  <MapPin className="w-4 h-4 text-emerald-700" />
+                  <span>Job Site Address / Navigation Pin</span>
                 </label>
                 <button
                   type="button"
                   id="use-current-gps-btn"
                   onClick={handleUseGpsLocation}
                   disabled={isLocatingGps}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:text-emerald-900 bg-white border border-emerald-300 rounded-md px-2 py-0.5 cursor-pointer shadow-2xs"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-900 bg-white hover:bg-emerald-100 border border-emerald-400 rounded-lg px-2.5 py-1 cursor-pointer shadow-2xs transition-all active:scale-95"
                 >
                   {isLocatingGps ? (
-                    <Loader2 className="w-3 h-3 animate-spin text-emerald-700" />
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                      <span>Detecting GPS...</span>
+                    </>
                   ) : (
-                    <LocateFixed className="w-3 h-3 text-emerald-700" />
+                    <>
+                      <LocateFixed className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Share My GPS Pin</span>
+                    </>
                   )}
-                  <span>Use GPS</span>
                 </button>
               </div>
+
               <input
                 id="pickup-location-input"
                 type="text"
                 value={pickupLocation}
                 onChange={(e) => setPickupLocation(e.target.value)}
-                placeholder="e.g., Flat 204, Green Apartment, Agartala..."
-                className="w-full px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                placeholder="Enter house/shop address, street name, or nearby landmark..."
+                className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-emerald-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-600 font-medium shadow-2xs"
               />
+
+              {sharedGpsCoords && (
+                <div className="p-2 bg-white/90 rounded-lg border border-emerald-200 text-[11px] flex items-center justify-between text-emerald-900">
+                  <span className="flex items-center gap-1 truncate mr-2 font-mono text-[10.5px]">
+                    📍 GPS: {sharedGpsCoords.lat.toFixed(4)}, {sharedGpsCoords.lng.toFixed(4)}
+                  </span>
+                  <a
+                    href={`https://maps.google.com/?q=${sharedGpsCoords.lat},${sharedGpsCoords.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-emerald-700 hover:text-emerald-900 font-bold underline flex items-center gap-0.5"
+                  >
+                    View Map ↗
+                  </a>
+                </div>
+              )}
             </div>
           )}
 

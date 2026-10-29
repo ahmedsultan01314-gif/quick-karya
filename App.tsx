@@ -152,21 +152,18 @@ function NativeApp() {
   }, []);
 
   // Modern Google Sign-In with 1-Tap Profile Auto-Fill
-  const handleNativeGoogleSignIn = async (overrideEmail?: string, overrideName?: string) => {
+  const handleNativeGoogleSignIn = async () => {
     setAuthError(null);
     setAuthLoading(true);
 
     try {
-      const email = overrideEmail || 'ahadabdul0488@gmail.com';
-      const name = overrideName || (overrideEmail ? overrideEmail.split('@')[0] : 'Abdul Ahad');
-      const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=001F3F&textColor=FFA500`;
-
+      const gUser = await signInWithGoogle();
       const verifiedUserObj: AppUser = {
-        id: `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        name,
-        email,
-        profilePhoto: avatarUrl,
-        avatar: avatarUrl,
+        id: gUser.uid,
+        name: gUser.name,
+        email: gUser.email,
+        profilePhoto: gUser.photoUrl,
+        avatar: gUser.photoUrl,
         authProvider: 'google',
         role: 'customer',
         verified: true,
@@ -176,9 +173,11 @@ function NativeApp() {
       setCurrentUser(verifiedUserObj);
       setPendingVerifiedUser(verifiedUserObj);
       setLoginName(verifiedUserObj.name);
-      setLoginEmail(email);
+      setLoginEmail(gUser.email);
       setRegName(verifiedUserObj.name);
-      setRegPhoto(avatarUrl);
+      if (gUser.photoUrl) {
+        setRegPhoto(gUser.photoUrl);
+      }
 
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj)).catch(() => {});
       if (typeof localStorage !== 'undefined') {
@@ -735,11 +734,16 @@ Please dispatch assistance immediately!`;
     }
   };
 
-  // Direct Phone Call handler using Expo Linking with explicit customer identity push alert
+  // Direct Phone Call handler using Expo Linking with explicit customer identity push alert & toast
   const handleCall = (workerPhone: string, workerName?: string, workerCategory?: string) => {
     const cleanPhone = workerPhone.replace(/[^0-9+]/g, '');
     const callerName = currentUser?.name || regName || 'Customer';
     const callerPhone = currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '+91 9876543210');
+
+    // In-app visual notification & toast alert
+    if (Platform.OS === 'android' && ToastAndroid) {
+      ToastAndroid.show(`📞 Calling ${workerName || 'Artisan'}... Call alert dispatched to worker!`, ToastAndroid.LONG);
+    }
 
     // Trigger push notification to worker device with explicit customer identity
     triggerCallWorkerNotification(
@@ -753,6 +757,28 @@ Please dispatch assistance immediately!`;
     Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
       console.warn('Could not trigger call:', err);
       Alert.alert('Phone Call Error', `Could not initiate call to ${cleanPhone}`);
+    });
+  };
+
+  // Customer GPS Location & Service Address Sharing with artisan
+  const handleShareGpsWithWorker = (worker: WorkerProfile) => {
+    const coords = `${userCoords.latitude.toFixed(5)}, ${userCoords.longitude.toFixed(5)}`;
+    const mapsUrl = `https://maps.google.com/?q=${coords}`;
+    const cleanPhone = (worker.phone || '').replace(/[^0-9]/g, '');
+    const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone.slice(-10)}`;
+    const msg = `Hello ${worker.name}, here is my service location for Quick Karya:\n📍 Address: ${userLocationName}\n🗺️ Google Maps Navigation Pin: ${mapsUrl}\nCustomer: ${currentUser?.name || 'Customer'}\nPlease navigate to this location. Thank you!`;
+
+    if (Platform.OS === 'android' && ToastAndroid) {
+      ToastAndroid.show(`📍 Service Location & Map Pin copied! Opening WhatsApp...`, ToastAndroid.LONG);
+    } else {
+      Alert.alert(
+        'Service Location Ready',
+        `Google Maps Navigation Pin:\n${mapsUrl}\n\nAddress: ${userLocationName}\n\nOpening messaging app so the artisan can navigate straight to your job site!`
+      );
+    }
+
+    Linking.openURL(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`).catch(() => {
+      Linking.openURL(`sms:${worker.phone}?body=${encodeURIComponent(msg)}`).catch(() => {});
     });
   };
 
@@ -803,44 +829,75 @@ Please dispatch assistance immediately!`;
       ? `+${cleanPhone}`
       : `+91 ${cleanPhone.slice(-10, -5)} ${cleanPhone.slice(-5)}`;
 
-    const newWorker: WorkerProfile = {
-      id: `w-local-${Date.now()}`,
-      name: regName.trim(),
-      category: regCategory,
-      subRole: regSubRole ? regSubRole.trim() : undefined,
-      experience: expNum,
-      rating: 5.0,
-      reviewCount: 1,
-      hourlyRate: 0,
-      rate: 0,
-      phone: formattedPhone,
-      city: regCity.trim() || 'Agartala',
-      state: regState.trim() || 'Tripura',
-      pincode: regPincode.trim() || '799001',
-      latitude: userCoords.latitude,
-      longitude: userCoords.longitude,
-      verified: false,
-      isVerified: false,
-      available: true,
-      completedJobs: 1,
-      languages: ['Bengali', 'Hindi', 'English'],
-      skills: regSubRole ? [regSubRole.trim(), regCategory] : [regCategory],
-      photo: regPhoto || undefined,
-      emergencyAvailable: regCategory === 'Emergency Highway Assistance'
-    };
+    const existing = workers.find(
+      (w) =>
+        (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone && w.category === regCategory) ||
+        (currentUser?.workerId && w.workerId === currentUser.workerId)
+    );
 
-    const updated = [newWorker, ...workers];
-    setWorkers(updated);
+    let targetWorker: WorkerProfile;
 
-    // Save to local offline cache fallback
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Failed saving to AsyncStorage:', e);
+    if (existing) {
+      targetWorker = {
+        ...existing,
+        name: regName.trim(),
+        category: regCategory,
+        subRole: regSubRole ? regSubRole.trim() : undefined,
+        experience: expNum,
+        phone: formattedPhone,
+        city: regCity.trim() || existing.city,
+        state: regState.trim() || existing.state,
+        pincode: regPincode.trim() || existing.pincode,
+        latitude: userCoords.latitude,
+        longitude: userCoords.longitude,
+        photo: regPhoto || existing.photo,
+        skills: regSubRole ? [regSubRole.trim(), regCategory] : [regCategory]
+      };
+      const updated = workers.map((w) => (w.id === existing.id ? targetWorker : w));
+      setWorkers(updated);
+      try {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed saving to AsyncStorage:', e);
+      }
+    } else {
+      targetWorker = {
+        id: `w-local-${Date.now()}`,
+        workerId: `QK-${Math.floor(10000 + Math.random() * 90000)}`,
+        name: regName.trim(),
+        category: regCategory,
+        subRole: regSubRole ? regSubRole.trim() : undefined,
+        experience: expNum,
+        rating: 5.0,
+        reviewCount: 1,
+        hourlyRate: 0,
+        rate: 0,
+        phone: formattedPhone,
+        city: regCity.trim() || 'Agartala',
+        state: regState.trim() || 'Tripura',
+        pincode: regPincode.trim() || '799001',
+        latitude: userCoords.latitude,
+        longitude: userCoords.longitude,
+        verified: false,
+        isVerified: false,
+        available: true,
+        completedJobs: 1,
+        languages: ['Bengali', 'Hindi', 'English'],
+        skills: regSubRole ? [regSubRole.trim(), regCategory] : [regCategory],
+        photo: regPhoto || undefined,
+        emergencyAvailable: regCategory === 'Emergency Highway Assistance'
+      };
+      const updated = [targetWorker, ...workers.filter((w) => w.id !== targetWorker.id)];
+      setWorkers(updated);
+      try {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Failed saving to AsyncStorage:', e);
+      }
     }
 
     // 1. Save directly to Cloud Firestore so all devices receive live update immediately
-    saveWorkerToCloud(newWorker).catch((err) => {
+    saveWorkerToCloud(targetWorker).catch((err) => {
       console.warn('Could not sync to cloud database immediately:', err);
     });
 
@@ -850,17 +907,19 @@ Please dispatch assistance immediately!`;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newWorker.name,
-          category: newWorker.category,
-          subRole: newWorker.subRole,
-          experience: newWorker.experience,
+          id: targetWorker.id,
+          workerId: targetWorker.workerId,
+          name: targetWorker.name,
+          category: targetWorker.category,
+          subRole: targetWorker.subRole,
+          experience: targetWorker.experience,
           phone: formattedPhone,
-          city: newWorker.city,
-          state: newWorker.state,
-          pincode: newWorker.pincode,
-          latitude: newWorker.latitude,
-          longitude: newWorker.longitude,
-          photo: newWorker.photo,
+          city: targetWorker.city,
+          state: targetWorker.state,
+          pincode: targetWorker.pincode,
+          latitude: targetWorker.latitude,
+          longitude: targetWorker.longitude,
+          photo: targetWorker.photo,
           userId: currentUser?.id
         })
       }).catch((apiErr) => {
@@ -872,18 +931,19 @@ Please dispatch assistance immediately!`;
     if (currentUser) {
       const updatedUser: AppUser = {
         ...currentUser,
+        name: targetWorker.name,
         role: 'worker',
-        workerId: newWorker.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`,
-        profilePhoto: newWorker.photo || currentUser.profilePhoto
+        workerId: targetWorker.workerId,
+        profilePhoto: targetWorker.photo || currentUser.profilePhoto
       };
       setCurrentUser(updatedUser);
       AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser)).catch(() => {});
     }
 
     // Trigger local push notification on phone
-    triggerRegistrationNotification(newWorker.name, newWorker.category).catch(() => {});
+    triggerRegistrationNotification(targetWorker.name, targetWorker.category).catch(() => {});
 
-    setRegSuccessWorker(newWorker);
+    setRegSuccessWorker(targetWorker);
   };
 
   const userProfilePhoto =
@@ -2261,19 +2321,6 @@ Please dispatch assistance immediately!`;
                   </Text>
                 </TouchableOpacity>
 
-                {/* Fast One-Tap Sign-In with linked Google account */}
-                <TouchableOpacity
-                  style={styles.googleOneTapBtn}
-                  onPress={() => handleNativeGoogleSignIn('ahadabdul0488@gmail.com', 'Abdul Ahad')}
-                  disabled={authLoading}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.googleOneTapEmoji}>✨</Text>
-                  <Text style={styles.googleOneTapText}>
-                    1-Tap Sign-In: <Text style={styles.boldText}>ahadabdul0488@gmail.com</Text>
-                  </Text>
-                </TouchableOpacity>
-
                 {/* Benefits / No SMS OTP Notice */}
                 <View style={styles.googlePerksBox}>
                   <View style={styles.googlePerkRow}>
@@ -2577,9 +2624,9 @@ Please dispatch assistance immediately!`;
             <View style={styles.detailBottomBar}>
               <TouchableOpacity
                 style={styles.detailBottomRateBtn}
-                onPress={() => handleOpenRating(detailWorker)}
+                onPress={() => handleShareGpsWithWorker(detailWorker)}
               >
-                <Text style={styles.detailBottomRateBtnText}>⭐ Rate Artisan</Text>
+                <Text style={styles.detailBottomRateBtnText}>📍 Share GPS Pin</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.detailBottomCallBtn}
