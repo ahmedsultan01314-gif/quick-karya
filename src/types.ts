@@ -158,7 +158,7 @@ export interface ServiceRequest {
   completedAt?: string;
 }
 
-export type ActiveTab = 'home' | 'workers' | 'register' | 'categories' | 'profile';
+export type ActiveTab = 'home' | 'workers' | 'register' | 'categories' | 'profile' | 'settings';
 
 export interface OnboardingForm {
   name: string;

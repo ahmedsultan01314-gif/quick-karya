@@ -139,18 +139,37 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 
   // 2. Verified backend route fallback
-  const res = await fetch(getApiUrl('/api/auth/login-email'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: cleanEmail, password })
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to sign in with email and password.');
+  let res: Response;
+  try {
+    res = await fetch(getApiUrl('/api/auth/login-email'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ email: cleanEmail, password })
+    });
+  } catch (netErr: any) {
+    throw new Error('Could not connect to authentication server. Please check your network.');
   }
 
-  const { user } = await res.json();
+  const rawText = await res.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    console.warn('Backend login non-JSON response:', rawText.slice(0, 120));
+    if (!res.ok) {
+      throw new Error(`Server returned error code ${res.status}. Please try again.`);
+    }
+    throw new Error('Authentication response could not be verified. Please try again.');
+  }
+
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'Failed to sign in with email and password.');
+  }
+
+  const { user } = data;
   return {
     uid: user.id,
     name: user.name,
@@ -195,18 +214,37 @@ export async function signUpWithEmail(email: string, password: string, name?: st
   }
 
   // 2. Verified backend route fallback
-  const res = await fetch(getApiUrl('/api/auth/register-email'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: cleanEmail, password, name: displayName })
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to register with email and password.');
+  let res: Response;
+  try {
+    res = await fetch(getApiUrl('/api/auth/register-email'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ email: cleanEmail, password, name: displayName })
+    });
+  } catch (netErr: any) {
+    throw new Error('Could not connect to authentication server. Please check your network.');
   }
 
-  const { user } = await res.json();
+  const rawText = await res.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    console.warn('Backend register non-JSON response:', rawText.slice(0, 120));
+    if (!res.ok) {
+      throw new Error(`Server returned error code ${res.status}. Please try again.`);
+    }
+    throw new Error('Registration response could not be verified. Please try again.');
+  }
+
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'Failed to register with email and password.');
+  }
+
+  const { user } = data;
   return {
     uid: user.id,
     name: user.name,

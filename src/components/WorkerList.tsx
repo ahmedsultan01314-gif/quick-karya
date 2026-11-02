@@ -31,6 +31,7 @@ interface WorkerListProps {
   onCallNow: (worker: WorkerProfile) => void;
   onOpenRating?: (worker: WorkerProfile) => void;
   onOpenDetails?: (worker: WorkerProfile) => void;
+  onShareGps?: (worker: WorkerProfile) => void;
   onGoToRegister: () => void;
   onResetFilters: () => void;
   isLoading: boolean;
@@ -43,6 +44,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   onCallNow,
   onOpenRating,
   onOpenDetails,
+  onShareGps,
   onGoToRegister,
   onResetFilters,
   isLoading
@@ -321,6 +323,7 @@ export const WorkerList: React.FC<WorkerListProps> = ({
               onCallNow={onCallNow}
               onOpenRating={onOpenRating}
               onOpenDetails={onOpenDetails}
+              onShareGps={onShareGps}
             />
           ))}
         </div>

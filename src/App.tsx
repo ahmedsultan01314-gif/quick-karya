@@ -20,6 +20,7 @@ import { ProfileView } from './components/ProfileView';
 import { RatingModal } from './components/RatingModal';
 import { WorkerDetailModal } from './components/WorkerDetailModal';
 import { HighwaySosModal } from './components/HighwaySosModal';
+import { SettingsView } from './components/SettingsView';
 import { NotificationToast } from './components/NotificationToast';
 import { CityCoord, KNOWN_LOCATIONS } from './utils/geo';
 import { subscribeWorkersFromCloud } from './firebase';
@@ -311,6 +312,9 @@ export default function App() {
                 onCallNow={(w) => {
                   setCallingWorker(w);
                 }}
+                onShareGps={(w) => {
+                  setCallingWorker(w);
+                }}
                 onOpenRating={(w) => setRatingWorker(w)}
                 onOpenDetails={(w) => setDetailWorker(w)}
                 onGoToRegister={() => setActiveTab('register')}
@@ -343,6 +347,17 @@ export default function App() {
               onLogout={handleLogout}
               workers={workers}
               onGoToRegister={() => setActiveTab('register')}
+            />
+          )}
+
+          {activeTab === 'settings' && (
+            <SettingsView
+              user={currentUser}
+              userLocation={userLocation}
+              onRequestLiveGps={requestLiveGps}
+              onLogout={handleLogout}
+              onDone={() => setActiveTab('home')}
+              onRefreshDirectory={fetchWorkers}
             />
           )}
         </main>

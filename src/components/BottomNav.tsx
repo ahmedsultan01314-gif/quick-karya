@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveTab } from '../types';
-import { Home, UserPlus, LayoutGrid, User } from 'lucide-react';
+import { Home, UserPlus, LayoutGrid, User, Settings } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: ActiveTab;
@@ -138,7 +138,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <div className="relative">
             {userPhoto ? (
               <div
-                className={`w-8 h-8 rounded-full overflow-hidden transition-all ${
+                className={`w-7 h-7 rounded-full overflow-hidden transition-all ${
                   activeTab === 'profile'
                     ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-[#001F3F] scale-105 shadow-[0_0_8px_rgba(255,165,0,0.6)]'
                     : 'border border-slate-400/60 opacity-90'
@@ -153,26 +153,57 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               </div>
             ) : (
               <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all ${
                   activeTab === 'profile'
                     ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
                     : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
                 }`}
               >
                 <User
-                  className={`w-4.5 h-4.5 transition-transform ${
+                  className={`w-4 h-4 transition-transform ${
                     activeTab === 'profile' ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
                   }`}
                 />
               </div>
             )}
             {isLoggedIn && !userPhoto && (
-              <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-[#FFA500] border border-[#001F3F] shadow-xs" />
+              <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#FFA500] border border-[#001F3F] shadow-xs" />
             )}
           </div>
-          <span className="text-[11px] mt-0.5 tracking-tight">My Profile</span>
+          <span className="text-[10px] mt-0.5 tracking-tight">Profile</span>
           {activeTab === 'profile' && (
-            <span className="w-5 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
+            <span className="w-4 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
+          )}
+        </button>
+
+        {/* Tab 5: Settings */}
+        <button
+          id="nav-tab-settings"
+          onClick={() => onChangeTab('settings')}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'settings'
+              ? 'text-amber-400 font-bold scale-102'
+              : 'text-slate-300 hover:text-white font-medium'
+          }`}
+        >
+          <div className="relative">
+            <div
+              className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all ${
+                activeTab === 'settings'
+                  ? 'bg-gradient-to-b from-[#133d73] to-[#00162e] border border-amber-400/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3),0_2px_6px_rgba(0,0,0,0.5)]'
+                  : 'bg-gradient-to-b from-[#0a2e5c]/70 to-[#00162e]/90 border border-[#1e4d8c]/40'
+              }`}
+            >
+              <Settings
+                className={`w-4 h-4 transition-transform ${
+                  activeTab === 'settings' ? 'stroke-[2.5] text-amber-400 drop-shadow-sm' : 'text-slate-300'
+                }`}
+              />
+            </div>
+          </div>
+          <span className="text-[10px] mt-0.5 tracking-tight">Settings</span>
+          {activeTab === 'settings' && (
+            <span className="w-4 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500 rounded-full mt-0.5 shadow-[0_0_6px_rgba(255,193,7,0.8)]" />
           )}
         </button>
       </div>

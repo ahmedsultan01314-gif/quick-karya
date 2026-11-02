@@ -332,10 +332,10 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 src={successWorker.photo}
                 alt={successWorker.name}
                 referrerPolicy="no-referrer"
-                className="w-20 h-20 rounded-2xl object-cover border-2 border-[#FFA500] shadow-md"
+                className="w-20 h-20 rounded-full object-cover border-2 border-[#FFA500] shadow-md"
               />
             ) : (
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#001F3F] to-[#001428] text-white flex items-center justify-center font-bold text-2xl shadow-md border border-[#FFA500]/30">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#001F3F] to-[#001428] text-white flex items-center justify-center font-bold text-2xl shadow-md border-2 border-[#FFA500]/50">
                 {successWorker.name
                   .split(' ')
                   .map((n) => n[0])
@@ -419,7 +419,13 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
     <div className="pb-24 pt-2 space-y-4">
       {/* Instagram-Style Navigation Bar with bold 'Done' action button */}
       <div className="flex items-center justify-between px-3 py-2.5 bg-[#001933] border border-[#FFA500]/30 rounded-2xl shadow-sm text-white">
-        <span className="text-xs font-semibold text-[#FFD700]">Directory</span>
+        <button
+          type="button"
+          onClick={onGoToWorkers}
+          className="text-xs font-semibold text-[#FFD700] hover:text-white flex items-center gap-1 cursor-pointer"
+        >
+          ‹ Directory
+        </button>
         <h2 className="text-sm font-bold text-white tracking-wide">Register Artisan</h2>
         <button
           type="button"

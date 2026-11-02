@@ -119,6 +119,7 @@ function NativeApp() {
   const [authFullName, setAuthFullName] = useState('');
   const [authShowPassword, setAuthShowPassword] = useState(false);
   const [authEmailLoading, setAuthEmailLoading] = useState(false);
+  const [activeCallAlert, setActiveCallAlert] = useState<{ workerName: string; category: string } | null>(null);
 
   // Auto-dismiss initial brand splash after 2 seconds
   useEffect(() => {
@@ -803,7 +804,15 @@ Please dispatch assistance immediately!`;
     const callerName = currentUser?.name || regName || 'Customer';
     const callerPhone = currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '+91 9876543210');
 
-    // In-app visual notification & toast alert
+    // In-app visual notification banner & toast alert
+    setActiveCallAlert({
+      workerName: workerName || 'Artisan',
+      category: workerCategory || 'Artisan'
+    });
+    setTimeout(() => {
+      setActiveCallAlert(null);
+    }, 4500);
+
     if (Platform.OS === 'android' && ToastAndroid) {
       ToastAndroid.show(`📞 Calling ${workerName || 'Artisan'}... Call alert dispatched to worker!`, ToastAndroid.LONG);
     }
@@ -894,8 +903,9 @@ Please dispatch assistance immediately!`;
 
     const existing = workers.find(
       (w) =>
-        (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone && w.category === regCategory) ||
-        (currentUser?.workerId && w.workerId === currentUser.workerId)
+        (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) ||
+        (currentUser?.workerId && w.workerId === currentUser.workerId) ||
+        (currentUser?.id && (w.id === currentUser.id || (w as any).userId === currentUser.id))
     );
 
     let targetWorker: WorkerProfile;
@@ -1085,6 +1095,29 @@ Please dispatch assistance immediately!`;
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* IN-APP CALL NOTIFICATION & WORKER ALERT BANNER */}
+      {activeCallAlert && (
+        <View style={styles.inAppCallAlertBanner}>
+          <View style={styles.inAppCallAlertIconBadge}>
+            <Text style={styles.inAppCallAlertIcon}>📞</Text>
+          </View>
+          <View style={styles.inAppCallAlertContent}>
+            <Text style={styles.inAppCallAlertTitle}>
+              Calling {activeCallAlert.workerName} ({activeCallAlert.category})
+            </Text>
+            <Text style={styles.inAppCallAlertDesc}>
+              New Customer Call Alert: A client from Quick Karya is calling you for work!
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setActiveCallAlert(null)}
+            style={styles.inAppCallAlertClose}
+          >
+            <Text style={styles.inAppCallAlertCloseText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* BODY CONTENT BY ACTIVE TAB */}
 
@@ -1399,6 +1432,18 @@ Please dispatch assistance immediately!`;
                           </Text>
                         </TouchableOpacity>
                       </View>
+
+                      {/* Prominent Customer GPS Location & Navigation Pin Sharing Button */}
+                      <TouchableOpacity
+                        style={styles.shareGpsCardBtn}
+                        onPress={() => handleShareGpsWithWorker(worker)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.shareGpsCardBtnIcon}>📍</Text>
+                        <Text style={styles.shareGpsCardBtnText}>
+                          Share My GPS Location & Pin with Worker
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -2166,6 +2211,158 @@ Please dispatch assistance immediately!`;
       </View>
       )}
 
+      {/* TAB 5: SETTINGS & PREFERENCES */}
+      {activeTab === 'settings' && (
+        <View style={styles.tabScreenWrapper}>
+          {/* Instagram-Style Navigation Header with Bold Done Action Button */}
+          <View style={styles.instaHeaderBar}>
+            <TouchableOpacity onPress={() => setActiveTab('home')} style={styles.instaHeaderLeftBtn} activeOpacity={0.7}>
+              <Text style={styles.instaHeaderBackText}>‹ Home</Text>
+            </TouchableOpacity>
+            <Text style={styles.instaHeaderTitle}>Settings</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert('Settings Saved', '✓ Preferences updated.');
+                setActiveTab('home');
+              }}
+              style={styles.instaHeaderDoneBtn}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.instaHeaderDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={styles.listContainer}
+            contentContainerStyle={styles.listContent}
+          >
+            {/* Account Card */}
+            <View style={styles.settingsCard}>
+              <View style={styles.settingsUserRow}>
+                <View style={styles.settingsAvatarCircle}>
+                  {regPhoto || currentUser?.profilePhoto || currentUser?.avatar ? (
+                    <Image
+                      source={{ uri: regPhoto || currentUser?.profilePhoto || currentUser?.avatar }}
+                      style={styles.settingsAvatarImg}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.settingsAvatarText}>
+                      {regName ? regName.slice(0, 2).toUpperCase() : 'QK'}
+                    </Text>
+                  )}
+                </View>
+                <View style={styles.settingsUserInfo}>
+                  <Text style={styles.settingsUserName}>
+                    {currentUser?.name || regName || 'Quick Karya Member'}
+                  </Text>
+                  <Text style={styles.settingsUserSub}>
+                    {currentUser?.email || currentUser?.phone || 'Direct Artisan Call Account'}
+                  </Text>
+                  <View style={styles.settingsBadgeRow}>
+                    <Text style={styles.settingsRoleBadge}>
+                      {currentUser?.role === 'worker' ? 'Artisan / Worker' : 'Customer Account'}
+                    </Text>
+                    {currentUser?.workerId && (
+                      <Text style={styles.settingsWorkerIdBadge}>
+                        ID: {currentUser.workerId}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Notification & Call Alerts Settings */}
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsSectionTitle}>ALERTS & NOTIFICATIONS</Text>
+              <View style={styles.settingsRow}>
+                <View style={styles.settingsRowTextCol}>
+                  <Text style={styles.settingsRowLabel}>Push Notifications</Text>
+                  <Text style={styles.settingsRowSub}>Alerts for direct artisan calls & service bookings</Text>
+                </View>
+                <Text style={styles.settingsToggleOn}>ENABLED ✓</Text>
+              </View>
+              <View style={styles.settingsDivider} />
+              <View style={styles.settingsRow}>
+                <View style={styles.settingsRowTextCol}>
+                  <Text style={styles.settingsRowLabel}>Worker Call Alert System</Text>
+                  <Text style={styles.settingsRowSub}>Prompts artisan device with customer caller identity</Text>
+                </View>
+                <Text style={styles.settingsToggleOn}>ENABLED ✓</Text>
+              </View>
+              <View style={styles.settingsDivider} />
+              <View style={styles.settingsRow}>
+                <View style={styles.settingsRowTextCol}>
+                  <Text style={styles.settingsRowLabel}>24/7 Highway SOS Alerts</Text>
+                  <Text style={styles.settingsRowSub}>Emergency roadside breakdown priority dispatch</Text>
+                </View>
+                <Text style={styles.settingsToggleOn}>ENABLED ✓</Text>
+              </View>
+            </View>
+
+            {/* Location & GPS Sharing Preferences */}
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsSectionTitle}>LOCATION & GPS SHARING</Text>
+              <View style={styles.settingsRow}>
+                <View style={styles.settingsRowTextCol}>
+                  <Text style={styles.settingsRowLabel}>Service Area</Text>
+                  <Text style={styles.settingsRowSub}>{userLocationName} ({regPincode || '799001'})</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.settingsActionBtnSmall}
+                  onPress={requestDeviceLocation}
+                >
+                  <Text style={styles.settingsActionBtnSmallText}>
+                    {gpsLoading ? 'Locating...' : '📍 Re-check GPS'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.settingsDivider} />
+              <View style={styles.settingsRow}>
+                <View style={styles.settingsRowTextCol}>
+                  <Text style={styles.settingsRowLabel}>Auto-Share GPS on Inquiries</Text>
+                  <Text style={styles.settingsRowSub}>Generates Google Maps pin so artisans navigate directly</Text>
+                </View>
+                <Text style={styles.settingsToggleOn}>AUTO ON ✓</Text>
+              </View>
+            </View>
+
+            {/* Cache & Sign Out */}
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsSectionTitle}>DATA & APP CONTROLS</Text>
+              <TouchableOpacity
+                style={styles.settingsMenuBtn}
+                onPress={async () => {
+                  try {
+                    await AsyncStorage.removeItem(STORAGE_KEY);
+                    Alert.alert('Cache Cleared', '✓ Offline directory cache cleared. Refreshed with latest Cloud Firestore data.');
+                  } catch {}
+                }}
+              >
+                <Text style={styles.settingsMenuBtnText}>🔄 Refresh Directory & Clear Cache</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.settingsLogoutBtn}
+                onPress={handleLogout}
+              >
+                <Text style={styles.settingsLogoutBtnText}>🚪 Switch Account / Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* App Version Info */}
+            <View style={styles.settingsAppInfoBox}>
+              <Text style={styles.settingsAppInfoTitle}>Quick Karya v3.2.0 (Build 2026.11)</Text>
+              <Text style={styles.settingsAppInfoSub}>
+                Direct Artisan Call Directory • Zero Middlemen • 100% Free
+              </Text>
+              <Text style={styles.settingsAppInfoSub}>
+                Connected to Cloud Firestore (Real-time Synced)
+              </Text>
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
       {/* FIXED BOTTOM NAVIGATION BAR */}
       {/* FIXED BOTTOM NAVIGATION BAR WITH 3D STYLED ICONS IN DEEP NAVY BLUE */}
       <View style={styles.bottomNavContainer}>
@@ -2315,6 +2512,38 @@ Please dispatch assistance immediately!`;
             My Profile
           </Text>
           {activeTab === 'profile' && <View style={styles.navActiveIndicator} />}
+        </TouchableOpacity>
+
+        {/* Tab 5: Settings */}
+        <TouchableOpacity
+          style={styles.navTabButton}
+          onPress={() => setActiveTab('settings')}
+          activeOpacity={0.8}
+        >
+          <View
+            style={[
+              styles.nav3dBadge,
+              activeTab === 'settings' && styles.nav3dBadgeActive
+            ]}
+          >
+            <Text
+              style={[
+                styles.navEmoji,
+                activeTab === 'settings' && styles.navEmojiActive
+              ]}
+            >
+              ⚙️
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.navTabLabel,
+              activeTab === 'settings' && styles.navTabLabelActive
+            ]}
+          >
+            Settings
+          </Text>
+          {activeTab === 'settings' && <View style={styles.navActiveIndicator} />}
         </TouchableOpacity>
       </View>
 
@@ -5282,6 +5511,263 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: 12,
     fontWeight: '600'
+  },
+  /* Customer GPS Location & Map Pin Sharing Button */
+  shareGpsCardBtn: {
+    marginTop: 8,
+    backgroundColor: '#001F3F',
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2
+  },
+  shareGpsCardBtnIcon: {
+    fontSize: 14
+  },
+  shareGpsCardBtnText: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2
+  },
+
+  /* In-App Call Notification & Worker Alert Banner */
+  inAppCallAlertBanner: {
+    backgroundColor: '#001F3F',
+    borderBottomWidth: 2,
+    borderBottomColor: '#FFA500',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6
+  },
+  inAppCallAlertIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFA500',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  inAppCallAlertIcon: {
+    fontSize: 18,
+    color: '#001F3F'
+  },
+  inAppCallAlertContent: {
+    flex: 1
+  },
+  inAppCallAlertTitle: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  inAppCallAlertDesc: {
+    color: '#e2e8f0',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1
+  },
+  inAppCallAlertClose: {
+    padding: 6
+  },
+  inAppCallAlertCloseText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+
+  /* Settings Screen Styles */
+  settingsCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2
+  },
+  settingsUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12
+  },
+  settingsAvatarCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2.5,
+    borderColor: '#FFA500',
+    overflow: 'hidden',
+    backgroundColor: '#001F3F',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  settingsAvatarImg: {
+    width: '100%',
+    height: '100%'
+  },
+  settingsAvatarText: {
+    color: '#FFD700',
+    fontSize: 20,
+    fontWeight: '900'
+  },
+  settingsUserInfo: {
+    flex: 1
+  },
+  settingsUserName: {
+    color: '#0f172a',
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  settingsUserSub: {
+    color: '#64748b',
+    fontSize: 12,
+    marginTop: 2
+  },
+  settingsBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6
+  },
+  settingsRoleBadge: {
+    backgroundColor: '#001F3F',
+    color: '#FFD700',
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  settingsWorkerIdBadge: {
+    backgroundColor: '#FFF8E7',
+    color: '#001F3F',
+    fontSize: 10,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFE082'
+  },
+  settingsSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.8,
+    marginBottom: 10
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6
+  },
+  settingsRowTextCol: {
+    flex: 1,
+    paddingRight: 10
+  },
+  settingsRowLabel: {
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  settingsRowSub: {
+    color: '#64748b',
+    fontSize: 11,
+    marginTop: 2
+  },
+  settingsToggleOn: {
+    color: '#059669',
+    fontSize: 11,
+    fontWeight: '800',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#a7f3d0'
+  },
+  settingsDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginVertical: 8
+  },
+  settingsActionBtnSmall: {
+    backgroundColor: '#FFF8E7',
+    borderWidth: 1,
+    borderColor: '#FFA500',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8
+  },
+  settingsActionBtnSmallText: {
+    color: '#001F3F',
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  settingsMenuBtn: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  settingsMenuBtnText: {
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  settingsLogoutBtn: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center'
+  },
+  settingsLogoutBtnText: {
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  settingsAppInfoBox: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 4
+  },
+  settingsAppInfoTitle: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  settingsAppInfoSub: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center'
   },
   authGoogleAvatarPreview: {
     width: 64,

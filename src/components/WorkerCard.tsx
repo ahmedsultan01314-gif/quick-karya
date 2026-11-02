@@ -9,13 +9,15 @@ interface WorkerCardProps {
   onCallNow: (worker: WorkerProfile) => void;
   onOpenRating?: (worker: WorkerProfile) => void;
   onOpenDetails?: (worker: WorkerProfile) => void;
+  onShareGps?: (worker: WorkerProfile) => void;
 }
 
 export const WorkerCard: React.FC<WorkerCardProps> = ({
   worker,
   onCallNow,
   onOpenRating,
-  onOpenDetails
+  onOpenDetails,
+  onShareGps
 }) => {
   const isEmergency = worker.category === 'Emergency Highway Assistance';
   const pricing = formatWorkerPricing(worker);
@@ -226,6 +228,24 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
             <span>Call Worker</span>
           </button>
         </div>
+
+        {/* Prominent Share My GPS Location & Pin Button */}
+        <button
+          type="button"
+          id={`share-gps-btn-${worker.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onShareGps) {
+              onShareGps(worker);
+            } else {
+              onCallNow(worker);
+            }
+          }}
+          className="w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#001F3F] hover:bg-[#002d5c] text-white border border-[#FFA500]/60 shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+        >
+          <MapPin className="w-3.5 h-3.5 text-[#FFA500]" />
+          <span>Share My GPS Location & Pin 📍</span>
+        </button>
       </div>
     </div>
   );

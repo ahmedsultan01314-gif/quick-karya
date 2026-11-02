@@ -233,7 +233,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex items-center gap-4">
             {/* Avatar Photo */}
             <div className="relative group">
-              <div className="w-16 h-16 rounded-2xl bg-[#002b54] border-2 border-[#FFA500]/50 overflow-hidden flex items-center justify-center text-xl font-bold shadow-inner">
+              <div className="w-16 h-16 rounded-full bg-[#002b54] border-2 border-[#FFA500] overflow-hidden flex items-center justify-center text-xl font-bold shadow-md">
                 {user.profilePhoto || workerProfile?.photo ? (
                   <img
                     src={user.profilePhoto || workerProfile?.photo}
