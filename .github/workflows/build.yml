@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -14,7 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -26,28 +31,86 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses & Install NDK 27.1.12297006
+        run: |
+          set -e
+          echo "Accepting Android SDK licenses..."
+          yes | sdkmanager --licenses || true
+
+          echo "Installing required Android SDK components (platforms, build-tools, cmake, NDK 27.1.12297006)..."
+          INSTALL_SUCCESS=false
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt of 3: Installing ndk;27.1.12297006, cmake;3.22.1, build-tools;35.0.0..."
+            if sdkmanager --install "ndk;27.1.12297006" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"; then
+              INSTALL_SUCCESS=true
+              echo "Android SDK and NDK components installed successfully."
+              break
+            fi
+            echo "Attempt $attempt failed. Retrying in 10s..."
+            sleep 10
+          done
+
+          if [ "$INSTALL_SUCCESS" = false ]; then
+            echo "ERROR: Failed to install NDK 27.1.12297006 after 3 attempts."
+            exit 1
+          fi
+
+          # Set environment variables for Gradle and build system
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.1.12297006" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/27.1.12297006" >> $GITHUB_ENV
+          echo "NDK_ROOT=${ANDROID_HOME}/ndk/27.1.12297006" >> $GITHUB_ENV
+
       - name: Setup Gradle caching
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Install Dependencies
+      - name: Install NPM Dependencies
         run: npm install
 
       - name: Prebuild Native Android
-        run: npx expo prebuild --platform android --clean --no-install
+        run: npx expo prebuild --platform android --no-install
 
-      - name: Generate Android JS Bundle
+      - name: Configure Android SDK and NDK Paths
+        run: |
+          mkdir -p android
+          echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
+          echo "ndk.dir=${ANDROID_HOME}/ndk/27.1.12297006" >> android/local.properties
+          
+          if ! grep -q "android.ndkVersion" android/gradle.properties 2>/dev/null; then
+            echo "android.ndkVersion=27.1.12297006" >> android/gradle.properties
+          fi
+
+          echo "Configured android/local.properties:"
+          cat android/local.properties
+
+      - name: Ensure Signing Keystore Exists
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            echo "Generating debug.keystore for APK signing..."
+            keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Generate Android JS Bundle & Assets
         run: |
           mkdir -p android/app/src/main/assets
           npx expo export:embed --platform android --dev false --entry-file node_modules/expo/AppEntry.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
 
-      - name: Build APK via Gradle
+      - name: Build Android Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -x test
+          ./gradlew assembleRelease --no-daemon --stacktrace -x test -x lint
 
-      - name: Upload APK Artifact
+      - name: Verify Generated APK
+        run: |
+          echo "Searching for built APK artifacts:"
+          find android/app/build/outputs/apk -name "*.apk" -ls
+
+      - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: QuickKarya-Release-APK
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error

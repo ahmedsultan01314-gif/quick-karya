@@ -10,7 +10,7 @@ export default ({ config } = {}) => {
     splash: {
       image: "./assets/splash.png",
       resizeMode: "contain",
-      backgroundColor: "#064e3b"
+      backgroundColor: "#001F3F"
     },
     android: {
       ...(baseConfig.android || {}),
@@ -18,12 +18,14 @@ export default ({ config } = {}) => {
       versionCode: 1,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#064e3b"
+        backgroundColor: "#001F3F"
       },
       permissions: [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "CALL_PHONE"
+        "CALL_PHONE",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
       ]
     },
     extra: {
