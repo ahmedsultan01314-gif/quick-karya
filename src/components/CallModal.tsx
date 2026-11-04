@@ -267,27 +267,27 @@ export const CallModal: React.FC<CallModalProps> = ({
   return (
     <div
       id="call-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4"
       onClick={onClose}
     >
       <div
         id="call-modal-container"
-        className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden border border-emerald-950/10 transform transition-all animate-in slide-in-from-bottom-5 duration-200 max-h-[92vh] flex flex-col"
+        className="w-full sm:max-w-lg bg-[#0B192C] text-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden border border-[#FFA500]/30 transform transition-all animate-in slide-in-from-bottom-5 duration-200 max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-900 text-white p-4 sm:p-5 relative shrink-0">
+        <div className="bg-gradient-to-r from-[#001428] via-[#0B192C] to-[#001F3F] text-white p-4 sm:p-5 relative shrink-0 border-b border-[#FFA500]/25">
           <button
             id="close-call-modal-btn"
             onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 rounded-full bg-emerald-950/40 hover:bg-emerald-950/60 text-emerald-100 transition-colors cursor-pointer"
+            className="absolute top-4 right-4 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
 
           <div className="flex items-center gap-3">
-            <div className="w-13 h-13 rounded-2xl bg-emerald-700 border-2 border-emerald-400/40 flex items-center justify-center text-white text-lg font-bold shadow-inner overflow-hidden shrink-0">
+            <div className="w-13 h-13 rounded-full bg-[#001F3F] border-2 border-[#FFA500] flex items-center justify-center text-white text-lg font-bold shadow-md overflow-hidden shrink-0">
               {worker.photo ? (
                 <img
                   src={worker.photo}
@@ -309,34 +309,34 @@ export const CallModal: React.FC<CallModalProps> = ({
                   {worker.name}
                 </h3>
                 {worker.verified && (
-                  <span title="Verified Worker" className="text-emerald-300 shrink-0">
-                    <ShieldCheck className="w-4 h-4 fill-emerald-400 text-emerald-900" />
+                  <span title="Verified Worker" className="text-amber-300 shrink-0">
+                    <ShieldCheck className="w-4 h-4 fill-[#FFA500] text-[#001F3F]" />
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <p className="text-xs text-emerald-200 font-medium">{worker.category}</p>
+                <p className="text-xs text-amber-300 font-semibold">{worker.category}</p>
                 {pricing.vehicleBadge && (
-                  <span className="text-[10px] bg-emerald-700/90 text-emerald-100 px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
+                  <span className="text-[10px] bg-[#002d5c] text-amber-200 border border-[#FFA500]/40 px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
                     {pricing.vehicleBadge.includes('JCB') || pricing.vehicleBadge.includes('Bulldozer') ? (
-                      <HardHat className="w-3 h-3 text-amber-200" />
+                      <HardHat className="w-3 h-3 text-amber-300" />
                     ) : pricing.vehicleBadge.includes('Truck') ||
                       pricing.vehicleBadge.includes('Freight') ||
                       pricing.vehicleBadge.includes('Trailer') ||
                       pricing.vehicleBadge.includes('Pickup') ? (
-                      <Truck className="w-3 h-3 text-emerald-200" />
+                      <Truck className="w-3 h-3 text-amber-300" />
                     ) : pricing.vehicleBadge.includes('2-Wheeler') ? (
-                      <Bike className="w-3 h-3 text-emerald-200" />
+                      <Bike className="w-3 h-3 text-amber-300" />
                     ) : (
-                      <Car className="w-3 h-3 text-emerald-200" />
+                      <Car className="w-3 h-3 text-amber-300" />
                     )}
                     <span>{pricing.vehicleBadge}</span>
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-emerald-100/90">
+              <div className="flex items-center gap-2 mt-1 text-xs text-slate-300">
                 <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>
                     {worker.city}
                     {worker.state ? `, ${worker.state}` : ''} • {formatDistance(worker.distanceKm)}
@@ -348,27 +348,27 @@ export const CallModal: React.FC<CallModalProps> = ({
         </div>
 
         {/* Caller ID & Privacy Notice */}
-        <div className="bg-emerald-50 px-4 sm:px-5 py-2.5 border-b border-emerald-100 flex items-center justify-between text-xs shrink-0">
-          <div className="flex items-center gap-1.5 text-emerald-900 font-bold">
-            <ShieldCheck className="w-4 h-4 text-emerald-700" />
+        <div className="bg-[#001428] px-4 sm:px-5 py-2.5 border-b border-[#0a2e5c] flex items-center justify-between text-xs shrink-0 text-white">
+          <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+            <ShieldCheck className="w-4 h-4 text-[#FFA500]" />
             <span>Caller ID: Quick Karya</span>
           </div>
-          <span className="text-emerald-700 font-medium text-[11px]">Phone Numbers Protected</span>
+          <span className="text-slate-300 font-medium text-[11px]">Phone Numbers Protected</span>
         </div>
 
         {/* Scrollable Modal Content */}
         <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           {/* In-App Call Notification / Alert Banner */}
           {callAlertNotice && (
-            <div className="p-3 bg-emerald-50 border-2 border-emerald-400 text-emerald-900 text-xs rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-200 shadow-sm">
+            <div className="p-3 bg-[#001428] border border-[#FFA500] text-amber-300 text-xs rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2 duration-200 shadow-md">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                <span className="font-bold">{callAlertNotice}</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FFA500] animate-ping shrink-0" />
+                <span className="font-bold text-white">{callAlertNotice}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setCallAlertNotice(null)}
-                className="text-xs text-emerald-700 hover:text-emerald-950 font-bold ml-2 p-1 cursor-pointer"
+                className="text-xs text-amber-300 hover:text-white font-bold ml-2 p-1 cursor-pointer"
               >
                 ✕
               </button>
@@ -378,14 +378,14 @@ export const CallModal: React.FC<CallModalProps> = ({
           {isDriver ? (
             <div
               id="driver-location-fields-card"
-              className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200/90 space-y-3"
+              className="p-3.5 bg-[#001428] rounded-2xl border border-[#FFA500]/30 space-y-3"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
-                  <Compass className="w-4 h-4 text-emerald-700" />
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                  <Compass className="w-4 h-4 text-[#FFA500]" />
                   <span>Ride Route Details</span>
                 </div>
-                <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-100 px-2 py-0.5 rounded-md">
+                <span className="text-[10px] text-amber-200 font-semibold bg-[#002d5c] border border-[#FFA500]/40 px-2 py-0.5 rounded-md">
                   {pricing.vehicleBadge || 'Driver Ride'}
                 </span>
               </div>
@@ -395,11 +395,11 @@ export const CallModal: React.FC<CallModalProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <label
                     htmlFor="pickup-location-input"
-                    className="text-xs font-bold text-gray-800 flex items-center gap-1"
+                    className="text-xs font-bold text-slate-200 flex items-center gap-1"
                   >
-                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    <span className="w-2 h-2 rounded-full bg-[#FFA500]"></span>
                     <span>Pickup Location</span>
-                    <span className="text-red-500 font-bold">*</span>
+                    <span className="text-amber-400 font-bold">*</span>
                   </label>
 
                   <button
@@ -407,16 +407,16 @@ export const CallModal: React.FC<CallModalProps> = ({
                     id="use-current-gps-btn"
                     onClick={handleUseGpsLocation}
                     disabled={isLocatingGps}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-900 bg-white hover:bg-emerald-100/70 border border-emerald-300 rounded-lg px-2 py-1 transition-all shadow-2xs cursor-pointer disabled:opacity-60"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#001F3F] bg-[#FFA500] hover:bg-[#FF8C00] rounded-lg px-2 py-1 transition-all shadow-xs cursor-pointer disabled:opacity-60"
                   >
                     {isLocatingGps ? (
                       <>
-                        <Loader2 className="w-3 h-3 animate-spin text-emerald-700" />
+                        <Loader2 className="w-3 h-3 animate-spin text-[#001F3F]" />
                         <span>Detecting GPS...</span>
                       </>
                     ) : (
                       <>
-                        <LocateFixed className="w-3.5 h-3.5 text-emerald-700" />
+                        <LocateFixed className="w-3.5 h-3.5 text-[#001F3F]" />
                         <span>Use Current GPS Location</span>
                       </>
                     )}
@@ -433,9 +433,9 @@ export const CallModal: React.FC<CallModalProps> = ({
                       if (validationError) setValidationError(null);
                     }}
                     placeholder="Enter pickup address, landmark, or street name..."
-                    className="w-full pl-8 pr-3 py-2 text-xs bg-white rounded-xl border border-emerald-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs font-medium"
+                    className="w-full pl-8 pr-3 py-2 text-xs bg-[#001f3f] rounded-xl border border-[#FFA500]/40 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#FFA500] shadow-xs font-medium"
                   />
-                  <MapPin className="w-3.5 h-3.5 text-[#001F3F] absolute left-2.5 top-2.5" />
+                  <MapPin className="w-3.5 h-3.5 text-amber-400 absolute left-2.5 top-2.5" />
                 </div>
               </div>
 
@@ -444,13 +444,13 @@ export const CallModal: React.FC<CallModalProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <label
                     htmlFor="drop-location-input"
-                    className="text-xs font-bold text-gray-800 flex items-center gap-1"
+                    className="text-xs font-bold text-slate-200 flex items-center gap-1"
                   >
-                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span className="w-2 h-2 rounded-full bg-amber-400"></span>
                     <span>Drop Location</span>
-                    {isDropMandatory && <span className="text-red-500 font-bold">*</span>}
+                    {isDropMandatory && <span className="text-amber-400 font-bold">*</span>}
                   </label>
-                  <span className="text-[10px] text-gray-500 font-medium">
+                  <span className="text-[10px] text-slate-400 font-medium">
                     {isDropMandatory ? '(Required for km ride)' : '(Optional for Full-Day Hire)'}
                   </span>
                 </div>
@@ -469,9 +469,9 @@ export const CallModal: React.FC<CallModalProps> = ({
                         ? 'Enter destination / drop landmark (required for route)...'
                         : 'Enter drop destination (optional for daily driver)...'
                     }
-                    className="w-full pl-8 pr-3 py-2 text-xs bg-white rounded-xl border border-emerald-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-600 shadow-2xs font-medium"
+                    className="w-full pl-8 pr-3 py-2 text-xs bg-[#001f3f] rounded-xl border border-[#FFA500]/40 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#FFA500] shadow-xs font-medium"
                   />
-                  <Navigation className="w-3.5 h-3.5 text-amber-600 absolute left-2.5 top-2.5" />
+                  <Navigation className="w-3.5 h-3.5 text-amber-400 absolute left-2.5 top-2.5" />
                 </div>
               </div>
             </div>
@@ -479,14 +479,14 @@ export const CallModal: React.FC<CallModalProps> = ({
             /* Non-Driver: Customer GPS Location & Service Address Sharing */
             <div
               id="service-location-field-card"
-              className="p-3.5 bg-gradient-to-br from-emerald-50/80 to-teal-50/50 rounded-2xl border border-emerald-300 space-y-2.5 shadow-2xs"
+              className="p-3.5 bg-[#001428] rounded-2xl border border-[#FFA500]/30 space-y-2.5 shadow-md"
             >
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="pickup-location-input"
-                  className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5"
+                  className="text-xs font-extrabold text-[#FFD700] flex items-center gap-1.5"
                 >
-                  <MapPin className="w-4 h-4 text-emerald-700" />
+                  <MapPin className="w-4 h-4 text-[#FFA500]" />
                   <span>Job Site Address / Navigation Pin</span>
                 </label>
                 <button
@@ -494,16 +494,16 @@ export const CallModal: React.FC<CallModalProps> = ({
                   id="use-current-gps-btn"
                   onClick={handleUseGpsLocation}
                   disabled={isLocatingGps}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-900 bg-white hover:bg-emerald-100 border border-emerald-400 rounded-lg px-2.5 py-1 cursor-pointer shadow-2xs transition-all active:scale-95"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-black text-[#001F3F] bg-[#FFA500] hover:bg-[#FF8C00] rounded-lg px-2.5 py-1 cursor-pointer shadow-xs transition-all active:scale-95"
                 >
                   {isLocatingGps ? (
                     <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#001F3F]" />
                       <span>Detecting GPS...</span>
                     </>
                   ) : (
                     <>
-                      <LocateFixed className="w-3.5 h-3.5 text-emerald-700" />
+                      <LocateFixed className="w-3.5 h-3.5 text-[#001F3F]" />
                       <span>Share My GPS Pin</span>
                     </>
                   )}
@@ -516,11 +516,11 @@ export const CallModal: React.FC<CallModalProps> = ({
                 value={pickupLocation}
                 onChange={(e) => setPickupLocation(e.target.value)}
                 placeholder="Enter house/shop address, street name, or nearby landmark..."
-                className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-emerald-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-600 font-medium shadow-2xs"
+                className="w-full px-3 py-2 text-xs bg-[#001f3f] rounded-xl border border-[#FFA500]/40 text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#FFA500] font-medium shadow-xs"
               />
 
               {sharedGpsCoords && (
-                <div className="p-2 bg-white/90 rounded-lg border border-emerald-200 text-[11px] flex items-center justify-between text-emerald-900">
+                <div className="p-2 bg-[#001F3F] rounded-lg border border-[#FFA500]/30 text-[11px] flex items-center justify-between text-amber-200">
                   <span className="flex items-center gap-1 truncate mr-2 font-mono text-[10.5px]">
                     📍 GPS: {sharedGpsCoords.lat.toFixed(4)}, {sharedGpsCoords.lng.toFixed(4)}
                   </span>
@@ -528,7 +528,7 @@ export const CallModal: React.FC<CallModalProps> = ({
                     href={`https://maps.google.com/?q=${sharedGpsCoords.lat},${sharedGpsCoords.lng}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="shrink-0 text-emerald-700 hover:text-emerald-900 font-bold underline flex items-center gap-0.5"
+                    className="shrink-0 text-[#FFA500] hover:text-white font-bold underline flex items-center gap-0.5"
                   >
                     View Map ↗
                   </a>
@@ -541,9 +541,9 @@ export const CallModal: React.FC<CallModalProps> = ({
           {validationError && (
             <div
               id="location-validation-alert"
-              className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2 animate-in fade-in duration-150"
+              className="p-2.5 bg-red-950/80 border border-red-500 text-red-200 text-xs rounded-xl flex items-center gap-2 animate-in fade-in duration-150"
             >
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
               <span>{validationError}</span>
             </div>
           )}
@@ -551,45 +551,45 @@ export const CallModal: React.FC<CallModalProps> = ({
           {/* Active Call / Ride Dispatch Summary Banner */}
           <div
             id="ride-summary-card"
-            className="p-3 bg-gradient-to-br from-emerald-50 to-teal-50/70 rounded-xl border border-emerald-200 text-xs space-y-1.5"
+            className="p-3 bg-[#001428] rounded-xl border border-[#0a2e5c] text-xs space-y-1.5"
           >
-            <div className="flex items-center justify-between font-bold text-emerald-950">
-              <span className="flex items-center gap-1">
+            <div className="flex items-center justify-between font-bold text-white">
+              <span className="flex items-center gap-1 text-[#FFD700]">
                 {isDriver ? (
                   <>
-                    <Car className="w-3.5 h-3.5 text-emerald-700" />
+                    <Car className="w-3.5 h-3.5 text-[#FFA500]" />
                     <span>Driver Call Summary</span>
                   </>
                 ) : (
                   <>
-                    <Phone className="w-3.5 h-3.5 text-emerald-700" />
+                    <Phone className="w-3.5 h-3.5 text-[#FFA500]" />
                     <span>Booking Dispatch Summary</span>
                   </>
                 )}
               </span>
-              <span className="text-[10px] text-emerald-800 bg-white border border-emerald-200 px-1.5 py-0.2 rounded font-semibold">
+              <span className="text-[10px] text-[#001F3F] bg-[#FFA500] px-2 py-0.5 rounded font-black">
                 {isNightActive ? pricing.displayNightRate : pricing.displayRate}
               </span>
             </div>
 
-            <div className="text-gray-700 space-y-1 text-[11px] pt-0.5">
+            <div className="text-slate-300 space-y-1 text-[11px] pt-0.5">
               <div className="flex items-start gap-1.5">
-                <span className="font-semibold text-gray-900 min-w-[50px]">
+                <span className="font-semibold text-white min-w-[50px]">
                   {isDriver ? 'Pickup:' : 'Location:'}
                 </span>
-                <span className="text-gray-800 break-words flex-1 font-medium">
+                <span className="text-slate-200 break-words flex-1 font-medium">
                   {pickupLocation.trim() || (
-                    <span className="text-gray-400 italic">Enter location above</span>
+                    <span className="text-slate-400 italic">Enter location above</span>
                   )}
                 </span>
               </div>
 
               {isDriver && (
                 <div className="flex items-start gap-1.5">
-                  <span className="font-semibold text-gray-900 min-w-[50px]">Drop:</span>
-                  <span className="text-gray-800 break-words flex-1 font-medium">
+                  <span className="font-semibold text-white min-w-[50px]">Drop:</span>
+                  <span className="text-slate-200 break-words flex-1 font-medium">
                     {dropLocation.trim() || (
-                      <span className="text-gray-400 italic">
+                      <span className="text-slate-400 italic">
                         {isDropMandatory ? 'Enter destination above' : 'To be confirmed / Full day'}
                       </span>
                     )}
@@ -600,15 +600,15 @@ export const CallModal: React.FC<CallModalProps> = ({
           </div>
 
           {/* Worker Direct Contact Box */}
-          <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-center">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-0.5">
+          <div className="p-3 bg-[#001428] rounded-xl border border-[#FFA500]/30 text-center">
+            <p className="text-[11px] text-amber-300 uppercase tracking-wider mb-0.5 font-bold">
               {isDriver ? 'Driver Phone Contact' : 'Worker Direct Contact'}
             </p>
-            <p className="text-2xl font-mono font-bold text-gray-900 tracking-wide">
+            <p className="text-2xl font-mono font-bold text-white tracking-wide">
               {worker.phone}
             </p>
-            <div className="flex items-center justify-center gap-1 mt-0.5 text-xs text-emerald-700">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <div className="flex items-center justify-center gap-1 mt-0.5 text-xs text-emerald-400 font-semibold">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
               <span>Available for immediate dispatch</span>
             </div>
           </div>
@@ -617,9 +617,9 @@ export const CallModal: React.FC<CallModalProps> = ({
           <button
             id="direct-call-action-btn"
             onClick={handleCallDriver}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-800 hover:bg-emerald-900 active:bg-emerald-950 text-white font-semibold rounded-xl shadow-md shadow-emerald-900/20 transition-all text-sm sm:text-base cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#FFA500] hover:bg-[#FF8C00] active:scale-98 text-[#001F3F] font-black rounded-xl shadow-lg shadow-amber-500/20 transition-all text-sm sm:text-base cursor-pointer"
           >
-            <Phone className="w-4 h-4 sm:w-5 sm:h-5 fill-white" />
+            <Phone className="w-4 h-4 sm:w-5 sm:h-5 fill-[#001F3F]" />
             <span>
               {isDriver ? 'Call Driver Now' : `Call ${worker.name.split(' ')[0]} Now`}
             </span>
@@ -632,9 +632,9 @@ export const CallModal: React.FC<CallModalProps> = ({
               type="button"
               id="whatsapp-chat-btn"
               onClick={handleWhatsAppClick}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-emerald-500/50 bg-[#002a1a] hover:bg-[#003824] text-emerald-300 text-xs font-bold transition-colors cursor-pointer"
             >
-              <MessageSquare className="w-4 h-4 text-emerald-700" />
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
               <span>{isDriver ? 'WhatsApp Driver' : 'WhatsApp'}</span>
             </button>
 
@@ -643,16 +643,16 @@ export const CallModal: React.FC<CallModalProps> = ({
               type="button"
               id="copy-ride-details-btn"
               onClick={handleCopySummary}
-              className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl border border-gray-300 hover:bg-gray-100 text-gray-700 text-xs font-semibold transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl border border-[#0a2e5c] bg-[#001428] hover:bg-[#002244] text-slate-200 text-xs font-bold transition-colors cursor-pointer"
             >
               {copiedSummary ? (
                 <>
                   <Check className="w-4 h-4 text-[#FFA500]" />
-                  <span className="text-emerald-700">Copied Details!</span>
+                  <span className="text-amber-300">Copied Details!</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5 text-gray-500" />
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
                   <span>Copy Details</span>
                 </>
               )}
@@ -665,15 +665,15 @@ export const CallModal: React.FC<CallModalProps> = ({
               type="button"
               id="copy-phone-btn"
               onClick={handleCopyPhone}
-              className="text-[11px] text-gray-500 hover:text-emerald-800 font-medium underline underline-offset-2 cursor-pointer transition-colors"
+              className="text-[11px] text-slate-400 hover:text-amber-300 font-medium underline underline-offset-2 cursor-pointer transition-colors"
             >
               {copiedNumber ? 'Phone number copied!' : 'Or copy phone number only'}
             </button>
           </div>
 
           {/* Safety Disclaimer */}
-          <p className="text-[10px] text-gray-400 text-center leading-relaxed">
-            Quick Karya verified service. Locations are shared directly with the driver to ensure fast pickup and accurate route dispatch.
+          <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+            Quick Karya verified service. Locations are shared directly with the artisan to ensure fast pickup and accurate route dispatch.
           </p>
         </div>
       </div>

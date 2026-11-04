@@ -347,6 +347,7 @@ export default function App() {
               onLogout={handleLogout}
               workers={workers}
               onGoToRegister={() => setActiveTab('register')}
+              onOpenSettings={() => setActiveTab('settings')}
             />
           )}
 

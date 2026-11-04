@@ -114,24 +114,24 @@ Please dispatch assistance immediately!`;
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-red-500/20 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-[#0B192C] rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#0a2e5c] overflow-hidden">
         {/* Urgent Alert Header */}
-        <div className="bg-gradient-to-r from-red-700 via-red-800 to-amber-700 text-white p-4 shrink-0 relative">
+        <div className="bg-gradient-to-r from-red-800 via-red-900 to-[#001F3F] text-white p-4 shrink-0 relative border-b border-red-500/30">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white shrink-0 shadow-inner">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
                 <ShieldAlert className="w-6 h-6 animate-pulse text-amber-300" />
               </div>
               <div>
-                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-950/60 border border-red-400/30 text-[10px] font-black text-amber-300 tracking-wider uppercase">
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-950/80 border border-red-400/40 text-[10px] font-black text-amber-300 tracking-wider uppercase">
                   <span className="w-2 h-2 rounded-full bg-red-400 animate-ping"></span>
                   24/7 Roadside Assistance
                 </div>
-                <h2 className="text-lg font-black tracking-tight leading-tight mt-0.5">
+                <h2 className="text-lg font-black tracking-tight leading-tight mt-0.5 text-white">
                   Highway SOS Emergency
                 </h2>
-                <p className="text-xs text-red-100 font-medium">
+                <p className="text-xs text-red-200 font-medium">
                   Instant Towing, On-Spot Mechanic &amp; Fuel Delivery
                 </p>
               </div>
@@ -139,7 +139,7 @@ Please dispatch assistance immediately!`;
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full bg-black/20 hover:bg-black/40 text-white/90 hover:text-white transition-colors cursor-pointer"
+              className="p-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white/90 hover:text-white transition-colors cursor-pointer"
               title="Close SOS screen"
             >
               <X className="w-5 h-5" />
@@ -150,14 +150,14 @@ Please dispatch assistance immediately!`;
           <div className="mt-3 flex items-center gap-2 text-xs">
             <a
               href="tel:1033"
-              className="flex-1 py-1.5 px-3 bg-white/15 hover:bg-white/25 border border-white/20 rounded-xl text-center font-bold text-white transition-colors flex items-center justify-center gap-1.5"
+              className="flex-1 py-1.5 px-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-center font-bold text-white transition-colors flex items-center justify-center gap-1.5"
             >
               <Phone className="w-3.5 h-3.5 text-amber-300" />
               <span>NHAI Highway: 1033</span>
             </a>
             <a
               href="tel:112"
-              className="flex-1 py-1.5 px-3 bg-white/15 hover:bg-white/25 border border-white/20 rounded-xl text-center font-bold text-white transition-colors flex items-center justify-center gap-1.5"
+              className="flex-1 py-1.5 px-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-center font-bold text-white transition-colors flex items-center justify-center gap-1.5"
             >
               <Phone className="w-3.5 h-3.5 text-red-300" />
               <span>National SOS: 112</span>
@@ -166,38 +166,38 @@ Please dispatch assistance immediately!`;
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 text-white">
           {/* Live GPS Coordinates Card */}
-          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-300 shadow-xs space-y-2">
+          <div className="p-3.5 rounded-2xl bg-[#001428] border border-amber-400/40 shadow-xs space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-amber-950 flex items-center gap-1.5">
-                <Navigation className="w-4 h-4 text-amber-700" />
+              <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                <Navigation className="w-4 h-4 text-amber-400" />
                 Live Breakdown Location
               </span>
               <button
                 type="button"
                 onClick={copyCoordinates}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-200/80 hover:bg-amber-300 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-[#001F3F] bg-[#FFA500] hover:bg-[#FF8C00] px-2.5 py-0.5 rounded-lg transition-colors cursor-pointer shadow-xs"
               >
-                {copiedCoords ? <Check className="w-3 h-3 text-[#FFA500]" /> : <Copy className="w-3 h-3" />}
+                {copiedCoords ? <Check className="w-3 h-3 stroke-[3]" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedCoords ? 'Copied!' : 'Copy GPS'}</span>
               </button>
             </div>
 
-            <div className="text-xs text-amber-900">
-              <div className="font-semibold text-gray-900">{locationLabel}</div>
-              <div className="font-mono text-[11px] text-amber-800 mt-0.5">
+            <div className="text-xs">
+              <div className="font-semibold text-white">{locationLabel}</div>
+              <div className="font-mono text-[11px] text-amber-300 mt-0.5">
                 Lat: {lat}, Lng: {lng}
               </div>
             </div>
-            <p className="text-[10px] text-amber-700 leading-tight">
+            <p className="text-[10px] text-slate-300 leading-tight">
               Share these exact coordinates with rescue mechanics &amp; towing dispatchers so they locate you easily on the highway.
             </p>
           </div>
 
           {/* Emergency Services (Towing Support, On-Spot Mechanic, Fuel Delivery) */}
           <div className="space-y-3">
-            <div className="text-xs font-black uppercase text-gray-500 tracking-wider">
+            <div className="text-xs font-black uppercase text-amber-300 tracking-wider">
               Emergency Highway Services (Quick Dial &amp; WhatsApp)
             </div>
 
@@ -206,19 +206,19 @@ Please dispatch assistance immediately!`;
               return (
                 <div
                   key={srv.id}
-                  className="bg-white rounded-2xl p-3.5 border border-gray-200 shadow-xs hover:border-red-300 transition-all space-y-2.5"
+                  className="bg-[#001428] rounded-2xl p-3.5 border border-[#0a2e5c] shadow-xs hover:border-amber-400/50 transition-all space-y-2.5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-xl bg-red-50 text-red-700 border border-red-200 flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-red-950/80 text-amber-300 border border-red-500/40 flex items-center justify-center shrink-0">
                         <Icon className="w-5 h-5" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-bold text-gray-900">{srv.title}</h3>
-                          <span className="text-[11px] text-gray-500">{srv.hindiTitle}</span>
+                          <h3 className="text-sm font-bold text-white">{srv.title}</h3>
+                          <span className="text-[11px] text-amber-300">{srv.hindiTitle}</span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-red-700 font-bold mt-0.5">
+                        <div className="flex items-center gap-1 text-[10px] text-red-400 font-bold mt-0.5">
                           <Clock className="w-3 h-3" />
                           <span>{srv.dispatchTime}</span>
                         </div>
@@ -226,7 +226,7 @@ Please dispatch assistance immediately!`;
                     </div>
                   </div>
 
-                  <p className="text-xs text-gray-600 leading-relaxed">{srv.desc}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{srv.desc}</p>
 
                   {/* Action buttons: Quick-Dial Call & WhatsApp */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
@@ -256,10 +256,10 @@ Please dispatch assistance immediately!`;
           {/* Genuine Registered Highway Artisans or Clean Empty State */}
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-gray-700">
+              <span className="font-bold text-slate-200">
                 Independent Highway Rescue Artisans ({emergencyWorkers.length})
               </span>
-              <span className="text-[10px] text-[#001F3F] font-semibold">100% Genuine Direct Contacts</span>
+              <span className="text-[10px] text-amber-300 font-semibold">100% Genuine Direct Contacts</span>
             </div>
 
             {emergencyWorkers.length > 0 ? (
@@ -267,11 +267,11 @@ Please dispatch assistance immediately!`;
                 {emergencyWorkers.map((w) => (
                   <div
                     key={w.id}
-                    className="p-3 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between gap-2"
+                    className="p-3 rounded-xl bg-[#001428] border border-[#0a2e5c] flex items-center justify-between gap-2"
                   >
                     <div>
-                      <div className="text-xs font-bold text-gray-900">{w.name}</div>
-                      <div className="text-[11px] text-gray-500">
+                      <div className="text-xs font-bold text-white">{w.name}</div>
+                      <div className="text-[11px] text-slate-400">
                         {w.city}, {w.state} • {w.experience} yrs exp
                       </div>
                     </div>
@@ -288,14 +288,14 @@ Please dispatch assistance immediately!`;
               </div>
             ) : (
               /* Clean Empty State - Zero fake/dummy listings */
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 text-center space-y-1.5">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-[#001F3F] flex items-center justify-center mx-auto text-sm font-bold">
+              <div className="p-4 rounded-2xl bg-[#001428] border border-[#0a2e5c] text-center space-y-1.5">
+                <div className="w-8 h-8 rounded-full bg-[#002b54] text-amber-300 border border-[#FFA500]/40 flex items-center justify-center mx-auto text-sm font-bold">
                   ✓
                 </div>
-                <div className="text-xs font-bold text-gray-800">
+                <div className="text-xs font-bold text-white">
                   0 Independent Rescue Teams in Sector
                 </div>
-                <p className="text-[11px] text-gray-500 max-w-xs mx-auto leading-relaxed">
+                <p className="text-[11px] text-slate-300 max-w-xs mx-auto leading-relaxed">
                   No independent roadside workers currently registered here. Zero dummy profiles maintained. Please use the 24/7 Rapid Emergency Dispatch services above or National Highway Helpline 1033.
                 </p>
               </div>
@@ -304,12 +304,12 @@ Please dispatch assistance immediately!`;
         </div>
 
         {/* Bottom Bar */}
-        <div className="p-3 bg-gray-100 border-t border-gray-200 flex items-center justify-between text-[11px] text-gray-500 shrink-0">
+        <div className="p-3 bg-[#001428] border-t border-[#0a2e5c] flex items-center justify-between text-[11px] text-slate-400 shrink-0">
           <span>Quick Karya Highway Emergency Network</span>
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 bg-white hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 font-semibold transition-colors cursor-pointer"
+            className="px-3 py-1 bg-[#002b54] hover:bg-[#003d7a] border border-[#0a2e5c] rounded-lg text-slate-200 font-semibold transition-colors cursor-pointer"
           >
             Close SOS Screen
           </button>

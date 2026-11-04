@@ -61,16 +61,8 @@ jobs:
           TARGET_NDK="27.1.12297006"
 
           if [ ! -d "${ANDROID_ROOT}/ndk/${TARGET_NDK}" ]; then
-            echo "Installing NDK ${TARGET_NDK} and build-tools..."
-            for attempt in 1 2 3; do
-              echo "Attempt $attempt of 3: Installing ndk;${TARGET_NDK}..."
-              if "$SDKMANAGER" --install "ndk;${TARGET_NDK}" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"; then
-                echo "NDK ${TARGET_NDK} installed successfully."
-                break
-              fi
-              echo "Attempt $attempt failed. Retrying in 10s..."
-              sleep 10
-            done
+            echo "Attempting to install NDK ${TARGET_NDK} and build-tools..."
+            "$SDKMANAGER" --install "ndk;${TARGET_NDK}" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" || true
           else
             echo "NDK ${TARGET_NDK} is already installed."
           fi
@@ -81,7 +73,7 @@ jobs:
             CHOSEN_NDK="${TARGET_NDK}"
           elif [ -d "${ANDROID_ROOT}/ndk" ] && [ "$(ls -A "${ANDROID_ROOT}/ndk" 2>/dev/null)" ]; then
             CHOSEN_NDK=$(ls -1 "${ANDROID_ROOT}/ndk" | sort -V | tail -n 1)
-            echo "Falling back to available pre-installed NDK: ${CHOSEN_NDK}"
+            echo "Using pre-installed NDK: ${CHOSEN_NDK}"
           fi
 
           echo "Selected NDK: ${CHOSEN_NDK}"
@@ -112,12 +104,17 @@ jobs:
             echo "ndk.dir=${NDK_PATH}" >> android/local.properties
           fi
 
-          # Apply memory and daemon settings to gradle.properties
+          # Apply memory and daemon settings to gradle.properties to prevent daemon crashes
           if ! grep -q "org.gradle.daemon=false" android/gradle.properties 2>/dev/null; then
             echo "org.gradle.daemon=false" >> android/gradle.properties
           fi
-          if ! grep -q "org.gradle.jvmargs" android/gradle.properties 2>/dev/null; then
-            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
+          if grep -q "org.gradle.jvmargs=" android/gradle.properties 2>/dev/null; then
+            sed -i "s/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m/" android/gradle.properties
+          else
+            echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
+          fi
+          if ! grep -q "android.enableJetifier=true" android/gradle.properties 2>/dev/null; then
+            echo "android.enableJetifier=true" >> android/gradle.properties
           fi
 
           # Ensure android.ndkVersion in gradle.properties matches the selected NDK
@@ -132,7 +129,7 @@ jobs:
           echo "Contents of android/local.properties:"
           cat android/local.properties
           echo "Configured settings in android/gradle.properties:"
-          grep -E "android.ndkVersion|org.gradle.daemon|org.gradle.jvmargs" android/gradle.properties || true
+          grep -E "android.ndkVersion|org.gradle.daemon|org.gradle.jvmargs|android.enableJetifier" android/gradle.properties || true
 
       - name: Ensure Signing Keystore Exists
         run: |
@@ -145,7 +142,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace -x test -x lint
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" --stacktrace -x test -x lint
 
       - name: Verify Generated APK
         run: |

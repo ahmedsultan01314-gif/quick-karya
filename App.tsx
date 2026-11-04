@@ -2092,12 +2092,22 @@ Please dispatch assistance immediately!`;
       {/* TAB 4: MY PROFILE (PERMANENT WORKER ID & VERIFIED SESSION) */}
       {activeTab === 'profile' && (
         <View style={styles.tabScreenWrapper}>
-          {/* Instagram-Style Navigation Header with Bold Done Action Button */}
+          {/* Instagram-Style Navigation Header with Settings & Bold Done Action Buttons */}
           <View style={styles.instaHeaderBar}>
             <TouchableOpacity onPress={() => setActiveTab('home')} style={styles.instaHeaderLeftBtn} activeOpacity={0.7}>
               <Text style={styles.instaHeaderBackText}>‹ Home</Text>
             </TouchableOpacity>
-            <Text style={styles.instaHeaderTitle}>Profile</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.instaHeaderTitle}>Profile</Text>
+              <TouchableOpacity
+                onPress={() => setActiveTab('settings')}
+                style={styles.profileHeaderSettingsBtn}
+                activeOpacity={0.8}
+                accessibilityLabel="Settings"
+              >
+                <Text style={styles.profileHeaderSettingsIcon}>⚙️</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               onPress={() => {
                 Alert.alert('Profile Saved', '✓ Your profile details are up to date.');
@@ -2512,38 +2522,6 @@ Please dispatch assistance immediately!`;
             My Profile
           </Text>
           {activeTab === 'profile' && <View style={styles.navActiveIndicator} />}
-        </TouchableOpacity>
-
-        {/* Tab 5: Settings */}
-        <TouchableOpacity
-          style={styles.navTabButton}
-          onPress={() => setActiveTab('settings')}
-          activeOpacity={0.8}
-        >
-          <View
-            style={[
-              styles.nav3dBadge,
-              activeTab === 'settings' && styles.nav3dBadgeActive
-            ]}
-          >
-            <Text
-              style={[
-                styles.navEmoji,
-                activeTab === 'settings' && styles.navEmojiActive
-              ]}
-            >
-              ⚙️
-            </Text>
-          </View>
-          <Text
-            style={[
-              styles.navTabLabel,
-              activeTab === 'settings' && styles.navTabLabelActive
-            ]}
-          >
-            Settings
-          </Text>
-          {activeTab === 'settings' && <View style={styles.navActiveIndicator} />}
         </TouchableOpacity>
       </View>
 
@@ -3490,6 +3468,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.5
+  },
+  profileHeaderSettingsBtn: {
+    backgroundColor: '#002b54',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 165, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  profileHeaderSettingsIcon: {
+    fontSize: 14,
+    color: '#FFD700'
   },
   splashFullScreen: {
     flex: 1,
@@ -4537,9 +4529,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end'
   },
   modalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0B192C',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
     maxHeight: '70%',
     padding: 16
   },
@@ -4549,12 +4543,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb'
+    borderBottomColor: '#0a2e5c'
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827'
+    color: '#ffffff'
   },
   modalCloseText: {
     fontSize: 14,
@@ -4568,17 +4562,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6'
+    borderBottomColor: '#0a2e5c'
   },
   modalListItemActive: {
-    backgroundColor: '#FFF8E7'
+    backgroundColor: '#002b54',
+    borderRadius: 8
   },
   modalListItemText: {
     fontSize: 14,
-    color: '#374151'
+    color: '#e2e8f0'
   },
   modalListItemTextActive: {
-    color: '#001F3F',
+    color: '#FFD700',
     fontWeight: 'bold'
   },
 
@@ -4954,25 +4949,25 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#f9fafb',
+    borderColor: '#0a2e5c',
+    backgroundColor: '#001428',
     fontSize: 13,
-    color: '#111827'
+    color: '#ffffff'
   },
   modalCustomOption: {
     marginHorizontal: 16,
     marginBottom: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#FFF8E7',
+    backgroundColor: '#002b54',
     borderWidth: 1,
-    borderColor: '#FFE082',
+    borderColor: 'rgba(255, 165, 0, 0.4)',
     borderRadius: 8
   },
   modalCustomOptionText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#001F3F'
+    color: '#FFD700'
   },
   modalCheckText: {
     fontSize: 14,
@@ -5947,7 +5942,7 @@ const styles = StyleSheet.create({
   /* DETAILED WORKER PROFILE MODAL */
   detailModalContainer: {
     flex: 1,
-    backgroundColor: '#f9fafb'
+    backgroundColor: '#0B192C'
   },
   detailHeader: {
     backgroundColor: '#001F3F',
@@ -5965,7 +5960,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center'
   },
@@ -6041,17 +6036,17 @@ const styles = StyleSheet.create({
     padding: 16
   },
   detailCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#001428',
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#0a2e5c',
     marginBottom: 12
   },
   detailCardTitle: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 8
   },
   detailStatsGrid: {
@@ -6061,29 +6056,29 @@ const styles = StyleSheet.create({
   },
   detailStatBox: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#001F3F',
     padding: 8,
     borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#f3f4f6'
+    borderColor: '#0a2e5c'
   },
   detailStatLabel: {
     fontSize: 10,
-    color: '#6b7280',
+    color: '#94a3b8',
     marginBottom: 2
   },
   detailStatValue: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#111827'
+    color: '#ffffff'
   },
   detailLocationBox: {
     marginBottom: 10
   },
   detailLocationText: {
     fontSize: 12,
-    color: '#374151',
+    color: '#e2e8f0',
     fontWeight: '600'
   },
   detailDistanceText: {
@@ -6096,30 +6091,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FFF8E7',
+    backgroundColor: '#001F3F',
     borderRadius: 12,
     padding: 10,
-    borderColor: '#FFE082',
+    borderColor: 'rgba(255, 165, 0, 0.4)',
     borderWidth: 1
   },
   detailRatesLabel: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#001F3F'
+    color: '#FFD700'
   },
   detailRatesSub: {
     fontSize: 10,
-    color: '#B45309',
+    color: '#FFA500',
     marginTop: 2
   },
   detailRatesBadge: {
-    backgroundColor: '#001F3F',
+    backgroundColor: '#FFA500',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6
   },
   detailRatesBadgeText: {
-    color: '#ffffff',
+    color: '#001F3F',
     fontSize: 10,
     fontWeight: 'bold'
   },
@@ -6129,16 +6124,16 @@ const styles = StyleSheet.create({
     gap: 6
   },
   detailSkillPill: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#002b54',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#e5e7eb'
+    borderColor: '#1e4d8c'
   },
   detailSkillPillText: {
     fontSize: 11,
-    color: '#374151',
+    color: '#FFD700',
     fontWeight: '500'
   },
   detailReviewsHeader: {
@@ -6149,12 +6144,12 @@ const styles = StyleSheet.create({
   },
   detailReviewsSubtitle: {
     fontSize: 11,
-    color: '#6b7280',
+    color: '#94a3b8',
     marginTop: 1
   },
   detailRateSmallBtn: {
-    backgroundColor: '#fffbeb',
-    borderColor: '#fcd34d',
+    backgroundColor: '#002b54',
+    borderColor: '#FFA500',
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 5,
@@ -6162,18 +6157,18 @@ const styles = StyleSheet.create({
   },
   detailRateSmallBtnText: {
     fontSize: 11,
-    color: '#78350f',
+    color: '#FFD700',
     fontWeight: 'bold'
   },
   detailReviewsList: {
     marginTop: 6
   },
   detailReviewItem: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#001F3F',
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#f3f4f6',
+    borderColor: '#0a2e5c',
     marginBottom: 8
   },
   detailReviewHeader: {
@@ -6185,32 +6180,34 @@ const styles = StyleSheet.create({
   detailReviewName: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#1f2937'
+    color: '#ffffff'
   },
   detailReviewStars: {
     fontSize: 10
   },
   detailReviewComment: {
     fontSize: 12,
-    color: '#4b5563',
+    color: '#cbd5e1',
     fontStyle: 'italic',
     lineHeight: 16
   },
   detailReviewDate: {
     fontSize: 10,
-    color: '#9ca3af',
+    color: '#64748b',
     marginTop: 4
   },
   detailEmptyReviews: {
     padding: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f9fafb',
-    borderRadius: 10
+    backgroundColor: '#001F3F',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#0a2e5c'
   },
   detailEmptyReviewsText: {
     fontSize: 11,
-    color: '#6b7280',
+    color: '#94a3b8',
     textAlign: 'center',
     marginBottom: 6
   },
@@ -6220,9 +6217,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   detailBottomBar: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#001428',
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopColor: '#0a2e5c',
     padding: 12,
     flexDirection: 'row',
     gap: 10,
@@ -6230,8 +6227,8 @@ const styles = StyleSheet.create({
   },
   detailBottomRateBtn: {
     flex: 1,
-    backgroundColor: '#fffbeb',
-    borderColor: '#fcd34d',
+    backgroundColor: '#002b54',
+    borderColor: '#FFA500',
     borderWidth: 1,
     paddingVertical: 12,
     borderRadius: 12,
@@ -6241,7 +6238,7 @@ const styles = StyleSheet.create({
   detailBottomRateBtnText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#78350f'
+    color: '#FFD700'
   },
   detailBottomCallBtn: {
     flex: 1,
@@ -6273,11 +6270,11 @@ const styles = StyleSheet.create({
   ratingModalCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0B192C',
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(0, 31, 63, 0.15)',
+    borderColor: '#0a2e5c',
     elevation: 10
   },
   ratingModalHeader: {
@@ -6285,7 +6282,9 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 165, 0, 0.3)'
   },
   ratingModalTitle: {
     color: '#ffffff',
@@ -6307,10 +6306,10 @@ const styles = StyleSheet.create({
     padding: 16
   },
   ratingPickerBox: {
-    backgroundColor: '#fffbeb',
+    backgroundColor: '#001428',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#fef3c7',
+    borderColor: 'rgba(255, 165, 0, 0.3)',
     padding: 12,
     alignItems: 'center',
     marginBottom: 14
@@ -6318,7 +6317,7 @@ const styles = StyleSheet.create({
   ratingPickerPrompt: {
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#92400e',
+    color: '#FFD700',
     marginBottom: 8
   },
   ratingStarsRow: {
@@ -6335,24 +6334,24 @@ const styles = StyleSheet.create({
   ratingSelectedText: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#78350f'
+    color: '#FFA500'
   },
   ratingInputLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#374151',
+    color: '#e2e8f0',
     marginBottom: 6
   },
   ratingTextInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#0a2e5c',
     borderRadius: 12,
     padding: 10,
     fontSize: 12,
-    color: '#111827',
+    color: '#ffffff',
     minHeight: 70,
     textAlignVertical: 'top',
-    backgroundColor: '#f9fafb'
+    backgroundColor: '#001428'
   },
   ratingModalActions: {
     flexDirection: 'row',
@@ -6364,19 +6363,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#0a2e5c',
+    backgroundColor: '#002b54',
     alignItems: 'center'
   },
   ratingCancelBtnText: {
     fontSize: 12,
-    color: '#4b5563',
+    color: '#e2e8f0',
     fontWeight: '600'
   },
   ratingSubmitBtn: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: '#001F3F',
+    backgroundColor: '#FFA500',
     alignItems: 'center'
   },
   ratingSubmitBtnDisabled: {
@@ -6384,12 +6384,12 @@ const styles = StyleSheet.create({
   },
   ratingSubmitBtnText: {
     fontSize: 12,
-    color: '#ffffff',
-    fontWeight: 'bold'
+    color: '#001F3F',
+    fontWeight: '900'
   },
   ratingSuccessBox: {
-    backgroundColor: '#FFF8E7',
-    borderColor: '#FFE082',
+    backgroundColor: '#001428',
+    borderColor: '#FFA500',
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
@@ -6399,12 +6399,12 @@ const styles = StyleSheet.create({
   ratingSuccessTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#001F3F',
+    color: '#FFD700',
     marginTop: 6
   },
   ratingSuccessDesc: {
     fontSize: 11,
-    color: '#B45309',
+    color: '#e2e8f0',
     textAlign: 'center',
     marginTop: 2
   },

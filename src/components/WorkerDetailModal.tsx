@@ -44,17 +44,17 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
   return (
     <div
       id="worker-detail-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto"
     >
       <div
         id="worker-detail-card"
-        className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+        className="w-full max-w-md bg-[#0B192C] rounded-3xl shadow-2xl overflow-hidden border border-[#0a2e5c] flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Top Header */}
         <div className="bg-gradient-to-r from-[#001428] via-[#001F3F] to-[#002b57] p-5 text-white relative border-b border-[#0a2e5c]">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 bg-black/30 hover:bg-black/50 text-white p-1.5 rounded-full cursor-pointer transition-colors"
+            className="absolute top-4 right-4 bg-black/40 hover:bg-black/60 text-amber-300 hover:text-white p-1.5 rounded-full cursor-pointer transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -79,7 +79,7 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
                 );
               })()}
               {worker.available && (
-                <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white z-10" />
+                <span className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#001F3F] z-10" />
               )}
             </div>
 
@@ -94,7 +94,7 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#FFD700] mt-0.5">
+              <p className="text-xs text-[#FFD700] mt-0.5 font-medium">
                 {worker.category} {worker.subRole ? `• ${worker.subRole}` : ''}
               </p>
               <div className="flex items-center gap-2 mt-2">
@@ -102,10 +102,10 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                   {(worker.rating || 5.0).toFixed(1)}
                 </span>
-                <span className="text-[11px] text-[#FFD700]">
+                <span className="text-[11px] text-slate-300">
                   ({worker.reviewCount || 0} reviews)
                 </span>
-                <span className="text-[11px] px-1.5 py-0.5 bg-[#002d5c] rounded text-[#FFD700] font-mono text-[10px]">
+                <span className="text-[11px] px-1.5 py-0.5 bg-[#002d5c] border border-[#1e4d8c] rounded text-[#FFD700] font-mono text-[10px]">
                   {worker.workerId || `QK-${worker.id.slice(-5).toUpperCase()}`}
                 </span>
               </div>
@@ -114,21 +114,21 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
         </div>
 
         {/* Scrollable Details Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 text-gray-800">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 text-white">
           {/* Key Facts Grid */}
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-[#001F3F] shrink-0" />
+            <div className="p-2.5 rounded-xl bg-[#001428] border border-[#0a2e5c] flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-[#FFA500] shrink-0" />
               <div>
-                <span className="text-gray-400 text-[10px] block">Experience</span>
-                <span className="font-bold text-gray-800">{worker.experience} Years</span>
+                <span className="text-slate-400 text-[10px] block">Experience</span>
+                <span className="font-bold text-white">{worker.experience} Years</span>
               </div>
             </div>
-            <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-[#001F3F] shrink-0" />
+            <div className="p-2.5 rounded-xl bg-[#001428] border border-[#0a2e5c] flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-[#FFA500] shrink-0" />
               <div className="min-w-0">
-                <span className="text-gray-400 text-[10px] block">Location</span>
-                <span className="font-bold text-gray-800 truncate block">
+                <span className="text-slate-400 text-[10px] block">Location</span>
+                <span className="font-bold text-white truncate block">
                   {worker.city}, {worker.state || 'India'}
                 </span>
               </div>
@@ -136,14 +136,14 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
           </div>
 
           {/* Service Rates & Direct Call Guarantee */}
-          <div className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-2xl flex items-center justify-between">
+          <div className="p-3 bg-[#001428] border border-[#FFA500]/30 rounded-2xl flex items-center justify-between">
             <div>
-              <span className="text-[11px] text-[#001F3F] font-bold block">Service Charges</span>
-              <span className="text-xs text-gray-600">
+              <span className="text-[11px] text-amber-300 font-bold block">Service Charges</span>
+              <span className="text-xs text-slate-300">
                 100% Free Directory • Fair rate agreed upon call
               </span>
             </div>
-            <span className="px-2.5 py-1 bg-[#001F3F] text-white rounded-lg text-xs font-bold shrink-0">
+            <span className="px-2.5 py-1 bg-[#FFA500] text-[#001F3F] rounded-lg text-xs font-black shrink-0 shadow-xs">
               Direct Contact
             </span>
           </div>
@@ -151,12 +151,12 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
           {/* Skills Breakdown */}
           {worker.skills && worker.skills.length > 0 && (
             <div>
-              <h4 className="text-xs font-bold text-gray-700 mb-2">Skills & Specialties</h4>
+              <h4 className="text-xs font-bold text-slate-200 mb-2">Skills & Specialties</h4>
               <div className="flex flex-wrap gap-1.5">
                 {worker.skills.map((skill, i) => (
                   <span
                     key={i}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-gray-100 text-gray-700 font-medium border border-gray-200/60"
+                    className="text-xs px-2.5 py-1 rounded-lg bg-[#002b54] text-amber-300 font-medium border border-[#1e4d8c]"
                   >
                     {skill}
                   </span>
@@ -166,35 +166,35 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
           )}
 
           {/* Customer Reviews Section */}
-          <div className="pt-2 border-t border-gray-100">
+          <div className="pt-2 border-t border-[#0a2e5c]">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                  <MessageSquare className="w-4 h-4 text-[#001F3F]" />
+                <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-amber-400" />
                   Customer Reviews & Ratings
                 </h4>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-[11px] text-slate-300">
                   ⭐ {(worker.rating || 5.0).toFixed(1)} average from {worker.reviewCount || 0} customer reviews
                 </p>
               </div>
               <button
                 onClick={() => onOpenRating(worker)}
-                className="py-1 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                className="py-1 px-2.5 bg-[#002b54] hover:bg-[#003d7a] text-amber-300 border border-[#FFA500]/50 rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-xs"
               >
                 Rate Artisan ⭐
               </button>
             </div>
 
             {loadingReviews ? (
-              <div className="py-6 text-center text-xs text-gray-400">Loading reviews...</div>
+              <div className="py-6 text-center text-xs text-slate-400">Loading reviews...</div>
             ) : reviews.length === 0 ? (
-              <div className="p-4 bg-gray-50 rounded-2xl text-center border border-gray-100 space-y-2">
-                <p className="text-xs text-gray-500">
+              <div className="p-4 bg-[#001428] rounded-2xl text-center border border-[#0a2e5c] space-y-2">
+                <p className="text-xs text-slate-300">
                   No written reviews yet for this artisan.
                 </p>
                 <button
                   onClick={() => onOpenRating(worker)}
-                  className="text-xs font-bold text-[#001F3F] hover:underline cursor-pointer"
+                  className="text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline cursor-pointer"
                 >
                   Be the first to submit a review →
                 </button>
@@ -204,21 +204,21 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
                 {reviews.map((rev) => (
                   <div
                     key={rev.id}
-                    className="p-3 bg-gray-50/80 rounded-xl border border-gray-100 space-y-1 text-xs"
+                    className="p-3 bg-[#001428] rounded-xl border border-[#0a2e5c] space-y-1 text-xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-gray-800">{rev.customerName}</span>
-                      <div className="flex items-center text-amber-500 font-bold">
+                      <span className="font-bold text-white">{rev.customerName}</span>
+                      <div className="flex items-center text-amber-400 font-bold">
                         {'★'.repeat(rev.rating)}
-                        <span className="text-gray-300">{'★'.repeat(5 - rev.rating)}</span>
+                        <span className="text-slate-600">{'★'.repeat(5 - rev.rating)}</span>
                       </div>
                     </div>
                     {rev.comment && (
-                      <p className="text-gray-600 text-xs italic">
+                      <p className="text-slate-300 text-xs italic">
                         &quot;{rev.comment}&quot;
                       </p>
                     )}
-                    <span className="text-[10px] text-gray-400 block">
+                    <span className="text-[10px] text-slate-400 block">
                       {new Date(rev.createdAt).toLocaleDateString()}
                     </span>
                   </div>
@@ -229,12 +229,12 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
         </div>
 
         {/* Bottom Actions Bar */}
-        <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center gap-2">
+        <div className="p-4 bg-[#001428] border-t border-[#0a2e5c] flex items-center gap-2">
           <button
             onClick={() => onOpenRating(worker)}
-            className="flex-1 py-3 px-3 bg-amber-50 hover:bg-amber-100 text-[#001F3F] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border-2 border-[#FFA500] hover:border-[#FFD700] shadow-xs active:scale-[0.98]"
+            className="flex-1 py-3 px-3 bg-[#002b54] hover:bg-[#003d7a] text-amber-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border-2 border-[#FFA500]/60 hover:border-[#FFA500] shadow-xs active:scale-[0.98]"
           >
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
             <span>Rate Artisan ⭐</span>
           </button>
           <button
@@ -242,9 +242,9 @@ export const WorkerDetailModal: React.FC<WorkerDetailModalProps> = ({
               onClose();
               onCallWorker(worker);
             }}
-            className="flex-1 py-3 px-3 bg-[#001F3F] hover:bg-[#002e5d] active:bg-[#00162e] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-[0.98]"
+            className="flex-1 py-3 px-3 bg-[#FFA500] hover:bg-[#FF8C00] active:bg-[#e07b00] text-[#001F3F] font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-[0.98]"
           >
-            <Phone className="w-3.5 h-3.5 fill-current text-amber-400" />
+            <Phone className="w-3.5 h-3.5 fill-current" />
             <span>Call Worker</span>
           </button>
         </div>

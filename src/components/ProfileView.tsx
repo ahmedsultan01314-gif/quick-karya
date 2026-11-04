@@ -16,7 +16,8 @@ import {
   AlertCircle,
   ExternalLink,
   MessageSquare,
-  Shield
+  Shield,
+  Settings
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -25,6 +26,7 @@ interface ProfileViewProps {
   onLogout: () => void;
   workers: WorkerProfile[];
   onGoToRegister: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -32,7 +34,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onLoginClick,
   onLogout,
   workers,
-  onGoToRegister
+  onGoToRegister,
+  onOpenSettings
 }) => {
   const [workerProfile, setWorkerProfile] = useState<WorkerProfile | null>(null);
   const [reviews, setReviews] = useState<WorkerReview[]>([]);
@@ -205,10 +208,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   return (
     <div id="my-profile-container" className="space-y-4 pb-12 animate-in fade-in duration-150">
-      {/* Instagram-Style Navigation Header with bold 'Done' action button */}
+      {/* Instagram-Style Navigation Header with bold 'Settings' and 'Done' action buttons */}
       <div className="flex items-center justify-between px-3 py-2.5 bg-[#001933] border border-[#FFA500]/30 rounded-2xl shadow-sm text-white">
         <span className="text-xs font-semibold text-[#FFD700]">Account</span>
-        <h2 className="text-sm font-bold text-white tracking-wide">My Profile</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-white tracking-wide">My Profile</h2>
+          {onOpenSettings && (
+            <button
+              type="button"
+              id="profile-header-settings-btn"
+              onClick={onOpenSettings}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#002b54] hover:bg-[#003d7a] border border-[#FFA500]/50 text-amber-300 hover:text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-xs"
+              title="Open Settings"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-400" />
+              <span>Settings</span>
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={(e) => {
