@@ -99,7 +99,7 @@ jobs:
         run: npm install
 
       - name: Prebuild Native Android
-        run: npx expo prebuild --platform android --no-install
+        run: npx expo prebuild --platform android --clean
 
       - name: Configure Android SDK and NDK Paths
         run: |
@@ -110,6 +110,14 @@ jobs:
           echo "sdk.dir=${ANDROID_ROOT}" > android/local.properties
           if [ -d "${NDK_PATH}" ]; then
             echo "ndk.dir=${NDK_PATH}" >> android/local.properties
+          fi
+
+          # Apply memory and daemon settings to gradle.properties
+          if ! grep -q "org.gradle.daemon=false" android/gradle.properties 2>/dev/null; then
+            echo "org.gradle.daemon=false" >> android/gradle.properties
+          fi
+          if ! grep -q "org.gradle.jvmargs" android/gradle.properties 2>/dev/null; then
+            echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> android/gradle.properties
           fi
 
           # Ensure android.ndkVersion in gradle.properties matches the selected NDK
@@ -123,8 +131,8 @@ jobs:
 
           echo "Contents of android/local.properties:"
           cat android/local.properties
-          echo "Configured android.ndkVersion in android/gradle.properties:"
-          grep "android.ndkVersion" android/gradle.properties || true
+          echo "Configured settings in android/gradle.properties:"
+          grep -E "android.ndkVersion|org.gradle.daemon|org.gradle.jvmargs" android/gradle.properties || true
 
       - name: Ensure Signing Keystore Exists
         run: |
@@ -132,11 +140,6 @@ jobs:
             echo "Generating debug.keystore for APK signing..."
             keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-
-      - name: Generate Android JS Bundle & Assets
-        run: |
-          mkdir -p android/app/src/main/assets
-          npx expo export:embed --platform android --dev false --entry-file node_modules/expo/AppEntry.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
 
       - name: Build Android Release APK
         run: |
