@@ -31,37 +31,66 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK Environment
+        run: |
+          ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=${ANDROID_ROOT}" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=${ANDROID_ROOT}" >> $GITHUB_ENV
+          echo "${ANDROID_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_ROOT}/platform-tools" >> $GITHUB_PATH
 
-      - name: Accept Android SDK Licenses & Install NDK 27.1.12297006
+      - name: Accept Android SDK Licenses & Install Required NDK
         run: |
           set -e
-          echo "Accepting Android SDK licenses..."
-          yes | sdkmanager --licenses || true
-
-          echo "Installing required Android SDK components (platforms, build-tools, cmake, NDK 27.1.12297006)..."
-          INSTALL_SUCCESS=false
-          for attempt in 1 2 3; do
-            echo "Attempt $attempt of 3: Installing ndk;27.1.12297006, cmake;3.22.1, build-tools;35.0.0..."
-            if sdkmanager --install "ndk;27.1.12297006" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"; then
-              INSTALL_SUCCESS=true
-              echo "Android SDK and NDK components installed successfully."
-              break
-            fi
-            echo "Attempt $attempt failed. Retrying in 10s..."
-            sleep 10
-          done
-
-          if [ "$INSTALL_SUCCESS" = false ]; then
-            echo "ERROR: Failed to install NDK 27.1.12297006 after 3 attempts."
-            exit 1
+          ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="${ANDROID_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(which sdkmanager || echo "")
           fi
 
-          # Set environment variables for Gradle and build system
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.1.12297006" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/27.1.12297006" >> $GITHUB_ENV
-          echo "NDK_ROOT=${ANDROID_HOME}/ndk/27.1.12297006" >> $GITHUB_ENV
+          echo "Using sdkmanager from: $SDKMANAGER"
+
+          echo "Accepting Android SDK and NDK licenses..."
+          yes | "$SDKMANAGER" --licenses || true
+
+          # List existing pre-installed NDK versions on runner
+          echo "Pre-installed NDK versions on runner:"
+          ls -1 "${ANDROID_ROOT}/ndk" 2>/dev/null || echo "No ndk directory yet"
+
+          # Target NDK version required by React Native 0.86.3 / Expo SDK 57
+          TARGET_NDK="27.1.12297006"
+
+          if [ ! -d "${ANDROID_ROOT}/ndk/${TARGET_NDK}" ]; then
+            echo "Installing NDK ${TARGET_NDK} and build-tools..."
+            for attempt in 1 2 3; do
+              echo "Attempt $attempt of 3: Installing ndk;${TARGET_NDK}..."
+              if "$SDKMANAGER" --install "ndk;${TARGET_NDK}" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0"; then
+                echo "NDK ${TARGET_NDK} installed successfully."
+                break
+              fi
+              echo "Attempt $attempt failed. Retrying in 10s..."
+              sleep 10
+            done
+          else
+            echo "NDK ${TARGET_NDK} is already installed."
+          fi
+
+          # Detect best available NDK (prefer 27.1.12297006, fallback to latest pre-installed)
+          CHOSEN_NDK=""
+          if [ -d "${ANDROID_ROOT}/ndk/${TARGET_NDK}" ]; then
+            CHOSEN_NDK="${TARGET_NDK}"
+          elif [ -d "${ANDROID_ROOT}/ndk" ] && [ "$(ls -A "${ANDROID_ROOT}/ndk" 2>/dev/null)" ]; then
+            CHOSEN_NDK=$(ls -1 "${ANDROID_ROOT}/ndk" | sort -V | tail -n 1)
+            echo "Falling back to available pre-installed NDK: ${CHOSEN_NDK}"
+          fi
+
+          echo "Selected NDK: ${CHOSEN_NDK}"
+          echo "SELECTED_NDK=${CHOSEN_NDK}" >> $GITHUB_ENV
+          if [ -n "${CHOSEN_NDK}" ]; then
+            echo "ANDROID_NDK_HOME=${ANDROID_ROOT}/ndk/${CHOSEN_NDK}" >> $GITHUB_ENV
+            echo "ANDROID_NDK_ROOT=${ANDROID_ROOT}/ndk/${CHOSEN_NDK}" >> $GITHUB_ENV
+            echo "NDK_ROOT=${ANDROID_ROOT}/ndk/${CHOSEN_NDK}" >> $GITHUB_ENV
+          fi
 
       - name: Setup Gradle caching
         uses: gradle/actions/setup-gradle@v4
@@ -75,15 +104,27 @@ jobs:
       - name: Configure Android SDK and NDK Paths
         run: |
           mkdir -p android
-          echo "sdk.dir=${ANDROID_HOME}" > android/local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/27.1.12297006" >> android/local.properties
+          ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          NDK_PATH="${ANDROID_ROOT}/ndk/${SELECTED_NDK}"
           
-          if ! grep -q "android.ndkVersion" android/gradle.properties 2>/dev/null; then
-            echo "android.ndkVersion=27.1.12297006" >> android/gradle.properties
+          echo "sdk.dir=${ANDROID_ROOT}" > android/local.properties
+          if [ -d "${NDK_PATH}" ]; then
+            echo "ndk.dir=${NDK_PATH}" >> android/local.properties
           fi
 
-          echo "Configured android/local.properties:"
+          # Ensure android.ndkVersion in gradle.properties matches the selected NDK
+          if [ -n "${SELECTED_NDK}" ]; then
+            if grep -q "android.ndkVersion" android/gradle.properties 2>/dev/null; then
+              sed -i "s/^android.ndkVersion=.*/android.ndkVersion=${SELECTED_NDK}/" android/gradle.properties
+            else
+              echo "android.ndkVersion=${SELECTED_NDK}" >> android/gradle.properties
+            fi
+          fi
+
+          echo "Contents of android/local.properties:"
           cat android/local.properties
+          echo "Configured android.ndkVersion in android/gradle.properties:"
+          grep "android.ndkVersion" android/gradle.properties || true
 
       - name: Ensure Signing Keystore Exists
         run: |
