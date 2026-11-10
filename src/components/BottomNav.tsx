@@ -51,11 +51,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 }`}
               />
             </div>
-            {workersCount !== undefined && (
-              <span className="absolute -top-1 -right-2 bg-gradient-to-r from-amber-500 to-amber-600 text-[#001F3F] text-[9px] font-black px-1.5 rounded-full border border-amber-300 shadow-xs">
-                {workersCount}
-              </span>
-            )}
           </div>
           <span className="text-[11px] mt-0.5 tracking-tight">Home</span>
           {isHomeActive && (

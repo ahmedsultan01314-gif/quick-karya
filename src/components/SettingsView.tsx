@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AppUser, UserLocation } from '../types';
+import React, { useState, useEffect } from 'react';
+import { AppUser, UserLocation, CallLogRecord } from '../types';
 import {
   Settings,
   Bell,
@@ -13,8 +13,20 @@ import {
   Check,
   User,
   Radio,
-  Sliders
+  Sliders,
+  Phone,
+  PhoneCall,
+  MessageSquare,
+  Trash2,
+  Clock,
+  ShieldAlert
 } from 'lucide-react';
+import {
+  getCallHistory,
+  clearCallHistory,
+  deleteCallRecord,
+  CALL_HISTORY_UPDATED_EVENT
+} from '../utils/callHistory';
 
 interface SettingsViewProps {
   user: AppUser | null;
@@ -39,6 +51,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [autoShareGps, setAutoShareGps] = useState(true);
   const [clearingCache, setClearingCache] = useState(false);
   const [clearedNotice, setClearedNotice] = useState(false);
+  const [callHistory, setCallHistory] = useState<CallLogRecord[]>(() => getCallHistory());
+
+  useEffect(() => {
+    setCallHistory(getCallHistory());
+    const handleUpdate = () => {
+      setCallHistory(getCallHistory());
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
+      return () => window.removeEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
+    }
+  }, []);
+
+  const handleCallAgain = (phone: string) => {
+    const raw = phone.replace(/[^0-9+]/g, '');
+    window.location.href = `tel:${raw}`;
+  };
+
+  const handleDeleteLog = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteCallRecord(id);
+    setCallHistory(getCallHistory());
+  };
+
+  const handleClearAllLogs = () => {
+    clearCallHistory();
+    setCallHistory([]);
+  };
 
   const handleClearCache = () => {
     setClearingCache(true);
@@ -123,6 +163,127 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Worker Call History / Recent Calls Section */}
+        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+            <div className="flex items-center gap-2">
+              <PhoneCall className="w-4 h-4 text-[#FFA500]" />
+              <h4 className="font-bold text-gray-900 text-xs uppercase tracking-wider">
+                Worker Call History ({callHistory.length})
+              </h4>
+            </div>
+            {callHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllLogs}
+                className="text-[11px] font-bold text-red-600 hover:text-red-700 cursor-pointer"
+              >
+                Clear History
+              </button>
+            )}
+          </div>
+
+          {callHistory.length === 0 ? (
+            <div className="py-6 text-center border border-dashed border-gray-200 rounded-xl space-y-1">
+              <Phone className="w-6 h-6 text-gray-300 mx-auto" />
+              <p className="text-xs font-semibold text-gray-700">No Call History Yet</p>
+              <p className="text-[11px] text-gray-400 max-w-xs mx-auto">
+                Calls and WhatsApp inquiries you make to local artisans will be saved here for quick recall.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+              {callHistory.map((log) => {
+                const date = new Date(log.timestamp);
+                const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const formattedDate = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+                return (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between gap-2.5 hover:border-amber-300 transition-all"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-[#001F3F] text-amber-300 border border-[#FFA500]/40 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden shadow-xs">
+                        {log.workerPhoto ? (
+                          <img
+                            src={log.workerPhoto}
+                            alt={log.workerName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          log.workerName.slice(0, 2).toUpperCase()
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h5 className="text-xs font-bold text-gray-900 truncate">
+                            {log.workerName}
+                          </h5>
+                          <span
+                            className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-md ${
+                              log.type === 'sos'
+                                ? 'bg-red-100 text-red-700 border border-red-200'
+                                : log.type === 'whatsapp'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : 'bg-blue-100 text-blue-800 border border-blue-200'
+                            }`}
+                          >
+                            {log.type === 'sos'
+                              ? '🚨 Highway SOS'
+                              : log.type === 'whatsapp'
+                              ? '💬 WhatsApp'
+                              : '📞 Phone Call'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                          <span className="font-medium text-amber-700">{log.workerCategory}</span>
+                          <span>•</span>
+                          <span className="font-mono">{log.workerPhone}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5">
+                          <Clock className="w-3 h-3" />
+                          <span>{formattedDate}, {formattedTime}</span>
+                          {log.location && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate max-w-[120px]">{log.location}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleCallAgain(log.workerPhone)}
+                        className="p-2 rounded-lg bg-[#FFA500] hover:bg-[#FF8C00] text-[#001F3F] font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs active:scale-95 transition-all"
+                        title="Call Again"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Call Again</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteLog(log.id, e)}
+                        className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 cursor-pointer transition-colors"
+                        title="Delete record"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Notifications Settings */}

@@ -2,11 +2,14 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { CATEGORIES } from './src/data/categories';
-import { WorkerProfile, ServiceCategory, AppUser, WorkerReview, ServiceRequest } from './src/types';
+import { WorkerProfile, ServiceCategory, AppUser, WorkerReview, ServiceRequest, CallLogRecord } from './src/types';
 import {
   saveWorkerToCloud,
   fetchWorkersFromCloud,
   subscribeWorkersFromCloud,
+  cleanAndDeduplicateWorkers,
+  saveCallLogToCloud,
+  deleteCallLogFromCloud,
   saveUserToCloud,
   fetchUserFromCloud,
   saveReviewToCloud,
@@ -34,32 +37,14 @@ app.use((req, res, next) => {
 
 // Cloud-synced worker storage with in-memory cache
 let workers: WorkerProfile[] = [];
+// In-memory call logs store
+let serverCallLogs: CallLogRecord[] = [];
 
 // Real-time synchronization from Cloud Firestore
 try {
   subscribeWorkersFromCloud(
     (cloudWorkers) => {
-      const seen = new Set<string>();
-      const cleanList: WorkerProfile[] = [];
-      for (const w of cloudWorkers) {
-        const lowerName = (w.name || '').toLowerCase();
-        if (
-          lowerName.includes('santosh sharma') ||
-          lowerName.includes('nagan dhar') ||
-          w.id === 'MnZmnMfibdTUNGD6mvfc'
-        ) {
-          continue;
-        }
-        // Deduplicate by clean 10-digit phone or workerId
-        const rawPhone = (w.phone || '').replace(/[^0-9]/g, '').slice(-10);
-        const key = rawPhone || w.workerId || w.id;
-        if (key && seen.has(key)) {
-          continue;
-        }
-        if (key) seen.add(key);
-        cleanList.push(w);
-      }
-      workers = cleanList;
+      workers = cleanAndDeduplicateWorkers(cloudWorkers);
     },
     (err) => {
       console.warn('Server Firestore sync error:', err);
@@ -1076,6 +1061,83 @@ app.get('/api/users/:userId/requests', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err?.message || 'Error fetching requests' });
   }
+});
+
+// ==========================================
+// 6. CALL HISTORY & LOGS API
+// ==========================================
+
+// Get call logs (optionally filtered by callerId)
+app.get('/api/call-logs', (req, res) => {
+  const { callerId } = req.query;
+  let logs = [...serverCallLogs];
+  if (callerId && typeof callerId === 'string') {
+    logs = logs.filter((l) => l.callerId === callerId);
+  }
+  logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  res.json(logs);
+});
+
+// Record a new call log
+app.post('/api/call-logs', async (req, res) => {
+  const {
+    workerId,
+    workerName,
+    workerCategory,
+    workerPhone,
+    workerPhoto,
+    workerCity,
+    workerRating,
+    type,
+    callerId,
+    callerName,
+    location
+  } = req.body;
+
+  if (!workerName || !workerPhone) {
+    return res.status(400).json({ error: 'Worker name and phone are required for call log' });
+  }
+
+  const newLog: CallLogRecord = {
+    id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    workerId: workerId || `w_${Date.now()}`,
+    workerName: workerName.trim(),
+    workerCategory: workerCategory || 'Artisan',
+    workerPhone: workerPhone.trim(),
+    workerPhoto: workerPhoto || undefined,
+    workerCity: workerCity || undefined,
+    workerRating: typeof workerRating === 'number' ? workerRating : undefined,
+    timestamp: new Date().toISOString(),
+    type: type || 'phone',
+    callerId: callerId || undefined,
+    callerName: callerName || undefined,
+    location: location || undefined
+  };
+
+  // Add to in-memory store
+  serverCallLogs.unshift(newLog);
+  if (serverCallLogs.length > 100) {
+    serverCallLogs = serverCallLogs.slice(0, 100);
+  }
+
+  // Sync to Cloud Firestore asynchronously
+  saveCallLogToCloud(newLog).catch(() => {});
+
+  res.status(201).json({ success: true, callLog: newLog });
+});
+
+// Delete single call log entry
+app.delete('/api/call-logs/:id', async (req, res) => {
+  const { id } = req.params;
+  serverCallLogs = serverCallLogs.filter((l) => l.id !== id);
+  deleteCallLogFromCloud(id).catch(() => {});
+  res.json({ success: true, message: 'Call log deleted' });
+});
+
+// Clear all call logs
+app.delete('/api/call-logs', (req, res) => {
+  serverCallLogs = [];
+  res.json({ success: true, message: 'All call history cleared' });
 });
 
 // Vite middleware & Static serving

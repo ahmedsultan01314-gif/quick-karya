@@ -26,11 +26,65 @@ import {
   updateProfile
 } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
-import { WorkerProfile, AppUser, WorkerReview, ServiceRequest } from './types';
+import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord } from './types';
 import { getApiUrl } from './config';
 
 export const firebaseApp =
   getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
+/**
+ * Filter out demo / test accounts and deduplicate workers by phone & workerId
+ */
+export function cleanAndDeduplicateWorkers(rawList: WorkerProfile[]): WorkerProfile[] {
+  if (!Array.isArray(rawList)) return [];
+
+  const seenKeys = new Set<string>();
+  const cleanList: WorkerProfile[] = [];
+
+  for (const w of rawList) {
+    if (!w || !w.name) continue;
+
+    const lowerName = (w.name || '').trim().toLowerCase();
+    const lowerId = (w.id || '').toLowerCase();
+    const lowerWorkerId = (w.workerId || '').toLowerCase();
+    const rawPhone = (w.phone || '').replace(/[^0-9]/g, '').slice(-10);
+
+    // Filter out known test, demo, and dummy profile artifacts
+    if (
+      lowerName.includes('santosh sharma') ||
+      lowerName.includes('nagan dhar') ||
+      lowerName.includes('demo worker') ||
+      lowerName.includes('test worker') ||
+      lowerName.includes('sample artisan') ||
+      lowerName.includes('dummy') ||
+      lowerId === 'mnzmnmfibdtungd6mvfc' ||
+      lowerWorkerId.includes('demo') ||
+      lowerWorkerId.includes('test') ||
+      rawPhone === '1234567890' ||
+      rawPhone === '0000000000' ||
+      rawPhone === '9999999999' ||
+      rawPhone === '1111111111'
+    ) {
+      continue;
+    }
+
+    // Require valid 10-digit mobile number for genuine contact
+    if (rawPhone.length < 10 && !w.workerId) {
+      continue;
+    }
+
+    // Deduplicate: primary key is 10-digit phone; secondary is workerId or id
+    const dedupKey = rawPhone.length === 10 ? `phone_${rawPhone}` : `id_${w.workerId || w.id}`;
+    if (seenKeys.has(dedupKey)) {
+      continue;
+    }
+    seenKeys.add(dedupKey);
+
+    cleanList.push(w);
+  }
+
+  return cleanList;
+}
 
 export const db = getFirestore(
   firebaseApp,
@@ -434,6 +488,7 @@ export const WORKERS_COLLECTION = 'workers';
 export const USERS_COLLECTION = 'users';
 export const REVIEWS_COLLECTION = 'reviews';
 export const SERVICE_REQUESTS_COLLECTION = 'serviceRequests';
+export const CALL_LOGS_COLLECTION = 'callLogs';
 
 /**
  * Save worker profile to Cloud Firestore
@@ -489,7 +544,7 @@ export async function deleteWorkerFromCloud(workerId: string): Promise<void> {
 }
 
 /**
- * Fetch all workers from Cloud Firestore
+ * Fetch all workers from Cloud Firestore (strictly cleaned & deduplicated)
  */
 export async function fetchWorkersFromCloud(): Promise<WorkerProfile[]> {
   const workersRef = collection(db, WORKERS_COLLECTION);
@@ -510,11 +565,11 @@ export async function fetchWorkersFromCloud(): Promise<WorkerProfile[]> {
       pushToken: data.pushToken || data.fcmToken
     });
   });
-  return list;
+  return cleanAndDeduplicateWorkers(list);
 }
 
 /**
- * Real-time listener for workers directory
+ * Real-time listener for workers directory (strictly cleaned & deduplicated)
  */
 export function subscribeWorkersFromCloud(
   onUpdate: (workers: WorkerProfile[]) => void,
@@ -540,13 +595,34 @@ export function subscribeWorkersFromCloud(
           pushToken: data.pushToken || data.fcmToken
         });
       });
-      onUpdate(list);
+      onUpdate(cleanAndDeduplicateWorkers(list));
     },
     (err) => {
       console.warn('Firestore subscription error:', err);
       if (onError) onError(err);
     }
   );
+}
+
+/**
+ * Call Logs Cloud Operations
+ */
+export async function saveCallLogToCloud(callLog: CallLogRecord): Promise<void> {
+  try {
+    const logRef = doc(db, CALL_LOGS_COLLECTION, callLog.id);
+    await setDoc(logRef, callLog);
+  } catch (err) {
+    console.warn('Could not save call log to Cloud Firestore:', err);
+  }
+}
+
+export async function deleteCallLogFromCloud(callLogId: string): Promise<void> {
+  try {
+    const logRef = doc(db, CALL_LOGS_COLLECTION, callLogId);
+    await deleteDoc(logRef);
+  } catch (err) {
+    console.warn('Could not delete call log from Cloud Firestore:', err);
+  }
 }
 
 /**

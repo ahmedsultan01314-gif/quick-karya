@@ -17,8 +17,12 @@ import {
   ExternalLink,
   MessageSquare,
   Shield,
-  Settings
+  Settings,
+  Crop,
+  PhoneCall
 } from 'lucide-react';
+import { PhotoCropModal } from './PhotoCropModal';
+import { getCallHistory } from '../utils/callHistory';
 
 interface ProfileViewProps {
   user: AppUser | null;
@@ -98,39 +102,54 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     );
   }
 
-  const handleUpdatePhoto = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPhotoError(null);
-    if (!photoUrlInput.trim()) {
-      setPhotoError('Please provide a valid image URL');
-      return;
-    }
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 
+  const handleSaveCroppedPhoto = async (croppedBase64: string) => {
     setUpdatingPhoto(true);
+    setPhotoError(null);
     try {
       const res = await fetch(getApiUrl('/api/auth/profile'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: user.id,
-          profilePhoto: photoUrlInput.trim()
+          profilePhoto: croppedBase64
         })
       });
       if (!res.ok) throw new Error('Could not update profile photo');
 
-      // Update user locally
-      user.profilePhoto = photoUrlInput.trim();
+      user.profilePhoto = croppedBase64;
+      user.avatar = croppedBase64;
       localStorage.setItem('quick_karya_user', JSON.stringify(user));
+      if (workerProfile) {
+        workerProfile.photo = croppedBase64;
+        workerProfile.avatar = croppedBase64;
+      }
       setIsEditingPhoto(false);
+      setIsCropModalOpen(false);
+      setImageToCrop(null);
       setPhotoUrlInput('');
     } catch (err: any) {
-      setPhotoError(err?.message || 'Failed to update photo');
+      setPhotoError(err?.message || 'Failed to save cropped photo');
     } finally {
       setUpdatingPhoto(false);
     }
   };
 
-  // Convert uploaded image file via FileReader (Base64)
+  const handleUpdatePhotoFromUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPhotoError(null);
+    if (!photoUrlInput.trim()) {
+      setPhotoError('Please provide a valid image URL');
+      return;
+    }
+    // Launch crop tool for the URL
+    setImageToCrop(photoUrlInput.trim());
+    setIsCropModalOpen(true);
+  };
+
+  // Convert uploaded image file via FileReader and launch crop tool
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -139,32 +158,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setPhotoError('Please choose a valid PNG or JPEG image file.');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoError('Image must be under 5MB.');
+    if (file.size > 8 * 1024 * 1024) {
+      setPhotoError('Image must be under 8MB.');
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
-      setUpdatingPhoto(true);
-      try {
-        await fetch(getApiUrl('/api/auth/profile'), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: user.id,
-            profilePhoto: base64
-          })
-        });
-        user.profilePhoto = base64;
-        localStorage.setItem('quick_karya_user', JSON.stringify(user));
-        setIsEditingPhoto(false);
-      } catch (err) {
-        setPhotoError('Error saving photo.');
-      } finally {
-        setUpdatingPhoto(false);
-      }
+    reader.onload = () => {
+      const result = reader.result as string;
+      setImageToCrop(result);
+      setIsCropModalOpen(true);
     };
     reader.readAsDataURL(file);
   };
@@ -231,7 +234,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onClick={(e) => {
             if (isEditingPhoto) {
               if (photoUrlInput.trim()) {
-                handleUpdatePhoto(e);
+                handleUpdatePhotoFromUrl(e);
               } else {
                 setIsEditingPhoto(false);
               }
@@ -366,22 +369,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </p>
             )}
 
-            <div className="space-y-2">
-              <label className="block text-[11px] font-semibold text-gray-600">
-                Option 1: Choose from device (PNG, JPG)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#001F3F] file:text-[#FFD700] hover:file:bg-[#002b54] cursor-pointer"
-              />
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                  Option 1: Choose photo from device (Crop & Zoom tool will open)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#001F3F] file:text-[#FFD700] hover:file:bg-[#002b54] cursor-pointer"
+                />
+              </div>
 
-              <div className="pt-1">
-                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-700 mb-1">
                   Option 2: Image URL
                 </label>
-                <div className="flex gap-2">
+                <form onSubmit={handleUpdatePhotoFromUrl} className="flex gap-2">
                   <input
                     type="url"
                     value={photoUrlInput}
@@ -390,14 +395,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     className="flex-1 px-3 py-1.5 text-xs bg-white rounded-lg border border-gray-300"
                   />
                   <button
-                    onClick={handleUpdatePhoto}
-                    disabled={updatingPhoto}
-                    className="px-3 py-1.5 bg-[#001F3F] hover:bg-[#002b54] text-white rounded-lg text-xs font-bold"
+                    type="submit"
+                    disabled={updatingPhoto || !photoUrlInput.trim()}
+                    className="px-3 py-1.5 bg-[#001F3F] hover:bg-[#002b54] text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
                   >
-                    {updatingPhoto ? 'Saving...' : 'Save'}
+                    Adjust & Save
+                  </button>
+                </form>
+              </div>
+
+              {(user.profilePhoto || workerProfile?.photo) && (
+                <div className="pt-1 border-t border-amber-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = user.profilePhoto || workerProfile?.photo;
+                      if (cur) {
+                        setImageToCrop(cur);
+                        setIsCropModalOpen(true);
+                      }
+                    }}
+                    className="w-full py-1.5 px-3 bg-amber-100 hover:bg-amber-200 text-[#001F3F] text-xs font-bold rounded-lg border border-amber-300 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Crop className="w-3.5 h-3.5 text-[#FFA500]" />
+                    <span>Fine-tune & Crop Current Photo Frame</span>
                   </button>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -538,6 +562,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       )}
 
+      {/* Recent Worker Calls Shortcut Card */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PhoneCall className="w-4 h-4 text-[#FFA500]" />
+            <h3 className="text-xs font-bold text-gray-900">Worker Call History</h3>
+          </div>
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="text-[11px] font-bold text-amber-600 hover:text-amber-700 cursor-pointer"
+            >
+              View All Logs →
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-500">
+          {getCallHistory().length > 0
+            ? `${getCallHistory().length} recent calls made to artisans. Access full call logs and quick redial in Settings.`
+            : 'No calls made yet. Artisan and emergency highway contacts will be logged here.'}
+        </p>
+      </div>
+
       {/* Account Settings & Sign Out */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-2">
         <h3 className="text-xs font-bold text-gray-700">Account Actions</h3>
@@ -549,6 +597,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <span>Sign Out</span>
         </button>
       </div>
+
+      {/* Interactive Photo Crop & Adjustment Tool Modal */}
+      <PhotoCropModal
+        isOpen={isCropModalOpen}
+        imageSrc={imageToCrop}
+        onClose={() => {
+          setIsCropModalOpen(false);
+          setImageToCrop(null);
+        }}
+        onCropComplete={handleSaveCroppedPhoto}
+      />
     </div>
   );
 };

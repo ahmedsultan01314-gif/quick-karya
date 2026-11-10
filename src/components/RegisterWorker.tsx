@@ -22,9 +22,11 @@ import {
   MapPin,
   Navigation,
   Loader2,
-  Check
+  Check,
+  Crop
 } from 'lucide-react';
 import { triggerRegistrationNotification } from '../utils/notifications';
+import { PhotoCropModal } from './PhotoCropModal';
 
 interface RegisterWorkerProps {
   userLocation: UserLocation;
@@ -147,7 +149,10 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successWorker, setSuccessWorker] = useState<WorkerProfile | null>(null);
 
-  // Image processing & client-side compression
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [cropModalSrc, setCropModalSrc] = useState<string | null>(null);
+
+  // Image processing: open interactive crop and adjustment modal
   const processImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
       setError('Please select a valid image file (JPG, PNG, WebP).');
@@ -162,36 +167,8 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 500;
-        let width = img.width;
-        let height = img.height;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.85);
-          setPhoto(compressed);
-        } else {
-          setPhoto(dataUrl);
-        }
-      };
-      img.onerror = () => {
-        setPhoto(dataUrl);
-      };
-      img.src = dataUrl;
+      setCropModalSrc(dataUrl);
+      setIsCropModalOpen(true);
     };
     reader.readAsDataURL(file);
   };
@@ -510,10 +487,23 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
                 <div className="flex items-center gap-2 mt-2">
                   <button
                     type="button"
+                    onClick={() => {
+                      if (photo) {
+                        setCropModalSrc(photo);
+                        setIsCropModalOpen(true);
+                      }
+                    }}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Crop className="w-3 h-3 text-[#FFA500]" /> Crop & Adjust
+                  </button>
+                  <span className="text-gray-300">•</span>
+                  <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
                     className="text-[11px] font-semibold text-[#001F3F] hover:text-[#001F3F] underline cursor-pointer"
                   >
-                    Change photo
+                    Change
                   </button>
                   <span className="text-gray-300">•</span>
                   <button
@@ -946,6 +936,21 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Interactive Photo Crop & Adjustment Tool Modal */}
+      <PhotoCropModal
+        isOpen={isCropModalOpen}
+        imageSrc={cropModalSrc}
+        onClose={() => {
+          setIsCropModalOpen(false);
+          setCropModalSrc(null);
+        }}
+        onCropComplete={(croppedBase64) => {
+          setPhoto(croppedBase64);
+          setIsCropModalOpen(false);
+          setCropModalSrc(null);
+        }}
+      />
     </div>
   );
 };

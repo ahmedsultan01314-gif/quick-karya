@@ -179,3 +179,22 @@ export interface OnboardingForm {
   photo?: string;
 }
 
+export interface CallLogRecord {
+  id: string;
+  workerId: string;
+  workerName: string;
+  workerCategory: string;
+  workerPhone: string;
+  workerPhoto?: string;
+  workerCity?: string;
+  workerRating?: number;
+  timestamp: string; // ISO string
+  type?: 'phone' | 'whatsapp' | 'sos';
+  callType?: 'phone' | 'whatsapp' | 'sos';
+  callerId?: string;
+  callerName?: string;
+  callerPhone?: string;
+  location?: string;
+  notes?: string;
+}
+

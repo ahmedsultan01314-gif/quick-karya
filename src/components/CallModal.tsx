@@ -24,6 +24,7 @@ import {
 import { formatDistance } from '../utils/geo';
 import { formatWorkerPricing, isLateNightNow } from '../utils/pricing';
 import { triggerCallWorkerNotification } from '../utils/notifications';
+import { addCallRecord } from '../utils/callHistory';
 
 interface CallModalProps {
   worker: WorkerProfile | null;
@@ -233,6 +234,23 @@ export const CallModal: React.FC<CallModalProps> = ({
       currentUser?.phone
     ).catch(() => {});
 
+    // Save call to local & cloud Call History
+    try {
+      addCallRecord({
+        workerId: worker.id,
+        workerName: worker.name,
+        workerCategory: worker.category,
+        workerPhone: worker.phone,
+        workerPhoto: worker.photo || worker.avatar,
+        workerCity: worker.city,
+        workerRating: worker.rating,
+        type: 'phone',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name,
+        location: pickupLocation.trim() || userLocation?.city
+      });
+    } catch {}
+
     // Call through masked route or direct native dialer
     window.location.href = `tel:${rawPhone}`;
   };
@@ -244,6 +262,24 @@ export const CallModal: React.FC<CallModalProps> = ({
       return;
     }
     const message = buildWhatsAppMessage();
+
+    // Save WhatsApp contact to Call History
+    try {
+      addCallRecord({
+        workerId: worker.id,
+        workerName: worker.name,
+        workerCategory: worker.category,
+        workerPhone: worker.phone,
+        workerPhoto: worker.photo || worker.avatar,
+        workerCity: worker.city,
+        workerRating: worker.rating,
+        type: 'whatsapp',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name,
+        location: pickupLocation.trim() || userLocation?.city
+      });
+    } catch {}
+
     const url = `https://wa.me/${cleanPhoneForWa}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };

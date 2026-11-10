@@ -17,6 +17,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { triggerCallWorkerNotification } from '../utils/notifications';
+import { addCallRecord } from '../utils/callHistory';
 
 interface HighwaySosModalProps {
   isOpen: boolean;
@@ -60,6 +61,18 @@ export const HighwaySosModal: React.FC<HighwaySosModalProps> = ({
       currentUser?.name || 'Driver in Distress',
       currentUser?.phone || ''
     );
+    try {
+      addCallRecord({
+        workerId: `sos_${phone.replace(/[^0-9]/g, '').slice(-6)}`,
+        workerName: serviceTitle,
+        workerCategory: 'Emergency Highway Assistance',
+        workerPhone: phone,
+        type: 'sos',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name || 'Driver in Distress',
+        location: locationLabel
+      });
+    } catch {}
     window.location.href = `tel:${phone}`;
   };
 
@@ -74,6 +87,19 @@ Hello, I am stranded on the highway and need urgent assistance:
 👤 Driver: ${currentUser?.name || 'Driver in Distress'}
 📱 Phone: ${currentUser?.phone || ''}
 Please dispatch assistance immediately!`;
+
+    try {
+      addCallRecord({
+        workerId: `sos_${cleanPhone.slice(-6)}`,
+        workerName: serviceTitle,
+        workerCategory: 'Emergency Highway Assistance',
+        workerPhone: phone,
+        type: 'sos',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name || 'Driver in Distress',
+        location: locationLabel
+      });
+    } catch {}
 
     const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
     const url = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;

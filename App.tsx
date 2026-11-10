@@ -43,11 +43,13 @@ import {
   WorkerProfile,
   AppUser,
   UserRole,
-  WorkerReview
+  WorkerReview,
+  CallLogRecord
 } from './src/types';
 import {
   saveWorkerToCloud,
   subscribeWorkersFromCloud,
+  cleanAndDeduplicateWorkers,
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveUserToCloud,
@@ -61,6 +63,13 @@ import {
   triggerRegistrationNotification,
   triggerCallWorkerNotification
 } from './src/utils/notifications';
+import {
+  addCallRecord,
+  getCallHistory,
+  clearCallHistory,
+  deleteCallRecord,
+  CALL_HISTORY_UPDATED_EVENT
+} from './src/utils/callHistory';
 import { getApiUrl } from './src/config';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
@@ -120,6 +129,18 @@ function NativeApp() {
   const [authShowPassword, setAuthShowPassword] = useState(false);
   const [authEmailLoading, setAuthEmailLoading] = useState(false);
   const [activeCallAlert, setActiveCallAlert] = useState<{ workerName: string; category: string } | null>(null);
+  const [nativeCallHistory, setNativeCallHistory] = useState<CallLogRecord[]>(() => getCallHistory());
+
+  useEffect(() => {
+    setNativeCallHistory(getCallHistory());
+    const handleUpdate = () => {
+      setNativeCallHistory(getCallHistory());
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
+      return () => window.removeEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
+    }
+  }, [activeTab]);
 
   // Auto-dismiss initial brand splash after 2 seconds
   useEffect(() => {
@@ -452,6 +473,18 @@ function NativeApp() {
       currentUser?.name || 'Driver in Distress',
       currentUser?.phone || ''
     );
+    try {
+      addCallRecord({
+        workerId: `sos_${phone.replace(/[^0-9]/g, '').slice(-6)}`,
+        workerName: serviceTitle,
+        workerCategory: 'Emergency Highway Assistance',
+        workerPhone: phone,
+        type: 'sos',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name || 'Driver in Distress',
+        location: userLocationName
+      });
+    } catch {}
     Linking.openURL(`tel:${phone}`);
   };
 
@@ -466,6 +499,19 @@ Hello, I am stranded on the highway and need urgent assistance:
 👤 Driver: ${currentUser?.name || 'Driver in Distress'}
 📱 Phone: ${currentUser?.phone || ''}
 Please dispatch assistance immediately!`;
+
+    try {
+      addCallRecord({
+        workerId: `sos_${cleanPhone.slice(-6)}`,
+        workerName: serviceTitle,
+        workerCategory: 'Emergency Highway Assistance',
+        workerPhone: phone,
+        type: 'sos',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name || 'Driver in Distress',
+        location: userLocationName
+      });
+    } catch {}
 
     const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
     Linking.openURL(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`);
@@ -560,11 +606,7 @@ Please dispatch assistance immediately!`;
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const clean = parsed.filter(
-              (w) =>
-                !w.name?.toLowerCase().includes('santosh sharma') &&
-                w.id !== 'MnZmnMfibdTUNGD6mvfc'
-            );
+            const clean = cleanAndDeduplicateWorkers(parsed);
             setWorkers(clean);
             if (clean.length !== parsed.length) {
               AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean)).catch(() => {});
@@ -581,11 +623,7 @@ Please dispatch assistance immediately!`;
     const unsubscribe = subscribeWorkersFromCloud(
       (cloudWorkers) => {
         if (Array.isArray(cloudWorkers)) {
-          const clean = cloudWorkers.filter(
-            (w) =>
-              !w.name?.toLowerCase().includes('santosh sharma') &&
-              w.id !== 'MnZmnMfibdTUNGD6mvfc'
-          );
+          const clean = cleanAndDeduplicateWorkers(cloudWorkers);
           setWorkers(clean);
           // Persist to local offline cache
           AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean)).catch(
@@ -826,6 +864,20 @@ Please dispatch assistance immediately!`;
       callerPhone
     ).catch(() => {});
 
+    // Save call to Call History
+    try {
+      addCallRecord({
+        workerId: `w_${cleanPhone.slice(-6)}`,
+        workerName: workerName || 'Artisan',
+        workerCategory: workerCategory || 'Artisan',
+        workerPhone: cleanPhone,
+        type: 'phone',
+        callerId: currentUser?.id,
+        callerName,
+        location: userLocationName
+      });
+    } catch {}
+
     Linking.openURL(`tel:${cleanPhone}`).catch((err) => {
       console.warn('Could not trigger call:', err);
       Alert.alert('Phone Call Error', `Could not initiate call to ${cleanPhone}`);
@@ -839,6 +891,23 @@ Please dispatch assistance immediately!`;
     const cleanPhone = (worker.phone || '').replace(/[^0-9]/g, '');
     const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone.slice(-10)}`;
     const msg = `Hello ${worker.name}, here is my service location for Quick Karya:\n📍 Address: ${userLocationName}\n🗺️ Google Maps Navigation Pin: ${mapsUrl}\nCustomer: ${currentUser?.name || 'Customer'}\nPlease navigate to this location. Thank you!`;
+
+    // Save WhatsApp sharing to Call History
+    try {
+      addCallRecord({
+        workerId: worker.id,
+        workerName: worker.name,
+        workerCategory: worker.category,
+        workerPhone: worker.phone,
+        workerPhoto: worker.photo || worker.avatar,
+        workerCity: worker.city,
+        workerRating: worker.rating,
+        type: 'whatsapp',
+        callerId: currentUser?.id,
+        callerName: currentUser?.name || 'Customer',
+        location: userLocationName
+      });
+    } catch {}
 
     if (Platform.OS === 'android' && ToastAndroid) {
       ToastAndroid.show(`📍 Service Location & Map Pin copied! Opening WhatsApp...`, ToastAndroid.LONG);
@@ -2282,6 +2351,103 @@ Please dispatch assistance immediately!`;
               </View>
             </View>
 
+            {/* Worker Call History Section */}
+            <View style={styles.settingsCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'between', marginBottom: 8 }}>
+                <Text style={styles.settingsSectionTitle}>
+                  WORKER CALL HISTORY ({nativeCallHistory.length})
+                </Text>
+                {nativeCallHistory.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      clearCallHistory();
+                      setNativeCallHistory([]);
+                    }}
+                    style={{ paddingVertical: 2, paddingHorizontal: 6 }}
+                  >
+                    <Text style={{ fontSize: 11, color: '#ef4444', fontWeight: 'bold' }}>
+                      Clear History
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {nativeCallHistory.length === 0 ? (
+                <View style={{ paddingVertical: 14, alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 12 }}>
+                  <Text style={{ fontSize: 18, marginBottom: 4 }}>📞</Text>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#374151' }}>No Call History Yet</Text>
+                  <Text style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 2, paddingHorizontal: 12 }}>
+                    Your recent worker calls and emergency highway inquiries will appear here.
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {nativeCallHistory.slice(0, 10).map((log) => (
+                    <View
+                      key={log.id}
+                      style={{
+                        padding: 10,
+                        backgroundColor: '#f9fafb',
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: '#e5e7eb',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                    >
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#111827' }} numberOfLines={1}>
+                            {log.workerName}
+                          </Text>
+                          <View
+                            style={{
+                              paddingHorizontal: 6,
+                              paddingVertical: 1,
+                              borderRadius: 4,
+                              backgroundColor: log.type === 'sos' ? '#fee2e2' : log.type === 'whatsapp' ? '#dcfce7' : '#dbeafe'
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 'bold',
+                                color: log.type === 'sos' ? '#991b1b' : log.type === 'whatsapp' ? '#166534' : '#1e40af'
+                              }}
+                            >
+                              {log.type === 'sos' ? '🚨 SOS' : log.type === 'whatsapp' ? '💬 WhatsApp' : '📞 Call'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#b45309', marginTop: 1 }}>
+                          {log.workerCategory} • {log.workerPhone}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
+                          {new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
+                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => handleCall(log.workerPhone, log.workerName, log.workerCategory)}
+                        style={{
+                          backgroundColor: '#FFA500',
+                          paddingVertical: 6,
+                          paddingHorizontal: 10,
+                          borderRadius: 8
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#001F3F' }}>
+                          Call Again
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
             {/* Notification & Call Alerts Settings */}
             <View style={styles.settingsCard}>
               <Text style={styles.settingsSectionTitle}>ALERTS & NOTIFICATIONS</Text>
@@ -2396,11 +2562,6 @@ Please dispatch assistance immediately!`;
             >
               🏠
             </Text>
-            {workers.length > 0 && (
-              <View style={styles.navCountBadge}>
-                <Text style={styles.navCountBadgeText}>{workers.length}</Text>
-              </View>
-            )}
           </View>
           <Text
             style={[
