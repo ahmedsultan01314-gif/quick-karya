@@ -56,6 +56,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSuccess, setNameSuccess] = useState(false);
 
+  // Photo Crop Tool modal state
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+
   // Match worker profile by phone number or Worker ID
   useEffect(() => {
     if (user) {
@@ -102,10 +106,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     );
   }
 
-  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
-  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
-
   const handleSaveCroppedPhoto = async (croppedBase64: string) => {
+    if (!user) return;
     setUpdatingPhoto(true);
     setPhotoError(null);
     try {

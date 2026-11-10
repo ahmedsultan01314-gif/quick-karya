@@ -5,7 +5,8 @@ interface PhotoCropModalProps {
   isOpen: boolean;
   imageSrc: string | null;
   onClose: () => void;
-  onApplyCrop: (croppedBase64: string) => void;
+  onApplyCrop?: (croppedBase64: string) => void;
+  onCropComplete?: (croppedBase64: string) => void;
   title?: string;
 }
 
@@ -14,6 +15,7 @@ export const PhotoCropModal: React.FC<PhotoCropModalProps> = ({
   imageSrc,
   onClose,
   onApplyCrop,
+  onCropComplete,
   title = 'Adjust Profile Picture'
 }) => {
   const [zoom, setZoom] = useState<number>(1);
@@ -160,7 +162,10 @@ export const PhotoCropModal: React.FC<PhotoCropModalProps> = ({
     ctx.restore();
 
     const croppedBase64 = canvas.toDataURL('image/jpeg', 0.92);
-    onApplyCrop(croppedBase64);
+    const cb = onApplyCrop || onCropComplete;
+    if (cb) {
+      cb(croppedBase64);
+    }
     onClose();
   };
 
