@@ -97,52 +97,57 @@ jobs:
         run: |
           mkdir -p android
           ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          NDK_PATH="${ANDROID_ROOT}/ndk/${SELECTED_NDK}"
           
+          # Write sdk.dir only (ndk.dir is deprecated in AGP and conflicts with side-by-side ndkVersion)
           echo "sdk.dir=${ANDROID_ROOT}" > android/local.properties
-          if [ -d "${NDK_PATH}" ]; then
-            echo "ndk.dir=${NDK_PATH}" >> android/local.properties
-          fi
 
-          # Apply memory and daemon settings to gradle.properties to prevent daemon crashes
-          if ! grep -q "org.gradle.daemon=false" android/gradle.properties 2>/dev/null; then
-            echo "org.gradle.daemon=false" >> android/gradle.properties
-          fi
-          if grep -q "org.gradle.jvmargs=" android/gradle.properties 2>/dev/null; then
-            sed -i "s/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m/" android/gradle.properties
-          else
-            echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
-          fi
-          if ! grep -q "android.enableJetifier=true" android/gradle.properties 2>/dev/null; then
-            echo "android.enableJetifier=true" >> android/gradle.properties
-          fi
+          # Prevent OOM crashes on 7GB runner: limit workers to 2 vCPUs, disable parallel compilation
+          touch android/gradle.properties
+          sed -i '/^org.gradle.daemon=/d' android/gradle.properties
+          sed -i '/^org.gradle.parallel=/d' android/gradle.properties
+          sed -i '/^org.gradle.workers.max=/d' android/gradle.properties
+          sed -i '/^org.gradle.jvmargs=/d' android/gradle.properties
+          sed -i '/^android.enableJetifier=/d' android/gradle.properties
+          sed -i '/^reactNativeArchitectures=/d' android/gradle.properties
+
+          echo "org.gradle.daemon=false" >> android/gradle.properties
+          echo "org.gradle.parallel=false" >> android/gradle.properties
+          echo "org.gradle.workers.max=2" >> android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
+          
+          # Target physical device architectures (cuts C++ compilation RAM and time in half)
+          echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
 
           # Ensure android.ndkVersion in gradle.properties matches the selected NDK
           if [ -n "${SELECTED_NDK}" ]; then
-            if grep -q "android.ndkVersion" android/gradle.properties 2>/dev/null; then
-              sed -i "s/^android.ndkVersion=.*/android.ndkVersion=${SELECTED_NDK}/" android/gradle.properties
-            else
-              echo "android.ndkVersion=${SELECTED_NDK}" >> android/gradle.properties
-            fi
+            sed -i '/^android.ndkVersion=/d' android/gradle.properties
+            echo "android.ndkVersion=${SELECTED_NDK}" >> android/gradle.properties
           fi
 
           echo "Contents of android/local.properties:"
           cat android/local.properties
           echo "Configured settings in android/gradle.properties:"
-          grep -E "android.ndkVersion|org.gradle.daemon|org.gradle.jvmargs|android.enableJetifier" android/gradle.properties || true
+          grep -E "android.ndkVersion|org.gradle.daemon|org.gradle.jvmargs|reactNativeArchitectures|workers" android/gradle.properties || true
 
-      - name: Ensure Signing Keystore Exists
+      - name: Ensure Signing Keystore and Link to Release Build
         run: |
           if [ ! -f android/app/debug.keystore ]; then
             echo "Generating debug.keystore for APK signing..."
             keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+          # Ensure newly prebuilt android/app/build.gradle signs the release APK
+          if ! grep -q "signingConfig signingConfigs.debug" android/app/build.gradle; then
+            echo "Applying signingConfig to release build block in android/app/build.gradle..."
+            sed -i '/buildTypes {/,/release {/ { /release {/ a\            signingConfig signingConfigs.debug
+            }' android/app/build.gradle
+          fi
+
       - name: Build Android Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" --stacktrace -x test -x lint
+          ./gradlew assembleRelease --no-daemon --stacktrace -x test -x lint
 
       - name: Verify Generated APK
         run: |
