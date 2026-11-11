@@ -62,9 +62,10 @@ jobs:
 
           if [ ! -d "${ANDROID_ROOT}/ndk/${TARGET_NDK}" ]; then
             echo "Attempting to install NDK ${TARGET_NDK} and build-tools..."
-            "$SDKMANAGER" --install "ndk;${TARGET_NDK}" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" || true
+            "$SDKMANAGER" --install "ndk;${TARGET_NDK}" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0" || true
           else
             echo "NDK ${TARGET_NDK} is already installed."
+            "$SDKMANAGER" --install "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0" || true
           fi
 
           # Detect best available NDK (prefer 27.1.12297006, fallback to latest pre-installed)
