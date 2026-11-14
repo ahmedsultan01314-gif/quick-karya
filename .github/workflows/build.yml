@@ -1,0 +1,188 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Quick Karya Android APK
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Check Expo Cloud Build Token
+        id: check_token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+            echo "EXPO_TOKEN detected: using Expo EAS Cloud Build (zero local Gradle memory load)."
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "EXPO_TOKEN not set: using lightweight single-worker Gradle build with swap protection."
+          fi
+
+      # ========================================================================
+      # PATH A: EAS Cloud Build (Recommended — uses Expo cloud servers, 0% OOM)
+      # ========================================================================
+      - name: Install NPM Dependencies (EAS Path)
+        if: steps.check_token.outputs.has_token == 'true'
+        run: npm install
+
+      - name: Trigger EAS Cloud Android APK Build
+        if: steps.check_token.outputs.has_token == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx --yes eas-cli build --platform android --profile preview --non-interactive --no-wait
+
+      # ========================================================================
+      # PATH B: Lightweight Single-Worker Fallback (if EXPO_TOKEN is not set)
+      # ========================================================================
+      - name: Configure Runner Swap Space (Prevent OOM Crashes)
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          sudo fallocate -l 4G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=4096 || true
+          sudo chmod 600 /mnt/swapfile || true
+          sudo mkswap /mnt/swapfile || true
+          sudo swapon /mnt/swapfile || true
+          free -h
+
+      - name: Setup Java JDK 17
+        if: steps.check_token.outputs.has_token == 'false'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK Environment
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=${ANDROID_ROOT}" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=${ANDROID_ROOT}" >> $GITHUB_ENV
+          echo "${ANDROID_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_ROOT}/platform-tools" >> $GITHUB_PATH
+
+      - name: Accept Android SDK Licenses & Install Required NDK
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          set -e
+          ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="${ANDROID_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(which sdkmanager || echo "")
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          TARGET_NDK="27.1.12297006"
+          if [ ! -d "${ANDROID_ROOT}/ndk/${TARGET_NDK}" ]; then
+            "$SDKMANAGER" --install "ndk;${TARGET_NDK}" "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0" || true
+          else
+            "$SDKMANAGER" --install "cmake;3.22.1" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0" || true
+          fi
+
+          CHOSEN_NDK=""
+          if [ -d "${ANDROID_ROOT}/ndk/${TARGET_NDK}" ]; then
+            CHOSEN_NDK="${TARGET_NDK}"
+          elif [ -d "${ANDROID_ROOT}/ndk" ] && [ "$(ls -A "${ANDROID_ROOT}/ndk" 2>/dev/null)" ]; then
+            CHOSEN_NDK=$(ls -1 "${ANDROID_ROOT}/ndk" | sort -V | tail -n 1)
+          fi
+
+          echo "SELECTED_NDK=${CHOSEN_NDK}" >> $GITHUB_ENV
+          if [ -n "${CHOSEN_NDK}" ]; then
+            echo "ANDROID_NDK_HOME=${ANDROID_ROOT}/ndk/${CHOSEN_NDK}" >> $GITHUB_ENV
+            echo "ANDROID_NDK_ROOT=${ANDROID_ROOT}/ndk/${CHOSEN_NDK}" >> $GITHUB_ENV
+            echo "NDK_ROOT=${ANDROID_ROOT}/ndk/${CHOSEN_NDK}" >> $GITHUB_ENV
+          fi
+
+      - name: Setup Gradle Caching
+        if: steps.check_token.outputs.has_token == 'false'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install NPM Dependencies (Gradle Fallback Path)
+        if: steps.check_token.outputs.has_token == 'false'
+        run: npm install
+
+      - name: Prebuild Native Android
+        if: steps.check_token.outputs.has_token == 'false'
+        run: npx expo prebuild --platform android --clean
+
+      - name: Configure Lightweight Single-Worker Gradle Settings
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          mkdir -p android
+          ANDROID_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "sdk.dir=${ANDROID_ROOT}" > android/local.properties
+
+          touch android/gradle.properties
+          sed -i '/^org.gradle.daemon=/d' android/gradle.properties
+          sed -i '/^org.gradle.parallel=/d' android/gradle.properties
+          sed -i '/^org.gradle.workers.max=/d' android/gradle.properties
+          sed -i '/^org.gradle.jvmargs=/d' android/gradle.properties
+          sed -i '/^android.enableJetifier=/d' android/gradle.properties
+          sed -i '/^reactNativeArchitectures=/d' android/gradle.properties
+
+          echo "org.gradle.daemon=false" >> android/gradle.properties
+          echo "org.gradle.parallel=false" >> android/gradle.properties
+          echo "org.gradle.workers.max=1" >> android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
+          echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
+
+          if [ -n "${SELECTED_NDK}" ]; then
+            sed -i '/^android.ndkVersion=/d' android/gradle.properties
+            echo "android.ndkVersion=${SELECTED_NDK}" >> android/gradle.properties
+          fi
+
+          if [ -f android/settings.gradle ] && ! grep -q "gradlePluginPortal()" android/settings.gradle; then
+            sed -i 's/pluginManagement {/pluginManagement {\n  repositories {\n    google()\n    mavenCentral()\n    gradlePluginPortal()\n  }/' android/settings.gradle
+          fi
+
+      - name: Ensure Signing Keystore and Link to Release Build
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          if ! grep -q "signingConfig signingConfigs.debug" android/app/build.gradle; then
+            sed -i '/buildTypes {/,/release {/ { /release {/ a\            signingConfig signingConfigs.debug
+            }' android/app/build.gradle
+          fi
+
+      - name: Build Android Release APK (Low-Memory Mode)
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --max-workers=1 -Dorg.gradle.jvmargs="-Xmx1536m -XX:+UseG1GC -Dfile.encoding=UTF-8" -x lint -x test -x lintVitalRelease
+
+      - name: Verify Generated APK
+        if: steps.check_token.outputs.has_token == 'false'
+        run: |
+          find android/app/build/outputs/apk -name "*.apk" -ls
+
+      - name: Upload Release APK Artifact
+        if: steps.check_token.outputs.has_token == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickKarya-Release-APK
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
