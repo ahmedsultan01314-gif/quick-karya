@@ -114,7 +114,7 @@ jobs:
           echo "org.gradle.daemon=false" >> android/gradle.properties
           echo "org.gradle.parallel=false" >> android/gradle.properties
           echo "org.gradle.workers.max=2" >> android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
           
           # Target physical device architectures (cuts C++ compilation RAM and time in half)
           echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
@@ -123,6 +123,11 @@ jobs:
           if [ -n "${SELECTED_NDK}" ]; then
             sed -i '/^android.ndkVersion=/d' android/gradle.properties
             echo "android.ndkVersion=${SELECTED_NDK}" >> android/gradle.properties
+          fi
+
+          # Ensure pluginManagement has standard repositories in settings.gradle after clean prebuild
+          if [ -f android/settings.gradle ] && ! grep -q "gradlePluginPortal()" android/settings.gradle; then
+            sed -i 's/pluginManagement {/pluginManagement {\n  repositories {\n    google()\n    mavenCentral()\n    gradlePluginPortal()\n  }/' android/settings.gradle
           fi
 
           echo "Contents of android/local.properties:"
@@ -148,7 +153,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace -x test -x lint
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -XX:+HeapDumpOnOutOfMemoryError" --stacktrace -x test -x lint
 
       - name: Verify Generated APK
         run: |

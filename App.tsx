@@ -804,6 +804,20 @@ Please dispatch assistance immediately!`;
         const asset = res.assets[0];
         const photoUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
         setRegPhoto(photoUri);
+        if (currentUser) {
+          const updatedUser: AppUser = {
+            ...currentUser,
+            profilePhoto: photoUri,
+            avatar: photoUri
+          };
+          setCurrentUser(updatedUser);
+          AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser)).catch(() => {});
+          fetch(getApiUrl('/api/auth/profile'), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: currentUser.id, profilePhoto: photoUri })
+          }).catch(() => {});
+        }
       }
     } catch (err) {
       console.warn('Image picker error:', err);
@@ -2270,12 +2284,75 @@ Please dispatch assistance immediately!`;
             {/* Quick Actions */}
             <TouchableOpacity
               style={styles.profileActionBtn}
+              onPress={handlePickFromGallery}
+            >
+              <Text style={styles.profileActionBtnText}>
+                ✂️ Change & Crop Profile Photo
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.profileActionBtn}
               onPress={() => setActiveTab('register')}
             >
               <Text style={styles.profileActionBtnText}>
                 ✎ Edit / Register Worker Profile
               </Text>
             </TouchableOpacity>
+
+            {/* Worker Call History Preview Card */}
+            <View
+              style={{
+                backgroundColor: '#f9fafb',
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: '#e5e7eb',
+                padding: 12,
+                marginBottom: 12
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#001F3F' }}>
+                  📞 Worker Call History ({nativeCallHistory.length})
+                </Text>
+                <TouchableOpacity onPress={() => setActiveTab('settings')}>
+                  <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#d97706' }}>
+                    View All →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {nativeCallHistory.length === 0 ? (
+                <Text style={{ fontSize: 11, color: '#6b7280' }}>
+                  No calls made yet. Artisan and emergency calls will appear here.
+                </Text>
+              ) : (
+                nativeCallHistory.slice(0, 3).map((log) => (
+                  <View
+                    key={log.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 4,
+                      borderTopWidth: 1,
+                      borderTopColor: '#f3f4f6'
+                    }}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#111827' }} numberOfLines={1}>
+                        {log.workerName}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: '#b45309' }} numberOfLines={1}>
+                        {log.workerCategory} • {log.workerPhone}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 10, color: '#9ca3af' }}>
+                      {new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
 
             <TouchableOpacity
               style={styles.profileLogoutBtn}
@@ -2353,7 +2430,7 @@ Please dispatch assistance immediately!`;
 
             {/* Worker Call History Section */}
             <View style={styles.settingsCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'between', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={styles.settingsSectionTitle}>
                   WORKER CALL HISTORY ({nativeCallHistory.length})
                 </Text>

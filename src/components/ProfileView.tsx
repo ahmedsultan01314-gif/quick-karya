@@ -564,12 +564,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       )}
 
-      {/* Recent Worker Calls Shortcut Card */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-2">
+      {/* Recent Worker Calls Shortcut & Log Preview Card */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <PhoneCall className="w-4 h-4 text-[#FFA500]" />
-            <h3 className="text-xs font-bold text-gray-900">Worker Call History</h3>
+            <h3 className="text-xs font-bold text-gray-900">
+              Worker Call History ({getCallHistory().length})
+            </h3>
           </div>
           {onOpenSettings && (
             <button
@@ -581,11 +583,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
           )}
         </div>
-        <p className="text-[11px] text-gray-500">
-          {getCallHistory().length > 0
-            ? `${getCallHistory().length} recent calls made to artisans. Access full call logs and quick redial in Settings.`
-            : 'No calls made yet. Artisan and emergency highway contacts will be logged here.'}
-        </p>
+        {getCallHistory().length > 0 ? (
+          <div className="space-y-1.5">
+            {getCallHistory().slice(0, 3).map((log) => (
+              <div
+                key={log.id}
+                className="flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 text-[11px]"
+              >
+                <div className="min-w-0 flex-1 pr-2">
+                  <p className="font-bold text-gray-900 truncate">{log.workerName}</p>
+                  <p className="text-[10px] text-amber-700 truncate">
+                    {log.workerCategory} • {log.workerPhone}
+                  </p>
+                </div>
+                <span className="text-[10px] text-gray-400 shrink-0">
+                  {new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-gray-500">
+            No calls made yet. Artisan and emergency highway contacts will be logged here.
+          </p>
+        )}
       </div>
 
       {/* Account Settings & Sign Out */}
