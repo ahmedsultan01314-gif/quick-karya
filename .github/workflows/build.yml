@@ -114,7 +114,7 @@ jobs:
           echo "org.gradle.daemon=false" >> android/gradle.properties
           echo "org.gradle.parallel=false" >> android/gradle.properties
           echo "org.gradle.workers.max=2" >> android/gradle.properties
-          echo "org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m" >> android/gradle.properties
           
           # Target physical device architectures (cuts C++ compilation RAM and time in half)
           echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a" >> android/gradle.properties
@@ -153,7 +153,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -XX:+HeapDumpOnOutOfMemoryError" --stacktrace -x test -x lint
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx1536m -XX:+UseG1GC -Dfile.encoding=UTF-8" --stacktrace -x test -x lint
 
       - name: Verify Generated APK
         run: |
