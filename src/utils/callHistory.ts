@@ -4,24 +4,78 @@ import { getApiUrl } from '../config';
 const CALL_HISTORY_STORAGE_KEY = 'quickkarya_call_history_v1';
 export const CALL_HISTORY_UPDATED_EVENT = 'quickkarya_call_history_updated';
 
+type CallHistoryListener = () => void;
+const listeners = new Set<CallHistoryListener>();
+let inMemoryCallHistory: CallLogRecord[] = [];
+
+function notifyListeners() {
+  listeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // ignore listener errors
+    }
+  });
+
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.dispatchEvent === 'function' &&
+      typeof CustomEvent === 'function'
+    ) {
+      window.dispatchEvent(new CustomEvent(CALL_HISTORY_UPDATED_EVENT));
+    }
+  } catch {
+    // Ignore on platforms without DOM CustomEvent
+  }
+}
+
+export function subscribeCallHistoryUpdates(listener: CallHistoryListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /**
- * Retrieve all call history logs from persistent local storage
+ * Seed in-memory call history (used on native startup after reading AsyncStorage)
+ */
+export function hydrateCallHistory(records: CallLogRecord[]): CallLogRecord[] {
+  if (!Array.isArray(records)) return inMemoryCallHistory;
+  try {
+    inMemoryCallHistory = [...records]
+      .filter((r) => r && r.id && r.workerName)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 50);
+    notifyListeners();
+  } catch {
+    // ignore
+  }
+  return inMemoryCallHistory;
+}
+
+/**
+ * Retrieve all call history logs from persistent local storage or safe native memory cache
  */
 export function getCallHistory(): CallLogRecord[] {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return [];
-  }
   try {
-    const raw = localStorage.getItem(CALL_HISTORY_STORAGE_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw);
-    if (Array.isArray(list)) {
-      return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+      const raw = localStorage.getItem(CALL_HISTORY_STORAGE_KEY);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          inMemoryCallHistory = list.sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          return inMemoryCallHistory;
+        }
+      }
+      return [];
     }
   } catch (err) {
     console.warn('Failed to parse call history:', err);
   }
-  return [];
+  return [...inMemoryCallHistory];
 }
 
 /**
@@ -62,15 +116,13 @@ export function addCallRecord(
     });
 
     const updated = [newRecord, ...filtered].slice(0, 50); // Keep 50 most recent calls
+    inMemoryCallHistory = updated;
 
-    if (typeof localStorage !== 'undefined') {
+    if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
       localStorage.setItem(CALL_HISTORY_STORAGE_KEY, JSON.stringify(updated));
     }
 
-    // Broadcast update event so open views refresh immediately
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent(new CustomEvent(CALL_HISTORY_UPDATED_EVENT, { detail: newRecord }));
-    }
+    notifyListeners();
 
     // Asynchronously sync to backend endpoint if available
     fetch(getApiUrl('/api/call-logs'), {
@@ -92,12 +144,11 @@ export function deleteCallRecord(id: string): void {
   try {
     const existing = getCallHistory();
     const updated = existing.filter((item) => item.id !== id);
-    if (typeof localStorage !== 'undefined') {
+    inMemoryCallHistory = updated;
+    if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
       localStorage.setItem(CALL_HISTORY_STORAGE_KEY, JSON.stringify(updated));
     }
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent(new CustomEvent(CALL_HISTORY_UPDATED_EVENT));
-    }
+    notifyListeners();
 
     fetch(getApiUrl(`/api/call-logs/${id}`), {
       method: 'DELETE'
@@ -112,12 +163,11 @@ export function deleteCallRecord(id: string): void {
  */
 export function clearCallHistory(): void {
   try {
-    if (typeof localStorage !== 'undefined') {
+    inMemoryCallHistory = [];
+    if (typeof localStorage !== 'undefined' && typeof localStorage.removeItem === 'function') {
       localStorage.removeItem(CALL_HISTORY_STORAGE_KEY);
     }
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent(new CustomEvent(CALL_HISTORY_UPDATED_EVENT));
-    }
+    notifyListeners();
 
     fetch(getApiUrl('/api/call-logs'), {
       method: 'DELETE'

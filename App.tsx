@@ -29,7 +29,6 @@ const StatusBar = ExpoStatusBar as React.ComponentType<{
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import WebApp from './src/App';
 import { CATEGORIES, CATEGORY_SUB_ROLES } from './src/data/categories';
 import {
   INDIAN_STATES,
@@ -68,12 +67,14 @@ import {
   getCallHistory,
   clearCallHistory,
   deleteCallRecord,
-  CALL_HISTORY_UPDATED_EVENT
+  subscribeCallHistoryUpdates,
+  hydrateCallHistory
 } from './src/utils/callHistory';
 import { getApiUrl } from './src/config';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
 const AUTH_STORAGE_KEY = '@quickkarya_user_session_v1';
+const CALL_HISTORY_ASYNC_KEY = '@quickkarya_call_history_v1';
 
 const AnimatedView = Animated.View as any;
 const AnimatedText = Animated.Text as any;
@@ -129,18 +130,58 @@ function NativeApp() {
   const [authShowPassword, setAuthShowPassword] = useState(false);
   const [authEmailLoading, setAuthEmailLoading] = useState(false);
   const [activeCallAlert, setActiveCallAlert] = useState<{ workerName: string; category: string } | null>(null);
-  const [nativeCallHistory, setNativeCallHistory] = useState<CallLogRecord[]>(() => getCallHistory());
+  const [nativeCallHistory, setNativeCallHistory] = useState<CallLogRecord[]>(() => {
+    try {
+      return getCallHistory();
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
-    setNativeCallHistory(getCallHistory());
-    const handleUpdate = () => {
-      setNativeCallHistory(getCallHistory());
+    let isMounted = true;
+
+    const loadCallHistory = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(CALL_HISTORY_ASYNC_KEY).catch(() => null);
+        if (raw && isMounted) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const hydrated = hydrateCallHistory(parsed);
+            setNativeCallHistory(hydrated);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load call history from AsyncStorage:', err);
+      }
+      if (isMounted) {
+        try {
+          setNativeCallHistory(getCallHistory());
+        } catch {
+          setNativeCallHistory([]);
+        }
+      }
     };
-    if (typeof window !== 'undefined') {
-      window.addEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
-      return () => window.removeEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
-    }
-  }, [activeTab]);
+
+    loadCallHistory();
+
+    const unsubscribeHistory = subscribeCallHistoryUpdates(() => {
+      if (!isMounted) return;
+      try {
+        const latest = getCallHistory();
+        setNativeCallHistory(latest);
+        AsyncStorage.setItem(CALL_HISTORY_ASYNC_KEY, JSON.stringify(latest)).catch(() => {});
+      } catch {
+        // ignore
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeHistory();
+    };
+  }, []);
 
   // Auto-dismiss initial brand splash after 2 seconds
   useEffect(() => {
@@ -154,9 +195,18 @@ function NativeApp() {
   useEffect(() => {
     const checkUserSession = async () => {
       try {
-        let stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY).catch(() => null);
-        if (!stored && typeof localStorage !== 'undefined') {
-          stored = localStorage.getItem('quick_karya_user') || localStorage.getItem(AUTH_STORAGE_KEY);
+        let stored: string | null = null;
+        try {
+          stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        } catch (storageErr) {
+          console.warn('AsyncStorage session read failed:', storageErr);
+        }
+        if (!stored && typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+          try {
+            stored = localStorage.getItem('quick_karya_user') || localStorage.getItem(AUTH_STORAGE_KEY);
+          } catch {
+            stored = null;
+          }
         }
         if (stored) {
           const parsed = JSON.parse(stored);
@@ -436,22 +486,26 @@ function NativeApp() {
   const categoryScrollArrowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(categoryScrollArrowAnim, {
-          toValue: 5,
-          duration: 650,
-          useNativeDriver: true,
-        }),
-        Animated.timing(categoryScrollArrowAnim, {
-          toValue: 0,
-          duration: 650,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
+    try {
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(categoryScrollArrowAnim, {
+            toValue: 5,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+          Animated.timing(categoryScrollArrowAnim, {
+            toValue: 0,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+      return () => animation.stop();
+    } catch (err) {
+      console.warn('Category arrow animation error:', err);
+    }
   }, [categoryScrollArrowAnim]);
 
   // State & City Selector Modals & Search query in Modals
@@ -472,7 +526,7 @@ function NativeApp() {
       'Emergency Highway Assistance',
       currentUser?.name || 'Driver in Distress',
       currentUser?.phone || ''
-    );
+    ).catch(() => {});
     try {
       addCallRecord({
         workerId: `sos_${phone.replace(/[^0-9]/g, '').slice(-6)}`,
@@ -485,7 +539,9 @@ function NativeApp() {
         location: userLocationName
       });
     } catch {}
-    Linking.openURL(`tel:${phone}`);
+    Linking.openURL(`tel:${phone}`).catch((err) => {
+      console.warn('SOS dial error:', err);
+    });
   };
 
   const handleSosWhatsApp = (phone: string, serviceTitle: string) => {
@@ -514,7 +570,9 @@ Please dispatch assistance immediately!`;
     } catch {}
 
     const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
-    Linking.openURL(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`);
+    Linking.openURL(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`).catch((err) => {
+      console.warn('SOS WhatsApp error:', err);
+    });
   };
 
   // Quick-fill State, City, Pincode using device GPS
@@ -597,7 +655,11 @@ Please dispatch assistance immediately!`;
 
   // 1. Cloud Firestore Real-time synchronization with local offline cache fallback & Notifications setup
   useEffect(() => {
-    setupNotifications().catch(() => {});
+    try {
+      setupNotifications().catch(() => {});
+    } catch (notifErr) {
+      console.warn('Notification setup skipped:', notifErr);
+    }
 
     // First, load from local offline cache (AsyncStorage) immediately
     const loadOfflineCache = async () => {
@@ -620,25 +682,34 @@ Please dispatch assistance immediately!`;
     loadOfflineCache();
 
     // Subscribe to Cloud Firestore for live real-time sync across all devices
-    const unsubscribe = subscribeWorkersFromCloud(
-      (cloudWorkers) => {
-        if (Array.isArray(cloudWorkers)) {
-          const clean = cleanAndDeduplicateWorkers(cloudWorkers);
-          setWorkers(clean);
-          // Persist to local offline cache
-          AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean)).catch(
-            (e) => console.warn('Error caching cloud workers locally:', e)
-          );
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = subscribeWorkersFromCloud(
+        (cloudWorkers) => {
+          if (Array.isArray(cloudWorkers)) {
+            const clean = cleanAndDeduplicateWorkers(cloudWorkers);
+            setWorkers(clean);
+            // Persist to local offline cache
+            AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(clean)).catch(
+              (e) => console.warn('Error caching cloud workers locally:', e)
+            );
+          }
+        },
+        (err) => {
+          console.warn('Firestore live sync listener error:', err);
         }
-      },
-      (err) => {
-        console.warn('Firestore live sync listener error:', err);
-      }
-    );
+      );
+    } catch (subErr) {
+      console.warn('Firestore subscription initialization error:', subErr);
+    }
 
     return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
+      try {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      } catch {
+        // ignore cleanup error
       }
     };
   }, []);
@@ -2439,6 +2510,7 @@ Please dispatch assistance immediately!`;
                     onPress={() => {
                       clearCallHistory();
                       setNativeCallHistory([]);
+                      AsyncStorage.removeItem(CALL_HISTORY_ASYNC_KEY).catch(() => {});
                     }}
                     style={{ paddingVertical: 2, paddingHorizontal: 6 }}
                   >
@@ -3649,11 +3721,92 @@ Please dispatch assistance immediately!`;
 );
 }
 
+interface RootErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class RootErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  RootErrorBoundaryState
+> {
+  state: RootErrorBoundaryState = { hasError: false, errorMessage: '' };
+
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+  }
+
+  static getDerivedStateFromError(error: Error): RootErrorBoundaryState {
+    return {
+      hasError: true,
+      errorMessage: error?.message || 'Unexpected startup exception occurred.'
+    };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.warn('Quick Karya RootErrorBoundary caught error:', error, info);
+  }
+
+  handleRetry = () => {
+    (this as any).setState({ hasError: false, errorMessage: '' });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.errorBoundaryContainer} edges={['top', 'bottom', 'left', 'right']}>
+            <StatusBar style="light" backgroundColor="#0B192C" translucent={false} />
+            <View style={styles.errorBoundaryCard}>
+              <Text style={styles.errorBoundaryIcon}>⚠️</Text>
+              <Text style={styles.errorBoundaryTitle}>Quick Karya Recovery</Text>
+              <Text style={styles.errorBoundaryMsg}>
+                Something unexpected happened while opening this screen. Your saved data is safe.
+              </Text>
+              {this.state.errorMessage ? (
+                <Text style={styles.errorBoundaryDetail} numberOfLines={3}>
+                  {this.state.errorMessage}
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={styles.errorBoundaryBtn}
+                onPress={this.handleRetry}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.errorBoundaryBtnText}>Retry & Continue</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </SafeAreaProvider>
+      );
+    }
+    return (this as any).props.children;
+  }
+}
+
 export default function App() {
   if (Platform.OS === 'web') {
-    return <WebApp />;
+    try {
+      // Lazy-load web-only app bundle so Android Hermes never evaluates browser DOM modules at startup
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const WebAppModule = require('./src/App');
+      const WebApp = WebAppModule?.default || WebAppModule;
+      if (WebApp) {
+        return (
+          <RootErrorBoundary>
+            <WebApp />
+          </RootErrorBoundary>
+        );
+      }
+    } catch (err) {
+      console.warn('WebApp load fallback to NativeApp:', err);
+    }
   }
-  return <NativeApp />;
+  return (
+    <RootErrorBoundary>
+      <NativeApp />
+    </RootErrorBoundary>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -7014,5 +7167,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: '#374151'
+  },
+  errorBoundaryContainer: {
+    flex: 1,
+    backgroundColor: '#0B192C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24
+  },
+  errorBoundaryCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#001F3F',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    padding: 24,
+    alignItems: 'center'
+  },
+  errorBoundaryIcon: {
+    fontSize: 36,
+    marginBottom: 12
+  },
+  errorBoundaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8
+  },
+  errorBoundaryMsg: {
+    fontSize: 13,
+    color: '#cbd5e1',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 10
+  },
+  errorBoundaryDetail: {
+    fontSize: 11,
+    color: '#fbbf24',
+    textAlign: 'center',
+    marginBottom: 16
+  },
+  errorBoundaryBtn: {
+    width: '100%',
+    backgroundColor: '#FFA500',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center'
+  },
+  errorBoundaryBtnText: {
+    color: '#001F3F',
+    fontSize: 14,
+    fontWeight: 'bold'
   }
 });

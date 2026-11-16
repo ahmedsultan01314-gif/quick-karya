@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
   collection,
@@ -9,7 +9,8 @@ import {
   deleteDoc,
   query,
   where,
-  onSnapshot
+  onSnapshot,
+  type Firestore
 } from 'firebase/firestore';
 import {
   getAuth,
@@ -23,14 +24,20 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  type Auth
 } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord } from './types';
 import { getApiUrl } from './config';
 
-export const firebaseApp =
-  getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+let firebaseApp: FirebaseApp | null = null;
+try {
+  firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+} catch (err) {
+  console.warn('Firebase App initialization failed safely:', err);
+  firebaseApp = null;
+}
 
 /**
  * Filter out demo / test accounts and deduplicate workers by phone & workerId
@@ -86,12 +93,30 @@ export function cleanAndDeduplicateWorkers(rawList: WorkerProfile[]): WorkerProf
   return cleanList;
 }
 
-export const db = getFirestore(
-  firebaseApp,
-  firebaseConfig.firestoreDatabaseId || '(default)'
-);
+let db: Firestore | null = null;
+try {
+  if (firebaseApp) {
+    db = getFirestore(
+      firebaseApp,
+      firebaseConfig.firestoreDatabaseId || '(default)'
+    );
+  }
+} catch (err) {
+  console.warn('Firestore initialization failed safely:', err);
+  db = null;
+}
 
-export const auth = getAuth(firebaseApp);
+let auth: Auth | null = null;
+try {
+  if (firebaseApp) {
+    auth = getAuth(firebaseApp);
+  }
+} catch (err) {
+  console.warn('Firebase Auth initialization failed safely:', err);
+  auth = null;
+}
+
+export { firebaseApp, db, auth };
 
 export interface GoogleAuthResult {
   uid: string;
@@ -314,8 +339,8 @@ let confirmationResultStore: ConfirmationResult | null = null;
 let sessionInfoStore: string | null = null;
 
 export function setupRecaptchaVerifier(containerId: string = 'recaptcha-container'): RecaptchaVerifier | null {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    // Running in native environment without DOM
+  if (!auth || typeof window === 'undefined' || typeof document === 'undefined') {
+    // Running in native environment without DOM or uninitialized auth
     return null;
   }
 
@@ -357,7 +382,7 @@ export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<{ succe
   const formattedPhone = `+91${clean}`;
 
   // 1. If in browser environment with DOM, try Firebase Web SDK
-  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  if (auth && typeof window !== 'undefined' && typeof document !== 'undefined') {
     try {
       const verifier = setupRecaptchaVerifier('recaptcha-container');
       if (verifier) {
@@ -494,78 +519,94 @@ export const CALL_LOGS_COLLECTION = 'callLogs';
  * Save worker profile to Cloud Firestore
  */
 export async function saveWorkerToCloud(worker: WorkerProfile): Promise<void> {
-  const workerDocRef = doc(db, WORKERS_COLLECTION, worker.id);
-  const cleanData: Record<string, any> = {
-    id: worker.id,
-    workerId: worker.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`,
-    name: worker.name,
-    category: worker.category,
-    experience: worker.experience,
-    rating: worker.rating || 5.0,
-    reviewCount: worker.reviewCount || 1,
-    hourlyRate: 0,
-    rate: 0,
-    phone: worker.phone,
-    city: worker.city,
-    state: worker.state || '',
-    pincode: worker.pincode,
-    latitude: worker.latitude,
-    longitude: worker.longitude,
-    verified: false,
-    isVerified: false,
-    available: worker.available ?? true,
-    completedJobs: worker.completedJobs ?? 1,
-    languages: worker.languages || ['Hindi', 'Local'],
-    skills: worker.skills || [worker.category],
-    emergencyAvailable: worker.category === 'Emergency Highway Assistance',
-    createdAt: new Date().toISOString()
-  };
+  if (!db) return;
+  try {
+    const workerDocRef = doc(db, WORKERS_COLLECTION, worker.id);
+    const cleanData: Record<string, any> = {
+      id: worker.id,
+      workerId: worker.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`,
+      name: worker.name,
+      category: worker.category,
+      experience: worker.experience,
+      rating: worker.rating || 5.0,
+      reviewCount: worker.reviewCount || 1,
+      hourlyRate: 0,
+      rate: 0,
+      phone: worker.phone,
+      city: worker.city,
+      state: worker.state || '',
+      pincode: worker.pincode,
+      latitude: worker.latitude,
+      longitude: worker.longitude,
+      verified: false,
+      isVerified: false,
+      available: worker.available ?? true,
+      completedJobs: worker.completedJobs ?? 1,
+      languages: worker.languages || ['Hindi', 'Local'],
+      skills: worker.skills || [worker.category],
+      emergencyAvailable: worker.category === 'Emergency Highway Assistance',
+      createdAt: new Date().toISOString()
+    };
 
-  if (worker.subRole) cleanData.subRole = worker.subRole;
-  const photoVal = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
-  if (photoVal) {
-    cleanData.photo = photoVal;
-    cleanData.avatar = photoVal;
-    cleanData.avatarUrl = photoVal;
+    if (worker.subRole) cleanData.subRole = worker.subRole;
+    const photoVal = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
+    if (photoVal) {
+      cleanData.photo = photoVal;
+      cleanData.avatar = photoVal;
+      cleanData.avatarUrl = photoVal;
+    }
+    if (worker.vehicleType) cleanData.vehicleType = worker.vehicleType;
+    if (worker.fcmToken) cleanData.fcmToken = worker.fcmToken;
+    if (worker.pushToken) cleanData.pushToken = worker.pushToken;
+
+    await setDoc(workerDocRef, cleanData);
+  } catch (err) {
+    console.warn('Could not save worker to Cloud Firestore:', err);
   }
-  if (worker.vehicleType) cleanData.vehicleType = worker.vehicleType;
-  if (worker.fcmToken) cleanData.fcmToken = worker.fcmToken;
-  if (worker.pushToken) cleanData.pushToken = worker.pushToken;
-
-  await setDoc(workerDocRef, cleanData);
 }
 
 /**
  * Delete worker profile from Cloud Firestore
  */
 export async function deleteWorkerFromCloud(workerId: string): Promise<void> {
-  const workerDocRef = doc(db, WORKERS_COLLECTION, workerId);
-  await deleteDoc(workerDocRef);
+  if (!db) return;
+  try {
+    const workerDocRef = doc(db, WORKERS_COLLECTION, workerId);
+    await deleteDoc(workerDocRef);
+  } catch (err) {
+    console.warn('Could not delete worker from Cloud Firestore:', err);
+  }
 }
 
 /**
  * Fetch all workers from Cloud Firestore (strictly cleaned & deduplicated)
  */
 export async function fetchWorkersFromCloud(): Promise<WorkerProfile[]> {
-  const workersRef = collection(db, WORKERS_COLLECTION);
-  const snapshot = await getDocs(workersRef);
-  const list: WorkerProfile[] = [];
-  snapshot.forEach((docSnap) => {
-    const data = docSnap.data() as any;
-    const photo = data.photo || data.avatar || data.avatarUrl || data.photoUrl || data.profileImage || undefined;
-    list.push({
-      ...data,
-      id: docSnap.id,
-      workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
-      photo: photo,
-      avatar: photo,
-      verified: Boolean(data.isVerified ?? data.verified),
-      isVerified: Boolean(data.isVerified ?? data.verified),
-      fcmToken: data.fcmToken || data.pushToken,
-      pushToken: data.pushToken || data.fcmToken
+  if (!db) return [];
+  try {
+    const workersRef = collection(db, WORKERS_COLLECTION);
+    const snapshot = await getDocs(workersRef);
+    const list: WorkerProfile[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const photo = data.photo || data.avatar || data.avatarUrl || data.photoUrl || data.profileImage || undefined;
+      list.push({
+        ...data,
+        id: docSnap.id,
+        workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
+        photo: photo,
+        avatar: photo,
+        verified: Boolean(data.isVerified ?? data.verified),
+        isVerified: Boolean(data.isVerified ?? data.verified),
+        fcmToken: data.fcmToken || data.pushToken,
+        pushToken: data.pushToken || data.fcmToken
+      });
     });
-  });
-  return cleanAndDeduplicateWorkers(list);
+    return cleanAndDeduplicateWorkers(list);
+  } catch (err) {
+    console.warn('Could not fetch workers from Cloud Firestore:', err);
+    return [];
+  }
 }
 
 /**
@@ -575,39 +616,50 @@ export function subscribeWorkersFromCloud(
   onUpdate: (workers: WorkerProfile[]) => void,
   onError?: (error: Error) => void
 ) {
-  const workersRef = collection(db, WORKERS_COLLECTION);
-  return onSnapshot(
-    workersRef,
-    (snapshot) => {
-      const list: WorkerProfile[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        const photo = data.photo || data.avatar || data.avatarUrl || data.photoUrl || data.profileImage || undefined;
-        list.push({
-          ...data,
-          id: docSnap.id,
-          workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
-          photo: photo,
-          avatar: photo,
-          verified: Boolean(data.isVerified ?? data.verified),
-          isVerified: Boolean(data.isVerified ?? data.verified),
-          fcmToken: data.fcmToken || data.pushToken,
-          pushToken: data.pushToken || data.fcmToken
+  if (!db) {
+    if (onError) onError(new Error('Cloud Firestore is unavailable'));
+    return () => {};
+  }
+  try {
+    const workersRef = collection(db, WORKERS_COLLECTION);
+    return onSnapshot(
+      workersRef,
+      (snapshot) => {
+        const list: WorkerProfile[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          const photo = data.photo || data.avatar || data.avatarUrl || data.photoUrl || data.profileImage || undefined;
+          list.push({
+            ...data,
+            id: docSnap.id,
+            workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
+            photo: photo,
+            avatar: photo,
+            verified: Boolean(data.isVerified ?? data.verified),
+            isVerified: Boolean(data.isVerified ?? data.verified),
+            fcmToken: data.fcmToken || data.pushToken,
+            pushToken: data.pushToken || data.fcmToken
+          });
         });
-      });
-      onUpdate(cleanAndDeduplicateWorkers(list));
-    },
-    (err) => {
-      console.warn('Firestore subscription error:', err);
-      if (onError) onError(err);
-    }
-  );
+        onUpdate(cleanAndDeduplicateWorkers(list));
+      },
+      (err) => {
+        console.warn('Firestore subscription error:', err);
+        if (onError) onError(err);
+      }
+    );
+  } catch (err: any) {
+    console.warn('Firestore subscription setup error:', err);
+    if (onError) onError(err);
+    return () => {};
+  }
 }
 
 /**
  * Call Logs Cloud Operations
  */
 export async function saveCallLogToCloud(callLog: CallLogRecord): Promise<void> {
+  if (!db) return;
   try {
     const logRef = doc(db, CALL_LOGS_COLLECTION, callLog.id);
     await setDoc(logRef, callLog);
@@ -617,6 +669,7 @@ export async function saveCallLogToCloud(callLog: CallLogRecord): Promise<void> 
 }
 
 export async function deleteCallLogFromCloud(callLogId: string): Promise<void> {
+  if (!db) return;
   try {
     const logRef = doc(db, CALL_LOGS_COLLECTION, callLogId);
     await deleteDoc(logRef);
@@ -629,15 +682,25 @@ export async function deleteCallLogFromCloud(callLogId: string): Promise<void> {
  * User Cloud Operations
  */
 export async function saveUserToCloud(user: AppUser): Promise<void> {
-  const userRef = doc(db, USERS_COLLECTION, user.id);
-  await setDoc(userRef, user);
+  if (!db) return;
+  try {
+    const userRef = doc(db, USERS_COLLECTION, user.id);
+    await setDoc(userRef, user);
+  } catch (err) {
+    console.warn('Could not save user to Cloud Firestore:', err);
+  }
 }
 
 export async function fetchUserFromCloud(userId: string): Promise<AppUser | null> {
-  const userRef = doc(db, USERS_COLLECTION, userId);
-  const snap = await getDoc(userRef);
-  if (snap.exists()) {
-    return snap.data() as AppUser;
+  if (!db) return null;
+  try {
+    const userRef = doc(db, USERS_COLLECTION, userId);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      return snap.data() as AppUser;
+    }
+  } catch (err) {
+    console.warn('Could not fetch user from Cloud Firestore:', err);
   }
   return null;
 }
@@ -648,6 +711,9 @@ export async function fetchUserFromCloud(userId: string): Promise<AppUser | null
 export async function saveReviewToCloud(
   review: WorkerReview
 ): Promise<{ newRating: number; newCount: number }> {
+  if (!db) {
+    return { newRating: review.rating, newCount: 1 };
+  }
   const reviewRef = doc(db, REVIEWS_COLLECTION, review.id);
   await setDoc(reviewRef, review);
 
@@ -668,32 +734,49 @@ export async function saveReviewToCloud(
 }
 
 export async function fetchReviewsForWorker(workerId: string): Promise<WorkerReview[]> {
-  const reviewsRef = collection(db, REVIEWS_COLLECTION);
-  const q = query(reviewsRef, where('workerId', '==', workerId));
-  const snap = await getDocs(q);
-  const list: WorkerReview[] = [];
-  snap.forEach((d) => {
-    list.push(d.data() as WorkerReview);
-  });
-  return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  if (!db) return [];
+  try {
+    const reviewsRef = collection(db, REVIEWS_COLLECTION);
+    const q = query(reviewsRef, where('workerId', '==', workerId));
+    const snap = await getDocs(q);
+    const list: WorkerReview[] = [];
+    snap.forEach((d) => {
+      list.push(d.data() as WorkerReview);
+    });
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (err) {
+    console.warn('Could not fetch reviews from Cloud Firestore:', err);
+    return [];
+  }
 }
 
 /**
  * Service Requests Cloud Operations
  */
 export async function saveServiceRequestToCloud(req: ServiceRequest): Promise<void> {
-  const reqRef = doc(db, SERVICE_REQUESTS_COLLECTION, req.id);
-  await setDoc(reqRef, req);
+  if (!db) return;
+  try {
+    const reqRef = doc(db, SERVICE_REQUESTS_COLLECTION, req.id);
+    await setDoc(reqRef, req);
+  } catch (err) {
+    console.warn('Could not save service request to Cloud Firestore:', err);
+  }
 }
 
 export async function fetchUserRequests(userId: string, isWorker: boolean): Promise<ServiceRequest[]> {
-  const requestsRef = collection(db, SERVICE_REQUESTS_COLLECTION);
-  const field = isWorker ? 'workerId' : 'customerId';
-  const q = query(requestsRef, where(field, '==', userId));
-  const snap = await getDocs(q);
-  const list: ServiceRequest[] = [];
-  snap.forEach((d) => {
-    list.push(d.data() as ServiceRequest);
-  });
-  return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  if (!db) return [];
+  try {
+    const requestsRef = collection(db, SERVICE_REQUESTS_COLLECTION);
+    const field = isWorker ? 'workerId' : 'customerId';
+    const q = query(requestsRef, where(field, '==', userId));
+    const snap = await getDocs(q);
+    const list: ServiceRequest[] = [];
+    snap.forEach((d) => {
+      list.push(d.data() as ServiceRequest);
+    });
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (err) {
+    console.warn('Could not fetch user requests from Cloud Firestore:', err);
+    return [];
+  }
 }

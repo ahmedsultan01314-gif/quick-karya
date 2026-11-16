@@ -58,9 +58,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const handleUpdate = () => {
       setCallHistory(getCallHistory());
     };
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
-      return () => window.removeEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
+      return () => {
+        if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+          window.removeEventListener(CALL_HISTORY_UPDATED_EVENT, handleUpdate);
+        }
+      };
     }
   }, []);
 
