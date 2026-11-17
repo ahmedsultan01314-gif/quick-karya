@@ -87,19 +87,19 @@ export const WorkerList: React.FC<WorkerListProps> = ({
   // Compute counts for driver sub-categories
   const driverWorkers = workers.filter((w) => w.category === 'Driver');
   const personalDriversCount = driverWorkers.filter(
-    (w) => getDriverSubCategory(w.vehicleType) === 'personal'
+    (w) => getDriverSubCategory(w.vehicleType, w.subRole) === 'personal'
   ).length;
   const commercialDriversCount = driverWorkers.filter(
-    (w) => getDriverSubCategory(w.vehicleType) === 'commercial'
+    (w) => getDriverSubCategory(w.vehicleType, w.subRole) === 'commercial'
   ).length;
   const heavyMachineryCount = driverWorkers.filter(
-    (w) => getDriverSubCategory(w.vehicleType) === 'heavy'
+    (w) => getDriverSubCategory(w.vehicleType, w.subRole) === 'heavy'
   ).length;
 
   // Active display workers filtered by driver subcategory when applicable
   const displayWorkers = workers.filter((worker) => {
     if (selectedCategory === 'Driver' && driverSubFilter !== 'all') {
-      const sub = getDriverSubCategory(worker.vehicleType);
+      const sub = getDriverSubCategory(worker.vehicleType, worker.subRole);
       return sub === driverSubFilter;
     }
     return true;

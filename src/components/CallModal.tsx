@@ -141,31 +141,44 @@ export const CallModal: React.FC<CallModalProps> = ({
     );
   };
 
-  // Build message with exact location details
+  // Build message with exact location details & standard Google Maps navigation URL
   const buildWhatsAppMessage = (): string => {
     const rateText = isNightActive
       ? `${pricing.displayNightRate} (Night Rate) • Standard: ${pricing.allRatesFormatted}`
       : pricing.allRatesFormatted;
-    if (isDriver) {
-      const vehicleDesc = pricing.vehicleBadge || 'Driver Service';
-      const pickupText = pickupLocation.trim() || 'To be specified';
-      const dropText = dropLocation.trim() || (isDropMandatory ? 'Point-to-Point (To be confirmed)' : 'Full Day / As required');
+    const customerName = currentUser?.name?.trim() || 'Customer';
+    const pinCoords =
+      sharedGpsCoords ||
+      (userLocation?.latitude && userLocation?.longitude
+        ? { lat: userLocation.latitude, lng: userLocation.longitude }
+        : null);
+    const mapsUrl = pinCoords
+      ? `https://www.google.com/maps/search/?api=1&query=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`
+      : '';
+    const humanAddress =
+      pickupLocation.trim() ||
+      [userLocation?.city, userLocation?.state].filter(Boolean).join(', ') ||
+      'Current Location';
 
-      return [
+    if (isDriver) {
+      const vehicleDesc = pricing.vehicleBadge || worker.subRole || 'Driver Service';
+      const dropText = dropLocation.trim() || (isDropMandatory ? 'Point-to-Point (To be confirmed)' : 'Full Day / As required');
+      const lines = [
         `Hello ${worker.name}, I would like to book a ride via Quick Karya:`,
         ``,
         `🚖 Vehicle: ${vehicleDesc}`,
-        `📍 Pickup Location: ${pickupText}`,
+        `📍 Pickup Location: ${humanAddress}`,
         `🎯 Drop Location: ${dropText}`,
+        ...(mapsUrl ? [`🗺️ Google Maps Navigation Pin: ${mapsUrl}`] : []),
+        `👤 Customer: ${customerName}`,
         `💰 Quoted Rates: ${rateText}`,
         ``,
         `Please confirm your availability and arrival time. Thank you!`
-      ].join('\n');
+      ];
+      return lines.join('\n');
     } else {
-      const addressLine = pickupLocation.trim() ? `\n📍 Service Address: ${pickupLocation.trim()}` : '';
-      const pinCoords = sharedGpsCoords || (userLocation?.latitude && userLocation?.longitude ? { lat: userLocation.latitude, lng: userLocation.longitude } : null);
-      const mapLine = pinCoords ? `\n🗺️ Google Maps Navigation Pin: https://maps.google.com/?q=${pinCoords.lat},${pinCoords.lng}` : '';
-      return `Hello ${worker.name}, I found your profile on Quick Karya for ${worker.category} service (Rates: ${rateText}).${addressLine}${mapLine}\nPlease confirm if you are available. Thank you!`;
+      const mapLine = mapsUrl ? `\n🗺️ Google Maps Navigation Pin: ${mapsUrl}` : '';
+      return `Hello ${worker.name}, I found your profile on Quick Karya for ${worker.category} service (Rates: ${rateText}).\n📍 Service Address: ${humanAddress}${mapLine}\n👤 Customer: ${customerName}\nPlease confirm if you are available. Thank you!`;
     }
   };
 
@@ -255,7 +268,7 @@ export const CallModal: React.FC<CallModalProps> = ({
     window.location.href = `tel:${rawPhone}`;
   };
 
-  // Handle WhatsApp Click with validation
+  // Handle WhatsApp / GPS Pin Share Click with validation & worker notification alert
   const handleWhatsAppClick = (e: React.MouseEvent) => {
     if (!validateInputs()) {
       e.preventDefault();
@@ -263,7 +276,42 @@ export const CallModal: React.FC<CallModalProps> = ({
     }
     const message = buildWhatsAppMessage();
 
-    // Save WhatsApp contact to Call History
+    setCallAlertNotice(`📍 GPS Pin & service alert sent to ${worker.name}! Worker notified.`);
+
+    if (currentUser) {
+      fetch(getApiUrl('/api/service-requests'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: currentUser.id,
+          customerName: currentUser.name,
+          customerPhone: currentUser.phone,
+          workerId: worker.id,
+          customerLat: sharedGpsCoords?.lat || userLocation?.latitude,
+          customerLng: sharedGpsCoords?.lng || userLocation?.longitude,
+          serviceAddress: pickupLocation.trim() || undefined,
+          hasLocationPermission: Boolean(userLocation?.isLiveGps || sharedGpsCoords)
+        })
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.serviceRequest && onServiceBooked) {
+            onServiceBooked(data.serviceRequest);
+          }
+        })
+        .catch(() => {});
+    }
+
+    triggerCallWorkerNotification(
+      worker.name,
+      worker.phone,
+      worker.category,
+      currentUser?.name,
+      currentUser?.phone,
+      'gps_share'
+    ).catch(() => {});
+
+    // Save WhatsApp sharing to Call History
     try {
       addCallRecord({
         workerId: worker.id,
@@ -561,7 +609,7 @@ export const CallModal: React.FC<CallModalProps> = ({
                     📍 GPS: {sharedGpsCoords.lat.toFixed(4)}, {sharedGpsCoords.lng.toFixed(4)}
                   </span>
                   <a
-                    href={`https://maps.google.com/?q=${sharedGpsCoords.lat},${sharedGpsCoords.lng}`}
+                    href={`https://www.google.com/maps/search/?api=1&query=${sharedGpsCoords.lat.toFixed(5)},${sharedGpsCoords.lng.toFixed(5)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="shrink-0 text-[#FFA500] hover:text-white font-bold underline flex items-center gap-0.5"

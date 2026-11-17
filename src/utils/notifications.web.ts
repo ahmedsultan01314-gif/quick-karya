@@ -70,20 +70,22 @@ export async function triggerCallWorkerNotification(
   workerPhone: string,
   category?: string,
   customerName?: string,
-  customerPhone?: string
+  customerPhone?: string,
+  actionType: 'call' | 'gps_share' = 'call'
 ) {
-  // CRITICAL: When a customer taps 'Call Worker', do NOT trigger the push notification
-  // on the customer's own device. Route the push notification directly to the target
-  // Worker's FCM device token.
   const callerName = customerName || 'Customer';
   const callerPhone = customerPhone || '';
+  const isGpsShare = actionType === 'gps_share';
 
-  // Trigger immediate in-app banner alert for customer
-  dispatchInAppBanner(
-    'Quick Karya - Call Alert Dispatched',
-    `Connecting to ${workerName} (${category || 'Artisan'}). Call alert and customer details logged for this artisan.`,
-    'call'
-  );
+  const bannerTitle = isGpsShare
+    ? 'Quick Karya - GPS & Service Request Sent'
+    : 'Quick Karya - Call Service Alert Sent';
+  const bannerBody = isGpsShare
+    ? `Incoming service request & live GPS pin shared with ${workerName} (${category || 'Artisan'}) from ${callerName}.`
+    : `Connecting call to ${workerName} (${category || 'Artisan'}). Service alert dispatched from ${callerName}.`;
+
+  // Trigger immediate in-app banner alert
+  dispatchInAppBanner(bannerTitle, bannerBody, 'call');
 
   try {
     await fetch(getApiUrl('/api/notifications/notify-worker'), {
@@ -94,7 +96,8 @@ export async function triggerCallWorkerNotification(
         workerPhone,
         category,
         customerName: callerName,
-        customerPhone: callerPhone
+        customerPhone: callerPhone,
+        actionType
       })
     });
   } catch (err) {

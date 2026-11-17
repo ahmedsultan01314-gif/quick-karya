@@ -129,6 +129,7 @@ export const CATEGORIES: CategoryInfo[] = [
 ];
 
 export const CATEGORY_SUB_ROLES: Partial<Record<ServiceCategory, string[]>> = {
+  'Driver': ['Private Driver', 'Truck Driver'],
   'Laundry / Clothes Wash': ['Laundry Person', 'Ironing', 'Helper'],
   'Hotel Staff': ['Receptionist', 'Housekeeping', 'Helper'],
   'Restaurant Staff': ['Waiter', 'Chef/Cook', 'Helper']

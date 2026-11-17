@@ -170,8 +170,16 @@ export function isHeavyMachineryDriver(vehicleType?: DriverVehicleType): boolean
 }
 
 export function getDriverSubCategory(
-  vehicleType?: DriverVehicleType
+  vehicleType?: DriverVehicleType,
+  subRole?: string
 ): 'personal' | 'commercial' | 'heavy' {
+  const cleanSub = (subRole || '').trim().toLowerCase();
+  if (cleanSub.includes('truck') || cleanSub.includes('commercial') || cleanSub.includes('freight')) {
+    return 'commercial';
+  }
+  if (cleanSub.includes('private') || cleanSub.includes('personal') || cleanSub.includes('car')) {
+    return 'personal';
+  }
   if (!vehicleType) return 'personal';
   if (
     vehicleType === 'JCB Machine Operator' ||

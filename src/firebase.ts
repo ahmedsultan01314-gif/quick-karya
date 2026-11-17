@@ -786,14 +786,111 @@ function getUserCanonicalScore(u: Record<string, any>): number {
 }
 
 /**
+ * Purge mock, test, demo, and duplicate entries from browser localStorage safely.
+ */
+export function purgeLocalStorageArtifacts(): number {
+  let cleanedCount = 0;
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
+      return 0;
+    }
+
+    // 1. Clean stored user session if mock/test or invalid phone
+    for (const userKey of ['quick_karya_user', '@quickkarya_user_session_v1']) {
+      try {
+        const raw = localStorage.getItem(userKey);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (
+          !parsed ||
+          typeof parsed !== 'object' ||
+          isMockOrTestProfile({
+            id: parsed.id,
+            workerId: parsed.workerId,
+            name: parsed.name,
+            email: parsed.email,
+            phone: parsed.phone
+          }) ||
+          (parsed.phone && !isGenuinePhone10(parsed.phone))
+        ) {
+          localStorage.removeItem(userKey);
+          cleanedCount += 1;
+        }
+      } catch {
+        localStorage.removeItem(userKey);
+        cleanedCount += 1;
+      }
+    }
+
+    // 2. Clean call history of mock worker logs
+    try {
+      const rawLogs = localStorage.getItem('quickkarya_call_history_v1');
+      if (rawLogs) {
+        const parsedLogs = JSON.parse(rawLogs);
+        if (Array.isArray(parsedLogs)) {
+          const cleanLogs = parsedLogs.filter(
+            (item) =>
+              item &&
+              !isMockOrTestProfile({
+                id: item.workerId,
+                name: item.workerName,
+                phone: item.workerPhone
+              })
+          );
+          if (cleanLogs.length !== parsedLogs.length) {
+            cleanedCount += parsedLogs.length - cleanLogs.length;
+            localStorage.setItem('quickkarya_call_history_v1', JSON.stringify(cleanLogs));
+          }
+        }
+      }
+    } catch {
+      // ignore malformed logs
+    }
+
+    // 3. Clean saved Google accounts of mock/test/duplicate emails
+    try {
+      const rawAccs = localStorage.getItem('@quickkarya_saved_google_accounts_v1');
+      if (rawAccs) {
+        const parsedAccs = JSON.parse(rawAccs);
+        if (Array.isArray(parsedAccs)) {
+          const seenEmails = new Set<string>();
+          const cleanAccs = parsedAccs.filter((acc) => {
+            if (!acc || !acc.email || !acc.name) return false;
+            const emailLower = String(acc.email).trim().toLowerCase();
+            if (
+              seenEmails.has(emailLower) ||
+              isMockOrTestProfile({ id: acc.uid, name: acc.name, email: emailLower })
+            ) {
+              return false;
+            }
+            seenEmails.add(emailLower);
+            return true;
+          });
+          if (cleanAccs.length !== parsedAccs.length) {
+            cleanedCount += parsedAccs.length - cleanAccs.length;
+            localStorage.setItem('@quickkarya_saved_google_accounts_v1', JSON.stringify(cleanAccs));
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  } catch {
+    // ignore environments without localStorage
+  }
+  return cleanedCount;
+}
+
+/**
  * Strict Firestore security & cleanup function run on database initialization:
  * - Permanently deletes mock/demo/test artisan entries and invalid/fake phone records
  * - Permanently deletes duplicate phone number entries (keeping 1 canonical genuine profile per unique 10-digit phone)
  * - Syncs unique phone locks in /phoneRegistry/{phone10}
  * - Permanently deletes mock/demo/test user accounts and duplicate phone user accounts
- * - Removes mock/test artifacts in /callLogs and /reviews
+ * - Removes mock/test artifacts in /callLogs, /reviews, and localStorage
  */
 export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boolean }): Promise<CleanupReport> {
+  purgeLocalStorageArtifacts();
   const emptyReport: CleanupReport = {
     executedAt: new Date().toISOString(),
     workersScanned: 0,
@@ -1544,6 +1641,46 @@ export async function fetchUserFromCloud(userId: string): Promise<AppUser | null
     console.warn('Could not fetch user from Cloud Firestore:', err);
   }
   return null;
+}
+
+export async function fetchGoogleAccountsFromCloud(): Promise<
+  Array<{ uid: string; name: string; email: string; photoUrl?: string }>
+> {
+  if (!db) return [];
+  try {
+    const q = query(collection(db, USERS_COLLECTION), where('authProvider', '==', 'google'));
+    const snap = await getDocs(q);
+    const seenEmails = new Set<string>();
+    const results: Array<{ uid: string; name: string; email: string; photoUrl?: string }> = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      if (!email || !name) return;
+      if (
+        isMockOrTestProfile({
+          id: docSnap.id,
+          workerId: data.workerId,
+          name,
+          email,
+          phone: data.phone
+        })
+      ) {
+        return;
+      }
+      if (seenEmails.has(email)) return;
+      seenEmails.add(email);
+      results.push({
+        uid: data.id || docSnap.id,
+        name,
+        email,
+        photoUrl: data.profilePhoto || data.avatar || undefined
+      });
+    });
+    return results;
+  } catch {
+    return [];
+  }
 }
 
 /**

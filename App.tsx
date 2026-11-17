@@ -46,7 +46,8 @@ import {
   UserRole,
   WorkerReview,
   CallLogRecord,
-  DriverSubCategory
+  DriverSubCategory,
+  DriverVehicleType
 } from './src/types';
 import {
   saveWorkerToCloud,
@@ -58,6 +59,9 @@ import {
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveUserToCloud,
+  fetchGoogleAccountsFromCloud,
+  enforceFirestoreSecurityAndCleanup,
+  purgeLocalStorageArtifacts,
   signInWithGoogle,
   signInWithEmail,
   signUpWithEmail,
@@ -198,7 +202,13 @@ function NativeApp() {
   const [callGpsCoords, setCallGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [callValidationError, setCallValidationError] = useState<string | null>(null);
 
-  const [activeCallAlert, setActiveCallAlert] = useState<{ workerName: string; category: string } | null>(null);
+  const [activeCallAlert, setActiveCallAlert] = useState<{
+    workerName: string;
+    category: string;
+    title?: string;
+    message?: string;
+    icon?: string;
+  } | null>(null);
   const [nativeCallHistory, setNativeCallHistory] = useState<CallLogRecord[]>(() => {
     try {
       return getCallHistory();
@@ -207,18 +217,48 @@ function NativeApp() {
     }
   });
 
-  // Load saved Google accounts for interactive picker on native Android
+  // Load saved Google accounts (device AsyncStorage + Cloud Firestore) and purge mock/duplicate entries
   useEffect(() => {
-    AsyncStorage.getItem(SAVED_GOOGLE_ACCOUNTS_KEY)
-      .then((raw) => {
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            setSavedGoogleAccounts(parsed);
-          }
+    let mounted = true;
+    const syncGoogleAccountsAndClean = async () => {
+      try {
+        purgeLocalStorageArtifacts();
+        enforceFirestoreSecurityAndCleanup().catch(() => {});
+
+        const raw = await AsyncStorage.getItem(SAVED_GOOGLE_ACCOUNTS_KEY).catch(() => null);
+        const localParsed: SavedGoogleAccount[] = raw ? JSON.parse(raw) : [];
+        const cloudAccs = await fetchGoogleAccountsFromCloud().catch(() => []);
+
+        const merged = [...(Array.isArray(localParsed) ? localParsed : []), ...cloudAccs];
+        const seenEmails = new Set<string>();
+        const cleanAccs: SavedGoogleAccount[] = [];
+        for (const acc of merged) {
+          if (!acc || !acc.email || !acc.name) continue;
+          const cleanEmail = String(acc.email).trim().toLowerCase();
+          if (seenEmails.has(cleanEmail)) continue;
+          if (isMockOrTestProfile({ id: acc.uid, name: acc.name, email: cleanEmail })) continue;
+          seenEmails.add(cleanEmail);
+          cleanAccs.push({
+            uid: acc.uid,
+            name: String(acc.name).trim(),
+            email: cleanEmail,
+            photoUrl: acc.photoUrl
+          });
         }
-      })
-      .catch(() => {});
+
+        if (mounted) {
+          setSavedGoogleAccounts(cleanAccs);
+        }
+        await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(cleanAccs)).catch(() => {});
+      } catch {
+        // ignore startup Google account sync error
+      }
+    };
+
+    syncGoogleAccountsAndClean();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -230,7 +270,19 @@ function NativeApp() {
         if (raw && isMounted) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            const hydrated = hydrateCallHistory(parsed);
+            const cleanParsed = parsed.filter(
+              (item) =>
+                item &&
+                !isMockOrTestProfile({
+                  id: item.workerId,
+                  name: item.workerName,
+                  phone: item.workerPhone
+                })
+            );
+            if (cleanParsed.length !== parsed.length) {
+              AsyncStorage.setItem(CALL_HISTORY_ASYNC_KEY, JSON.stringify(cleanParsed)).catch(() => {});
+            }
+            const hydrated = hydrateCallHistory(cleanParsed);
             setNativeCallHistory(hydrated);
             return;
           }
@@ -293,7 +345,12 @@ function NativeApp() {
         }
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (parsed?.name && parsed?.verified !== false) {
+          if (
+            parsed?.name &&
+            parsed?.verified !== false &&
+            !isMockOrTestProfile(parsed) &&
+            (!parsed.phone || isGenuinePhone10(parsed.phone))
+          ) {
             setCurrentUser(parsed);
             setIsAuthModalOpen(false); // Explicitly ensure auth modal is CLOSED
             if (parsed.name) setRegName(parsed.name);
@@ -304,6 +361,8 @@ function NativeApp() {
               setRegPhoto(parsed.profilePhoto || parsed.avatar);
             }
             return; // Launch directly into main Home Directory screen
+          } else {
+            await AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {});
           }
         }
       } catch (err) {
@@ -317,46 +376,67 @@ function NativeApp() {
     checkUserSession();
   }, []);
 
+  const formatNameFromGmail = (emailStr: string): string => {
+    const localPart = emailStr.split('@')[0] || '';
+    const words = localPart
+      .replace(/[0-9]+/g, ' ')
+      .split(/[._\-+\s]+/)
+      .filter(Boolean)
+      .slice(0, 3);
+    if (words.length === 0) return 'Quick Karya User';
+    return words
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   // Interactive Google Account Sign-In with Native Account Picker Popup
   const completeGoogleAccountSignIn = async (account: SavedGoogleAccount) => {
     setAuthError(null);
     setAuthLoading(true);
     try {
+      const cleanEmail = account.email.trim().toLowerCase();
+      const cleanName = account.name.trim() || formatNameFromGmail(cleanEmail);
+      if (isMockOrTestProfile({ id: account.uid, name: cleanName, email: cleanEmail })) {
+        throw new Error('Test or demo Google accounts cannot be used. Please select your genuine Gmail account.');
+      }
+
+      const normalizedAcc: SavedGoogleAccount = {
+        uid: account.uid,
+        name: cleanName,
+        email: cleanEmail,
+        photoUrl: account.photoUrl
+      };
+
       const updatedList = [
-        account,
+        normalizedAcc,
         ...savedGoogleAccounts.filter(
-          (a) => a.email.toLowerCase() !== account.email.toLowerCase()
+          (a) => a.email.toLowerCase() !== cleanEmail
         )
-      ].slice(0, 6);
+      ].slice(0, 8);
       setSavedGoogleAccounts(updatedList);
       await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(updatedList)).catch(() => {});
 
       const verifiedUserObj: AppUser = {
-        id: account.uid,
-        name: account.name,
-        email: account.email,
-        profilePhoto: account.photoUrl,
-        avatar: account.photoUrl,
+        id: normalizedAcc.uid,
+        name: normalizedAcc.name,
+        email: normalizedAcc.email,
+        profilePhoto: normalizedAcc.photoUrl,
+        avatar: normalizedAcc.photoUrl,
         authProvider: 'google',
         role: 'customer',
         verified: true,
         createdAt: new Date().toISOString()
       };
 
-      setCurrentUser(verifiedUserObj);
+      // Keep Modal open until user completes Step 2 Role Selection
       setPendingVerifiedUser(verifiedUserObj);
       setLoginName(verifiedUserObj.name);
-      setLoginEmail(account.email);
+      setLoginEmail(normalizedAcc.email);
       setRegName(verifiedUserObj.name);
-      if (account.photoUrl) {
-        setRegPhoto(account.photoUrl);
+      if (normalizedAcc.photoUrl) {
+        setRegPhoto(normalizedAcc.photoUrl);
       }
 
-      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj)).catch(() => {});
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('quick_karya_user', JSON.stringify(verifiedUserObj));
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj));
-      }
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
 
       setIsGooglePickerOpen(false);
@@ -388,22 +468,34 @@ function NativeApp() {
       return;
     }
 
-    // Native Android/iOS: Open interactive Google Account Picker popup
-    setGoogleAddAccountMode(savedGoogleAccounts.length === 0);
+    // Native Android/iOS: Refresh saved accounts (including cloud) & open Google Account Chooser popup
+    let currentAccounts = savedGoogleAccounts;
+    if (currentAccounts.length === 0) {
+      try {
+        const cloudAccs = await fetchGoogleAccountsFromCloud();
+        if (cloudAccs.length > 0) {
+          currentAccounts = cloudAccs;
+          setSavedGoogleAccounts(cloudAccs);
+          await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(cloudAccs)).catch(() => {});
+        }
+      } catch {}
+    }
+
+    setGoogleAddAccountMode(currentAccounts.length === 0);
     setGoogleCustomName('');
     setGoogleCustomEmail('');
     setIsGooglePickerOpen(true);
   };
 
   const handleAddCustomGoogleAccount = async () => {
-    const cleanName = googleCustomName.trim();
     const cleanEmail = googleCustomEmail.trim().toLowerCase();
-    if (!cleanName) {
-      setAuthError('Please enter your Google account full name.');
-      return;
-    }
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setAuthError('Please enter a valid Gmail or Google email address.');
+      return;
+    }
+    const cleanName = googleCustomName.trim() || formatNameFromGmail(cleanEmail);
+    if (isMockOrTestProfile({ name: cleanName, email: cleanEmail })) {
+      setAuthError('Test or demo accounts are blocked. Please enter your real Gmail name & address.');
       return;
     }
 
@@ -457,17 +549,12 @@ function NativeApp() {
         createdAt: new Date().toISOString()
       };
 
-      setCurrentUser(userObj);
+      // Keep Modal open until user completes Step 2 Role Selection
       setPendingVerifiedUser(userObj);
       setLoginName(userObj.name);
       setLoginEmail(userObj.email || authEmail.trim());
       setRegName(userObj.name);
 
-      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userObj)).catch(() => {});
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('quick_karya_user', JSON.stringify(userObj));
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userObj));
-      }
       await saveUserToCloud(userObj).catch((e) => console.warn('Firestore user save notice:', e));
 
       setAuthStep('role_selection');
@@ -695,12 +782,14 @@ function NativeApp() {
 
   const handleSosWhatsApp = (phone: string, serviceTitle: string) => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
-    const coords = `${userCoords.latitude.toFixed(5)}, ${userCoords.longitude.toFixed(5)}`;
+    const latStr = userCoords.latitude.toFixed(5);
+    const lngStr = userCoords.longitude.toFixed(5);
+    const coords = `${latStr},${lngStr}`;
     const msg = `🚨 *HIGHWAY SOS (24/7) - ${serviceTitle.toUpperCase()} REQUEST*
 Hello, I am stranded on the highway and need urgent assistance:
 📍 Location: ${userLocationName}
-🌐 GPS Coordinates: ${coords}
-🗺️ Google Maps: https://maps.google.com/?q=${coords}
+🌐 GPS Coordinates: ${latStr}, ${lngStr}
+🗺️ Google Maps: https://www.google.com/maps/search/?api=1&query=${coords}
 👤 Driver: ${currentUser?.name || 'Driver in Distress'}
 📱 Phone: ${currentUser?.phone || ''}
 Please dispatch assistance immediately!`;
@@ -1191,14 +1280,17 @@ Please dispatch assistance immediately!`;
     // In-app visual notification banner & toast alert
     setActiveCallAlert({
       workerName: workerName || 'Artisan',
-      category: workerCategory || 'Artisan'
+      category: workerCategory || 'Artisan',
+      icon: '📞',
+      title: `Calling ${workerName || 'Artisan'} (${workerCategory || 'Artisan'})`,
+      message: `New Customer Call Alert: Incoming Quick Karya service request from ${callerName}!`
     });
     setTimeout(() => {
       setActiveCallAlert(null);
     }, 4500);
 
     if (Platform.OS === 'android' && ToastAndroid) {
-      ToastAndroid.show(`📞 Calling ${workerName || 'Artisan'}... Call alert dispatched to worker!`, ToastAndroid.LONG);
+      ToastAndroid.show(`📞 Calling ${workerName || 'Artisan'}... Service alert dispatched!`, ToastAndroid.LONG);
     }
 
     // Trigger push notification to worker device with explicit customer identity
@@ -1207,7 +1299,8 @@ Please dispatch assistance immediately!`;
       cleanPhone,
       workerCategory || 'Artisan',
       callerName,
-      callerPhone
+      callerPhone,
+      'call'
     ).catch(() => {});
 
     // Save call to Call History (Local + AsyncStorage + Cloud Firestore + Backend)
@@ -1285,7 +1378,7 @@ Please dispatch assistance immediately!`;
     }
   };
 
-  // Customer GPS Location & Service Address Sharing with artisan (Direct WhatsApp + Map Pin)
+  // Customer GPS Location & Service Address Sharing with artisan (Direct WhatsApp + Map Pin + In-App Alert)
   const handleShareGpsWithWorker = (
     worker: WorkerProfile,
     overrideAddress?: string,
@@ -1294,16 +1387,39 @@ Please dispatch assistance immediately!`;
   ) => {
     const pinLat = overrideCoords?.lat ?? userCoords.latitude;
     const pinLng = overrideCoords?.lng ?? userCoords.longitude;
-    const coords = `${pinLat.toFixed(5)}, ${pinLng.toFixed(5)}`;
-    const mapsUrl = `https://maps.google.com/?q=${coords}`;
+    const rawCoords = `${pinLat.toFixed(5)},${pinLng.toFixed(5)}`;
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${rawCoords}`;
     const cleanPhone = (worker.phone || '').replace(/[^0-9]/g, '');
     const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone.slice(-10)}`;
     const addressText = (overrideAddress ?? userLocationName).trim() || userLocationName;
     const isDriver = worker.category === 'Driver';
+    const customerName = currentUser?.name || regName || 'Customer';
+    const customerPhone = currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '');
+
+    // Trigger immediate in-app service request notification banner + worker push alert
+    setActiveCallAlert({
+      workerName: worker.name,
+      category: worker.category,
+      icon: '📍',
+      title: `Service Alert & GPS Pin Shared (${worker.name})`,
+      message: `Incoming Quick Karya service request & live Google Maps pin sent to ${worker.name} (${addressText}).`
+    });
+    setTimeout(() => {
+      setActiveCallAlert(null);
+    }, 4500);
+
+    triggerCallWorkerNotification(
+      worker.name,
+      worker.phone,
+      worker.category,
+      customerName,
+      customerPhone,
+      'gps_share'
+    ).catch(() => {});
 
     const msg = isDriver
-      ? `Hello ${worker.name}, I would like to book a ride via Quick Karya:\n📍 Pickup: ${addressText}\n🎯 Drop: ${overrideDrop?.trim() || 'Full Day / As required'}\n🗺️ Google Maps Pin: ${mapsUrl}\n👤 Customer: ${currentUser?.name || 'Customer'}\nPlease confirm your availability. Thank you!`
-      : `Hello ${worker.name}, here is my service location for Quick Karya (${worker.category}):\n📍 Address: ${addressText}\n🗺️ Google Maps Navigation Pin: ${mapsUrl}\n👤 Customer: ${currentUser?.name || 'Customer'}\nPlease navigate to this location. Thank you!`;
+      ? `Hello ${worker.name}, I would like to book a ride via Quick Karya:\n📍 Pickup: ${addressText}\n🎯 Drop: ${overrideDrop?.trim() || 'Full Day / As required'}\n🗺️ Google Maps Pin: ${mapsUrl}\n👤 Customer: ${customerName}\nPlease confirm your availability. Thank you!`
+      : `Hello ${worker.name}, here is my service location for Quick Karya (${worker.category}):\n📍 Address: ${addressText}\n🗺️ Google Maps Navigation Pin: ${mapsUrl}\n👤 Customer: ${customerName}\nPlease navigate to this location. Thank you!`;
 
     // Save WhatsApp sharing to Call History
     try {
@@ -1317,13 +1433,13 @@ Please dispatch assistance immediately!`;
         workerRating: worker.rating,
         type: 'whatsapp',
         callerId: currentUser?.id,
-        callerName: currentUser?.name || 'Customer',
+        callerName: customerName,
         location: addressText
       });
     } catch {}
 
     if (Platform.OS === 'android' && ToastAndroid) {
-      ToastAndroid.show('📍 Opening WhatsApp with your GPS Map Pin!', ToastAndroid.LONG);
+      ToastAndroid.show('📍 Service alert logged! Opening WhatsApp with GPS Map Pin...', ToastAndroid.LONG);
     }
 
     Linking.openURL(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`).catch(() => {
@@ -1386,7 +1502,7 @@ Please dispatch assistance immediately!`;
     const matchesDriverSub =
       selectedCategory !== 'Driver' ||
       driverSubFilter === 'all' ||
-      getDriverSubCategory(w.vehicleType) === driverSubFilter;
+      getDriverSubCategory(w.vehicleType, w.subRole) === driverSubFilter;
     const matchesSearch =
       !searchQuery.trim() ||
       w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1443,6 +1559,12 @@ Please dispatch assistance immediately!`;
     }
 
     const existing = ownerMatch;
+    const derivedVehicleType: DriverVehicleType | undefined =
+      regCategory === 'Driver'
+        ? regSubRole === 'Truck Driver'
+          ? '6-Wheeler Medium Commercial Truck'
+          : 'Private Car Driver (Family, Outstation, Local Trips)'
+        : undefined;
     let targetWorker: WorkerProfile;
 
     if (existing) {
@@ -1451,6 +1573,7 @@ Please dispatch assistance immediately!`;
         name: regName.trim(),
         category: regCategory,
         subRole: regSubRole ? regSubRole.trim() : undefined,
+        vehicleType: derivedVehicleType || existing.vehicleType,
         experience: expNum,
         phone: formattedPhone,
         city: regCity.trim() || existing.city,
@@ -1468,6 +1591,7 @@ Please dispatch assistance immediately!`;
         name: regName.trim(),
         category: regCategory,
         subRole: regSubRole ? regSubRole.trim() : undefined,
+        vehicleType: derivedVehicleType,
         experience: expNum,
         rating: 5.0,
         reviewCount: 0,
@@ -1522,6 +1646,7 @@ Please dispatch assistance immediately!`;
           name: targetWorker.name,
           category: targetWorker.category,
           subRole: targetWorker.subRole,
+          vehicleType: targetWorker.vehicleType,
           experience: targetWorker.experience,
           phone: formattedPhone,
           city: targetWorker.city,
@@ -1634,18 +1759,18 @@ Please dispatch assistance immediately!`;
         </TouchableOpacity>
       </View>
 
-      {/* IN-APP CALL NOTIFICATION & WORKER ALERT BANNER */}
+      {/* IN-APP SERVICE REQUEST & CALL NOTIFICATION BANNER */}
       {activeCallAlert && (
         <View style={styles.inAppCallAlertBanner}>
           <View style={styles.inAppCallAlertIconBadge}>
-            <Text style={styles.inAppCallAlertIcon}>📞</Text>
+            <Text style={styles.inAppCallAlertIcon}>{activeCallAlert.icon || '📞'}</Text>
           </View>
           <View style={styles.inAppCallAlertContent}>
             <Text style={styles.inAppCallAlertTitle}>
-              Calling {activeCallAlert.workerName} ({activeCallAlert.category})
+              {activeCallAlert.title || `Calling ${activeCallAlert.workerName} (${activeCallAlert.category})`}
             </Text>
             <Text style={styles.inAppCallAlertDesc}>
-              New Customer Call Alert: A client from Quick Karya is calling you for work!
+              {activeCallAlert.message || 'New Customer Call Alert: A client from Quick Karya is calling you for work!'}
             </Text>
           </View>
           <TouchableOpacity
@@ -3739,27 +3864,36 @@ Please dispatch assistance immediately!`;
                         </View>
                       )}
                       <View>
-                        <Text style={styles.googleInputLabel}>Full Name (Google Display Name)</Text>
-                        <TextInput
-                          style={styles.googleTextInput}
-                          placeholder="e.g. Rajesh Kumar"
-                          placeholderTextColor="#64748b"
-                          value={googleCustomName}
-                          onChangeText={setGoogleCustomName}
-                          autoCapitalize="words"
-                        />
-                      </View>
-                      <View>
                         <Text style={styles.googleInputLabel}>Gmail / Google Email Address</Text>
                         <TextInput
                           style={styles.googleTextInput}
                           placeholder="e.g. rajesh.kumar@gmail.com"
                           placeholderTextColor="#64748b"
                           value={googleCustomEmail}
-                          onChangeText={setGoogleCustomEmail}
+                          onChangeText={(text) => {
+                            setGoogleCustomEmail(text);
+                            if (authError) setAuthError(null);
+                            if (text.includes('@') && !googleCustomName.trim()) {
+                              setGoogleCustomName(formatNameFromGmail(text));
+                            }
+                          }}
                           keyboardType="email-address"
                           autoCapitalize="none"
                           autoCorrect={false}
+                        />
+                      </View>
+                      <View>
+                        <Text style={styles.googleInputLabel}>Full Name (Auto-filled / Editable)</Text>
+                        <TextInput
+                          style={styles.googleTextInput}
+                          placeholder="e.g. Rajesh Kumar"
+                          placeholderTextColor="#64748b"
+                          value={googleCustomName}
+                          onChangeText={(text) => {
+                            setGoogleCustomName(text);
+                            if (authError) setAuthError(null);
+                          }}
+                          autoCapitalize="words"
                         />
                       </View>
 
@@ -4448,10 +4582,10 @@ Please dispatch assistance immediately!`;
           };
 
           const handleDispatchShareSummary = async () => {
-            const mapsLink = `https://maps.google.com/?q=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`;
+            const mapsLink = `https://www.google.com/maps/search/?api=1&query=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`;
             const summary = isDriver
-              ? `Quick Karya Driver Booking\nDriver: ${callingWorker.name} (${callingWorker.phone})\nPickup: ${callPickupLocation.trim() || userLocationName}\nDrop: ${callDropLocation.trim() || 'Flexible'}\nMap Pin: ${mapsLink}`
-              : `Quick Karya Artisan Contact\nArtisan: ${callingWorker.name} (${callingWorker.category})\nPhone: ${callingWorker.phone}\nLocation: ${callPickupLocation.trim() || userLocationName}\nMap Pin: ${mapsLink}`;
+              ? `Quick Karya Driver Booking\nDriver: ${callingWorker.name} (${callingWorker.phone})\nPickup: ${callPickupLocation.trim() || userLocationName}\nDrop: ${callDropLocation.trim() || 'Flexible'}\nCustomer: ${currentUser?.name || 'Customer'}\nMap Pin: ${mapsLink}`
+              : `Quick Karya Artisan Contact\nArtisan: ${callingWorker.name} (${callingWorker.category})\nPhone: ${callingWorker.phone}\nLocation: ${callPickupLocation.trim() || userLocationName}\nCustomer: ${currentUser?.name || 'Customer'}\nMap Pin: ${mapsLink}`;
             try {
               await Share.share({ message: summary });
             } catch {
@@ -4488,6 +4622,22 @@ Please dispatch assistance immediately!`;
                   <Text style={styles.nativeCallerIdText}>🛡️ Caller ID: Quick Karya</Text>
                   <Text style={styles.nativeCallerIdSub}>Direct Free Contact</Text>
                 </View>
+
+                {activeCallAlert && (
+                  <View style={[styles.inAppCallAlertBanner, { marginHorizontal: 14, marginTop: 10, borderRadius: 12, borderWidth: 1.5, borderColor: '#FFA500' }]}>
+                    <View style={styles.inAppCallAlertIconBadge}>
+                      <Text style={styles.inAppCallAlertIcon}>{activeCallAlert.icon || '📞'}</Text>
+                    </View>
+                    <View style={styles.inAppCallAlertContent}>
+                      <Text style={styles.inAppCallAlertTitle}>
+                        {activeCallAlert.title || `Calling ${activeCallAlert.workerName}`}
+                      </Text>
+                      <Text style={styles.inAppCallAlertDesc}>
+                        {activeCallAlert.message || 'Incoming Quick Karya service alert sent to artisan!'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ padding: 14, gap: 12 }} keyboardShouldPersistTaps="handled">
                   {/* Job Site / Pickup Address + Live GPS Pin */}
@@ -4538,7 +4688,7 @@ Please dispatch assistance immediately!`;
 
                     <TouchableOpacity
                       style={styles.nativeMapPinRow}
-                      onPress={() => Linking.openURL(`https://maps.google.com/?q=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`).catch(() => {})}
+                      onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`).catch(() => {})}
                     >
                       <Text style={styles.nativeMapPinCoord} numberOfLines={1}>
                         📍 GPS: {pinCoords.lat.toFixed(4)}, {pinCoords.lng.toFixed(4)}
@@ -8376,6 +8526,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 9999,
+    elevation: 20,
     backgroundColor: 'rgba(0, 10, 25, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',

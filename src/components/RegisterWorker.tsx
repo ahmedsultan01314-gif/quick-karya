@@ -240,10 +240,18 @@ export const RegisterWorker: React.FC<RegisterWorkerProps> = ({
         }
       } catch {}
 
+      const derivedVehicleType =
+        category === 'Driver'
+          ? subRole === 'Truck Driver'
+            ? '6-Wheeler Medium Commercial Truck'
+            : 'Private Car Driver (Family, Outstation, Local Trips)'
+          : undefined;
+
       const payload = {
         name: name.trim(),
         category,
         subRole: subRole ? subRole.trim() : undefined,
+        vehicleType: derivedVehicleType,
         experience: expNum,
         hourlyRate: 0,
         rate: 0,

@@ -526,15 +526,16 @@ app.post('/api/notifications/register-token', async (req, res) => {
 // Targeted Worker Push Notification:
 // When customer taps 'Call Worker', route notification directly to target Worker's FCM device token ONLY
 app.post('/api/notifications/notify-worker', async (req, res) => {
-  const { workerId, workerPhone, workerName, customerName, customerPhone, category } = req.body;
+  const { workerId, workerPhone, workerName, customerName, customerPhone, category, actionType } = req.body;
   const cleanWorkerPhone = (workerPhone || '').replace(/[^0-9]/g, '').slice(-10);
   const callerName = customerName?.trim() || 'Customer';
   const callerPhone = customerPhone?.trim() || 'Mobile Caller';
+  const isGpsShare = actionType === 'gps_share';
 
-  // Exact requested push notification alert:
-  // "New Customer Call Alert: A client from Quick Karya is calling you for work!"
   const notificationTitle = 'Quick Karya';
-  const notificationBody = 'New Customer Call Alert: A client from Quick Karya is calling you for work!';
+  const notificationBody = isGpsShare
+    ? `New Service Location Pin: ${callerName} shared a GPS location & Quick Karya request with you!`
+    : 'New Customer Call Alert: A client from Quick Karya is calling you for work!';
 
   // Lookup target worker's registered FCM / Expo device token
   let targetToken = (workerId && deviceTokenStore.get(workerId)) || (cleanWorkerPhone && deviceTokenStore.get(cleanWorkerPhone));
@@ -795,6 +796,7 @@ app.post('/api/workers', async (req, res) => {
     photo,
     photoUrl,
     subRole,
+    vehicleType,
     userId
   } = req.body;
 
@@ -860,11 +862,20 @@ app.post('/api/workers', async (req, res) => {
   const determinedState = state?.trim() || (matched?.state || 'Tripura');
   const profilePhoto = photo || photoUrl || undefined;
 
+  const resolvedVehicleType =
+    vehicleType ||
+    (category === 'Driver' && subRole
+      ? subRole === 'Truck Driver'
+        ? '6-Wheeler Medium Commercial Truck'
+        : 'Private Car Driver (Family, Outstation, Local Trips)'
+      : undefined);
+
   if (existingWorker) {
     // Update existing worker profile in-place
     existingWorker.name = name.trim();
     existingWorker.category = category as ServiceCategory;
     if (subRole) existingWorker.subRole = subRole.trim();
+    if (resolvedVehicleType) existingWorker.vehicleType = resolvedVehicleType;
     existingWorker.experience = parseInt(experience, 10) || existingWorker.experience;
     existingWorker.phone = `+91${cleanPhone}`;
     existingWorker.city = city.trim();
@@ -908,6 +919,7 @@ app.post('/api/workers', async (req, res) => {
     name: name.trim(),
     category: category as ServiceCategory,
     subRole: subRole ? subRole.trim() : undefined,
+    vehicleType: resolvedVehicleType,
     experience: parseInt(experience, 10) || 1,
     rating: 5.0,
     reviewCount: 0, // Starts at 0 reviews for authentic ratings

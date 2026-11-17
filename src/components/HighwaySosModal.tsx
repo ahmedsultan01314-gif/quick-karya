@@ -47,7 +47,7 @@ export const HighwaySosModal: React.FC<HighwaySosModalProps> = ({
   }`;
 
   const copyCoordinates = () => {
-    const text = `GPS: ${lat}, ${lng} (${locationLabel}) https://maps.google.com/?q=${lat},${lng}`;
+    const text = `GPS: ${lat},${lng} (${locationLabel}) https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
     navigator.clipboard?.writeText(text);
     setCopiedCoords(true);
     setTimeout(() => setCopiedCoords(false), 2500);
@@ -78,12 +78,12 @@ export const HighwaySosModal: React.FC<HighwaySosModalProps> = ({
 
   const handleSosWhatsApp = (phone: string, serviceTitle: string) => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
-    const coords = `${lat}, ${lng}`;
+    const coords = `${lat},${lng}`;
     const msg = `🚨 *HIGHWAY SOS (24/7) - ${serviceTitle.toUpperCase()} REQUEST*
 Hello, I am stranded on the highway and need urgent assistance:
 📍 Location: ${locationLabel}
-🌐 GPS Coordinates: ${coords}
-🗺️ Google Maps: https://maps.google.com/?q=${coords}
+🌐 GPS Coordinates: ${lat}, ${lng}
+🗺️ Google Maps: https://www.google.com/maps/search/?api=1&query=${coords}
 👤 Driver: ${currentUser?.name || 'Driver in Distress'}
 📱 Phone: ${currentUser?.phone || ''}
 Please dispatch assistance immediately!`;

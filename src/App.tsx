@@ -23,7 +23,13 @@ import { HighwaySosModal } from './components/HighwaySosModal';
 import { SettingsView } from './components/SettingsView';
 import { NotificationToast } from './components/NotificationToast';
 import { CityCoord, KNOWN_LOCATIONS } from './utils/geo';
-import { subscribeWorkersFromCloud } from './firebase';
+import {
+  subscribeWorkersFromCloud,
+  cleanAndDeduplicateWorkers,
+  purgeLocalStorageArtifacts,
+  enforceFirestoreSecurityAndCleanup,
+  isMockOrTestProfile
+} from './firebase';
 import { setupNotifications } from './utils/notifications';
 
 export default function App() {
@@ -44,15 +50,22 @@ export default function App() {
   const [activeServiceRequest, setActiveServiceRequest] = useState<ServiceRequest | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
 
-  // Check persistent local user session on mount and initialize notifications
+  // Check persistent local user session on mount, purge mock/duplicate records, and initialize notifications
   useEffect(() => {
     setupNotifications().catch(() => {});
+    purgeLocalStorageArtifacts();
+    enforceFirestoreSecurityAndCleanup().catch(() => {});
 
     try {
       const stored = localStorage.getItem('quick_karya_user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.phone && parsed?.verified !== false) {
+        if (
+          parsed &&
+          (parsed.phone || parsed.email) &&
+          parsed.verified !== false &&
+          !isMockOrTestProfile(parsed)
+        ) {
           setCurrentUser(parsed);
           setIsAuthModalOpen(false);
           return;
@@ -103,11 +116,7 @@ export default function App() {
       const res = await fetch(`/api/workers?${params.toString()}`);
       if (res.ok) {
         const data = (await res.json()) as WorkerProfile[];
-        const clean = data.filter(
-          (w) =>
-            !w.name?.toLowerCase().includes('santosh sharma') &&
-            w.id !== 'MnZmnMfibdTUNGD6mvfc'
-        );
+        const clean = cleanAndDeduplicateWorkers(data);
         setWorkers(clean);
       }
     } catch (err) {
