@@ -5,10 +5,12 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   deleteDoc,
   query,
   where,
+  runTransaction,
   onSnapshot,
   type Firestore
 } from 'firebase/firestore';
@@ -31,66 +33,42 @@ import firebaseConfig from '../firebase-applet-config.json';
 import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord } from './types';
 import { getApiUrl } from './config';
 
+// ==========================================
+// STRUCTURED FIRESTORE ERROR HANDLING
+// ==========================================
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write'
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
 let firebaseApp: FirebaseApp | null = null;
 try {
   firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 } catch (err) {
   console.warn('Firebase App initialization failed safely:', err);
   firebaseApp = null;
-}
-
-/**
- * Filter out demo / test accounts and deduplicate workers by phone & workerId
- */
-export function cleanAndDeduplicateWorkers(rawList: WorkerProfile[]): WorkerProfile[] {
-  if (!Array.isArray(rawList)) return [];
-
-  const seenKeys = new Set<string>();
-  const cleanList: WorkerProfile[] = [];
-
-  for (const w of rawList) {
-    if (!w || !w.name) continue;
-
-    const lowerName = (w.name || '').trim().toLowerCase();
-    const lowerId = (w.id || '').toLowerCase();
-    const lowerWorkerId = (w.workerId || '').toLowerCase();
-    const rawPhone = (w.phone || '').replace(/[^0-9]/g, '').slice(-10);
-
-    // Filter out known test, demo, and dummy profile artifacts
-    if (
-      lowerName.includes('santosh sharma') ||
-      lowerName.includes('nagan dhar') ||
-      lowerName.includes('demo worker') ||
-      lowerName.includes('test worker') ||
-      lowerName.includes('sample artisan') ||
-      lowerName.includes('dummy') ||
-      lowerId === 'mnzmnmfibdtungd6mvfc' ||
-      lowerWorkerId.includes('demo') ||
-      lowerWorkerId.includes('test') ||
-      rawPhone === '1234567890' ||
-      rawPhone === '0000000000' ||
-      rawPhone === '9999999999' ||
-      rawPhone === '1111111111'
-    ) {
-      continue;
-    }
-
-    // Require valid 10-digit mobile number for genuine contact
-    if (rawPhone.length < 10 && !w.workerId) {
-      continue;
-    }
-
-    // Deduplicate: primary key is 10-digit phone; secondary is workerId or id
-    const dedupKey = rawPhone.length === 10 ? `phone_${rawPhone}` : `id_${w.workerId || w.id}`;
-    if (seenKeys.has(dedupKey)) {
-      continue;
-    }
-    seenKeys.add(dedupKey);
-
-    cleanList.push(w);
-  }
-
-  return cleanList;
 }
 
 let db: Firestore | null = null;
@@ -114,6 +92,257 @@ try {
 } catch (err) {
   console.warn('Firebase Auth initialization failed safely:', err);
   auth = null;
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid ?? null,
+      email: auth?.currentUser?.email ?? null,
+      emailVerified: auth?.currentUser?.emailVerified ?? null,
+      isAnonymous: auth?.currentUser?.isAnonymous ?? null,
+      tenantId: auth?.currentUser?.tenantId ?? null,
+      providerInfo:
+        auth?.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email
+        })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+function isPermissionDeniedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  const code = (err as any)?.code || '';
+  return (
+    code === 'permission-denied' ||
+    msg.includes('Missing or insufficient permissions') ||
+    msg.includes('PERMISSION_DENIED')
+  );
+}
+
+// ==========================================
+// STRICT PHONE & MOCK/DEMO PROFILE GUARDS
+// ==========================================
+
+const BLOCKED_SYNTHETIC_PHONES = new Set<string>([
+  '0000000000',
+  '1111111111',
+  '2222222222',
+  '3333333333',
+  '4444444444',
+  '5555555555',
+  '6666666666',
+  '7777777777',
+  '8888888888',
+  '9999999999',
+  '1234567890',
+  '0123456789',
+  '9876543210',
+  '0987654321',
+  '9123456789',
+  '6789012345',
+  '9876543211',
+  '9988776655',
+  '9999988888',
+  '9876500000',
+  '9999900000',
+  '9000000000',
+  '8000000000',
+  '7000000000',
+  '6000000000',
+  '8888888880',
+  '9898989898',
+  '9090909090',
+  '7878787878',
+  '6969696969'
+]);
+
+const BLOCKED_MOCK_DOC_IDS = new Set<string>([
+  'mnzmnmfibdtungd6mvfc',
+  'demo-worker',
+  'test-worker',
+  'sample-worker',
+  'mock-worker'
+]);
+
+const BLOCKED_NAME_PATTERNS: RegExp[] = [
+  /\bsantosh\s+sharma\b/i,
+  /\bnagan\s+dhar\b/i,
+  /\b(demo|test|mock|dummy|sample|placeholder|fake|sandbox)\s*(worker|artisan|user|account|profile|customer|member)?\b/i,
+  /\b(john|jane)\s+doe\b/i,
+  /\bquick\s*karya\s*member\b/i
+];
+
+const BLOCKED_ID_PATTERNS: RegExp[] = [
+  /(^|[-_])(demo|test|mock|dummy|sample|fake|sandbox)([-_]|$)/i,
+  /^google_native_/i
+];
+
+const BLOCKED_EMAIL_PATTERNS: RegExp[] = [
+  /^user@quickkarya\.com$/i,
+  /^(demo|test|mock|dummy|sample|fake)[.+_-]?.*@/i,
+  /@(example\.com|example\.org|example\.net|test\.com|mailinator\.com)$/i
+];
+
+/**
+ * Normalize a raw phone string to a clean 10-digit Indian mobile number (or '' if malformed).
+ */
+export function normalizePhone10(phone?: string | null): string {
+  if (!phone || typeof phone !== 'string') return '';
+  const digits = phone.replace(/[^0-9]/g, '');
+  if (digits.length === 10) return digits;
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  if (digits.length > 12 && digits.startsWith('91')) {
+    const trimmed = digits.slice(-10);
+    return digits.length <= 13 ? trimmed : '';
+  }
+  return '';
+}
+
+/**
+ * Validate that a phone number is a genuine 10-digit Indian mobile number (starts with 6-9, not synthetic/repeated/sequential).
+ */
+export function isGenuinePhone10(phone?: string | null): boolean {
+  const phone10 = normalizePhone10(phone);
+  if (!/^[6-9]\d{9}$/.test(phone10)) return false;
+  if (BLOCKED_SYNTHETIC_PHONES.has(phone10)) return false;
+  if (/^(\d)\1{9}$/.test(phone10)) return false;
+  if (/(\d)\1{6,}/.test(phone10)) return false;
+  if (/^(\d{2})\1{4}$/.test(phone10)) return false;
+  return true;
+}
+
+/**
+ * Detect mock, demo, test, or placeholder profiles by id, workerId, name, email, or phone.
+ */
+export function isMockOrTestProfile(profile: {
+  id?: string | null;
+  workerId?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}): boolean {
+  if (!profile) return true;
+
+  const lowerId = (profile.id || '').trim().toLowerCase();
+  const lowerWorkerId = (profile.workerId || '').trim().toLowerCase();
+  const cleanName = (profile.name || '').trim();
+  const cleanEmail = (profile.email || '').trim().toLowerCase();
+
+  if (lowerId && (BLOCKED_MOCK_DOC_IDS.has(lowerId) || BLOCKED_ID_PATTERNS.some((re) => re.test(lowerId)))) {
+    return true;
+  }
+  if (lowerWorkerId && BLOCKED_ID_PATTERNS.some((re) => re.test(lowerWorkerId))) {
+    return true;
+  }
+  if (cleanName && BLOCKED_NAME_PATTERNS.some((re) => re.test(cleanName))) {
+    return true;
+  }
+  if (cleanEmail && BLOCKED_EMAIL_PATTERNS.some((re) => re.test(cleanEmail))) {
+    return true;
+  }
+  if (profile.phone && !isGenuinePhone10(profile.phone)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Strict validator for genuine artisan/worker profiles.
+ */
+export function validateGenuineWorker(worker: Partial<WorkerProfile>): {
+  valid: boolean;
+  phone10: string;
+  reason?: string;
+} {
+  if (!worker) {
+    return { valid: false, phone10: '', reason: 'Worker profile payload is empty.' };
+  }
+
+  const cleanName = (worker.name || '').trim();
+  if (cleanName.length < 2 || cleanName.length > 100) {
+    return { valid: false, phone10: '', reason: 'A valid artisan name (2–100 characters) is required.' };
+  }
+
+  if (!worker.category || typeof worker.category !== 'string' || !worker.category.trim()) {
+    return { valid: false, phone10: '', reason: 'A valid service category is required.' };
+  }
+
+  const phone10 = normalizePhone10(worker.phone);
+  if (!isGenuinePhone10(worker.phone)) {
+    return {
+      valid: false,
+      phone10,
+      reason: 'A genuine 10-digit Indian mobile number (starting with 6–9) is required. Test or invalid numbers are blocked.'
+    };
+  }
+
+  if (
+    isMockOrTestProfile({
+      id: worker.id,
+      workerId: worker.workerId,
+      name: worker.name,
+      phone: worker.phone
+    })
+  ) {
+    return {
+      valid: false,
+      phone10,
+      reason: 'Mock, demo, or test artisan profiles are strictly blocked.'
+    };
+  }
+
+  return { valid: true, phone10 };
+}
+
+function getWorkerCanonicalScore(w: Partial<WorkerProfile>): number {
+  let score = 0;
+  if (w.isVerified || w.verified) score += 1000;
+  if (typeof w.reviewCount === 'number' && w.reviewCount > 0) score += Math.min(w.reviewCount, 50) * 10;
+  if (w.photo || w.avatar || w.avatarUrl || w.photoUrl) score += 40;
+  if (w.workerId && /^QK-\d+/i.test(w.workerId)) score += 20;
+  if (w.id && !w.id.startsWith('w-local-')) score += 10;
+  if ((w as any).phoneVerified) score += 15;
+  return score;
+}
+
+/**
+ * Filter out demo / test / invalid-phone accounts and deduplicate workers strictly by 10-digit phone.
+ */
+export function cleanAndDeduplicateWorkers(rawList: WorkerProfile[]): WorkerProfile[] {
+  if (!Array.isArray(rawList)) return [];
+
+  const byPhone = new Map<string, WorkerProfile>();
+
+  for (const w of rawList) {
+    if (!w) continue;
+    const validation = validateGenuineWorker(w);
+    if (!validation.valid) continue;
+
+    const existing = byPhone.get(validation.phone10);
+    if (!existing) {
+      byPhone.set(validation.phone10, w);
+      continue;
+    }
+
+    if (getWorkerCanonicalScore(w) > getWorkerCanonicalScore(existing)) {
+      byPhone.set(validation.phone10, w);
+    }
+  }
+
+  return Array.from(byPhone.values());
 }
 
 export { firebaseApp, db, auth };
@@ -143,7 +372,6 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
     prompt: 'select_account'
   });
 
-  // Verify auth is initialized and signInWithPopup is available in current environment
   if (
     typeof window !== 'undefined' &&
     typeof window.document !== 'undefined' &&
@@ -155,11 +383,11 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
       const user = result.user;
       return {
         uid: user.uid,
-        name: user.displayName || user.email?.split('@')[0] || 'Quick Karya Member',
+        name: user.displayName || user.email?.split('@')[0] || 'Quick Karya User',
         email: user.email || '',
         photoUrl:
           user.photoURL ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.displayName || 'Member')}&backgroundColor=001F3F&textColor=FFA500`
+          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.displayName || 'User')}&backgroundColor=001F3F&textColor=FFA500`
       };
     } catch (popupErr: any) {
       console.warn('Firebase signInWithPopup notice:', popupErr?.code, popupErr?.message);
@@ -173,14 +401,7 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
     }
   }
 
-  // Graceful native fallback
-  const fallbackEmail = 'user@quickkarya.com';
-  return {
-    uid: `google_native_${Date.now().toString(36)}`,
-    name: 'Quick Karya Member',
-    email: fallbackEmail,
-    photoUrl: 'https://api.dicebear.com/7.x/initials/svg?seed=Quick%20Karya&backgroundColor=001F3F&textColor=FFA500'
-  };
+  throw new Error('Google Sign-In popup is unavailable in this runtime. Please use Email & Password Sign-In.');
 }
 
 /**
@@ -213,7 +434,6 @@ export async function signInWithEmail(email: string, password: string): Promise<
       if (firebaseErr?.code === 'auth/wrong-password' || firebaseErr?.code === 'auth/invalid-credential') {
         throw new Error('Incorrect email or password.');
       }
-      // If operation-not-allowed or native environment, fall through to backend
     }
   }
 
@@ -228,7 +448,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
       },
       body: JSON.stringify({ email: cleanEmail, password })
     });
-  } catch (netErr: any) {
+  } catch {
     throw new Error('Could not connect to authentication server. Please check your network.');
   }
 
@@ -303,7 +523,7 @@ export async function signUpWithEmail(email: string, password: string, name?: st
       },
       body: JSON.stringify({ email: cleanEmail, password, name: displayName })
     });
-  } catch (netErr: any) {
+  } catch {
     throw new Error('Could not connect to authentication server. Please check your network.');
   }
 
@@ -333,14 +553,13 @@ export async function signUpWithEmail(email: string, password: string, name?: st
 }
 
 /**
- * Firebase Phone Authentication (Native SMS Dispatch without 3rd party API keys)
+ * Firebase Phone Authentication helpers
  */
 let confirmationResultStore: ConfirmationResult | null = null;
 let sessionInfoStore: string | null = null;
 
 export function setupRecaptchaVerifier(containerId: string = 'recaptcha-container'): RecaptchaVerifier | null {
   if (!auth || typeof window === 'undefined' || typeof document === 'undefined') {
-    // Running in native environment without DOM or uninitialized auth
     return null;
   }
 
@@ -362,9 +581,7 @@ export function setupRecaptchaVerifier(containerId: string = 'recaptcha-containe
 
   const verifier = new RecaptchaVerifier(auth, containerId, {
     size: 'invisible',
-    callback: () => {
-      // reCAPTCHA solved automatically
-    },
+    callback: () => {},
     'expired-callback': () => {
       console.warn('reCAPTCHA expired, please request code again.');
     }
@@ -374,14 +591,13 @@ export function setupRecaptchaVerifier(containerId: string = 'recaptcha-containe
   return verifier;
 }
 
-/**
- * Send SMS OTP directly through Firebase Phone Auth (Web SDK or Firebase Identity Toolkit REST)
- */
 export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<{ success: boolean; sessionInfo?: string }> {
-  const clean = phoneNumber.replace(/[^0-9]/g, '').slice(-10);
+  const clean = normalizePhone10(phoneNumber);
+  if (!isGenuinePhone10(clean)) {
+    throw new Error('Invalid mobile number format. Please provide a genuine 10-digit mobile number.');
+  }
   const formattedPhone = `+91${clean}`;
 
-  // 1. If in browser environment with DOM, try Firebase Web SDK
   if (auth && typeof window !== 'undefined' && typeof document !== 'undefined') {
     try {
       const verifier = setupRecaptchaVerifier('recaptcha-container');
@@ -402,11 +618,9 @@ export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<{ succe
       if (webErr?.code === 'auth/invalid-phone-number') {
         throw new Error('Invalid mobile number format. Please provide a valid 10-digit mobile number.');
       }
-      // If other client error, proceed to try Firebase REST endpoint
     }
   }
 
-  // 2. Call Firebase Identity Toolkit REST API (Works on Android Native and Web with full protocol)
   const restUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendVerificationCode?key=${firebaseConfig.apiKey}`;
   const response = await fetch(restUrl, {
     method: 'POST',
@@ -445,14 +659,10 @@ export async function sendFirebasePhoneOtp(phoneNumber: string): Promise<{ succe
   return { success: true, sessionInfo: data?.sessionInfo };
 }
 
-/**
- * Verify OTP entered by user through Firebase Phone Auth
- */
 export async function verifyFirebasePhoneOtp(
   otpCode: string,
   confirmationResult?: ConfirmationResult
 ): Promise<{ uid: string; phoneNumber?: string }> {
-  // 1. Try Firebase Web SDK confirmationResult if available
   const activeConfirmation =
     confirmationResult || confirmationResultStore || (typeof window !== 'undefined' ? (window as any).firebaseConfirmationResult : null);
   if (activeConfirmation) {
@@ -467,11 +677,9 @@ export async function verifyFirebasePhoneOtp(
       if (confErr?.code === 'auth/invalid-verification-code') {
         throw new Error('Invalid OTP code. Please check and re-enter the 6-digit code.');
       }
-      // If other error, check REST session below
     }
   }
 
-  // 2. Try Firebase Identity Toolkit REST signInWithPhoneNumber
   const activeSessionInfo =
     sessionInfoStore || (typeof window !== 'undefined' ? (window as any).firebaseSessionInfo : null);
   if (!activeSessionInfo) {
@@ -510,70 +718,603 @@ export { firebaseSignOut, onAuthStateChanged };
 export type { ConfirmationResult, FirebaseUser };
 
 export const WORKERS_COLLECTION = 'workers';
+export const PHONE_REGISTRY_COLLECTION = 'phoneRegistry';
 export const USERS_COLLECTION = 'users';
+export const USER_PHONE_REGISTRY_COLLECTION = 'userPhoneRegistry';
 export const REVIEWS_COLLECTION = 'reviews';
 export const SERVICE_REQUESTS_COLLECTION = 'serviceRequests';
 export const CALL_LOGS_COLLECTION = 'callLogs';
 
+function stripUndefined<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const clean: Record<string, any> = {};
+  Object.keys(obj).forEach((key) => {
+    if (obj[key] !== undefined) {
+      clean[key] = obj[key];
+    }
+  });
+  return clean;
+}
+
+// ==========================================
+// CONNECTION TEST & STRICT DB CLEANUP ENGINE
+// ==========================================
+
+export async function testConnection(): Promise<boolean> {
+  if (!db) return false;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration (the client is offline).');
+      return false;
+    }
+    return true;
+  }
+}
+
+export interface CleanupReport {
+  executedAt: string;
+  workersScanned: number;
+  workersRetained: number;
+  deletedMockOrInvalidWorkers: string[];
+  deletedDuplicateWorkers: string[];
+  usersScanned: number;
+  usersRetained: number;
+  deletedMockOrInvalidUsers: string[];
+  deletedDuplicateUsers: string[];
+  deletedOrphanPhoneLocks: string[];
+  deletedMockCallLogs: string[];
+  deletedMockReviews: string[];
+  syncedPhoneLocks: number;
+  errors: string[];
+}
+
+let activeCleanupPromise: Promise<CleanupReport> | null = null;
+let lastCleanupTimestamp = 0;
+const CLEANUP_COOLDOWN_MS = 30_000;
+
+function getUserCanonicalScore(u: Record<string, any>): number {
+  let score = 0;
+  if (u.verified) score += 100;
+  if (u.workerId) score += 50;
+  if (u.role === 'worker') score += 20;
+  if (u.email && !BLOCKED_EMAIL_PATTERNS.some((re) => re.test(String(u.email)))) score += 15;
+  if (u.profilePhoto || u.avatar) score += 10;
+  if (u.id && !String(u.id).startsWith('usr_')) score += 5;
+  return score;
+}
+
 /**
- * Save worker profile to Cloud Firestore
+ * Strict Firestore security & cleanup function run on database initialization:
+ * - Permanently deletes mock/demo/test artisan entries and invalid/fake phone records
+ * - Permanently deletes duplicate phone number entries (keeping 1 canonical genuine profile per unique 10-digit phone)
+ * - Syncs unique phone locks in /phoneRegistry/{phone10}
+ * - Permanently deletes mock/demo/test user accounts and duplicate phone user accounts
+ * - Removes mock/test artifacts in /callLogs and /reviews
+ */
+export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boolean }): Promise<CleanupReport> {
+  const emptyReport: CleanupReport = {
+    executedAt: new Date().toISOString(),
+    workersScanned: 0,
+    workersRetained: 0,
+    deletedMockOrInvalidWorkers: [],
+    deletedDuplicateWorkers: [],
+    usersScanned: 0,
+    usersRetained: 0,
+    deletedMockOrInvalidUsers: [],
+    deletedDuplicateUsers: [],
+    deletedOrphanPhoneLocks: [],
+    deletedMockCallLogs: [],
+    deletedMockReviews: [],
+    syncedPhoneLocks: 0,
+    errors: []
+  };
+
+  if (!db) return emptyReport;
+
+  const now = Date.now();
+  if (!options?.force && activeCleanupPromise) {
+    return activeCleanupPromise;
+  }
+  if (!options?.force && now - lastCleanupTimestamp < CLEANUP_COOLDOWN_MS) {
+    return emptyReport;
+  }
+
+  const run = async (): Promise<CleanupReport> => {
+    const report: CleanupReport = {
+      ...emptyReport,
+      executedAt: new Date().toISOString()
+    };
+    const activeDb = db;
+    if (!activeDb) return report;
+
+    const deletedWorkerIds = new Set<string>();
+    const survivorByPhone = new Map<string, { id: string; data: Record<string, any> }>();
+
+    // 1. Scan & clean /workers
+    try {
+      const workersSnap = await getDocs(collection(activeDb, WORKERS_COLLECTION));
+      report.workersScanned = workersSnap.size;
+
+      const invalidWorkerIds: string[] = [];
+      const candidatesByPhone = new Map<string, Array<{ id: string; data: Record<string, any> }>>();
+
+      workersSnap.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, any>;
+        const candidate: WorkerProfile = {
+          ...(data as WorkerProfile),
+          id: docSnap.id
+        };
+        const validation = validateGenuineWorker(candidate);
+        if (!validation.valid) {
+          invalidWorkerIds.push(docSnap.id);
+          return;
+        }
+        const group = candidatesByPhone.get(validation.phone10) || [];
+        group.push({ id: docSnap.id, data });
+        candidatesByPhone.set(validation.phone10, group);
+      });
+
+      const duplicateWorkerIds: string[] = [];
+      for (const [phone10, group] of candidatesByPhone.entries()) {
+        group.sort((a, b) => getWorkerCanonicalScore(b.data as WorkerProfile) - getWorkerCanonicalScore(a.data as WorkerProfile));
+        const winner = group[0];
+        survivorByPhone.set(phone10, winner);
+        for (let i = 1; i < group.length; i++) {
+          duplicateWorkerIds.push(group[i].id);
+        }
+      }
+
+      // Sync canonical phone locks & phoneNormalized FIRST so security rules allow duplicate deletion
+      for (const [phone10, winner] of survivorByPhone.entries()) {
+        try {
+          const lockRef = doc(activeDb, PHONE_REGISTRY_COLLECTION, phone10);
+          await setDoc(
+            lockRef,
+            stripUndefined({
+              phone10,
+              workerDocId: winner.id,
+              workerId: winner.data.workerId || `QK-${winner.id.slice(-5).toUpperCase()}`,
+              updatedAt: new Date().toISOString()
+            })
+          );
+          report.syncedPhoneLocks += 1;
+
+          if (winner.data.phoneNormalized !== phone10) {
+            await setDoc(
+              doc(activeDb, WORKERS_COLLECTION, winner.id),
+              { phoneNormalized: phone10 },
+              { merge: true }
+            );
+          }
+        } catch (err: any) {
+          report.errors.push(`phoneRegistry/${phone10}: ${err?.message || String(err)}`);
+        }
+      }
+
+      // Permanently delete invalid/mock workers
+      for (const badId of invalidWorkerIds) {
+        try {
+          await deleteDoc(doc(activeDb, WORKERS_COLLECTION, badId));
+          report.deletedMockOrInvalidWorkers.push(badId);
+          deletedWorkerIds.add(badId);
+        } catch (err: any) {
+          report.errors.push(`delete workers/${badId}: ${err?.message || String(err)}`);
+        }
+      }
+
+      // Permanently delete duplicate-phone workers
+      for (const dupId of duplicateWorkerIds) {
+        try {
+          await deleteDoc(doc(activeDb, WORKERS_COLLECTION, dupId));
+          report.deletedDuplicateWorkers.push(dupId);
+          deletedWorkerIds.add(dupId);
+        } catch (err: any) {
+          report.errors.push(`delete dup workers/${dupId}: ${err?.message || String(err)}`);
+        }
+      }
+
+      report.workersRetained = survivorByPhone.size;
+    } catch (err: any) {
+      if (isPermissionDeniedError(err)) {
+        report.errors.push(`workers scan permission denied: ${err?.message}`);
+      } else {
+        report.errors.push(`workers cleanup error: ${err?.message || String(err)}`);
+      }
+    }
+
+    // 2. Clean orphaned /phoneRegistry locks
+    try {
+      const regSnap = await getDocs(collection(activeDb, PHONE_REGISTRY_COLLECTION));
+      for (const docSnap of regSnap.docs) {
+        const phone10 = docSnap.id;
+        const data = docSnap.data() as Record<string, any>;
+        const survivor = survivorByPhone.get(phone10);
+        if (!isGenuinePhone10(phone10) || !survivor || data.workerDocId !== survivor.id) {
+          try {
+            await deleteDoc(doc(activeDb, PHONE_REGISTRY_COLLECTION, phone10));
+            report.deletedOrphanPhoneLocks.push(phone10);
+          } catch (err: any) {
+            report.errors.push(`delete phoneRegistry/${phone10}: ${err?.message || String(err)}`);
+          }
+        }
+      }
+    } catch {
+      // phoneRegistry list may be restricted when unauthenticated; non-fatal
+    }
+
+    // 3. Scan & clean /users
+    try {
+      const usersSnap = await getDocs(collection(activeDb, USERS_COLLECTION));
+      report.usersScanned = usersSnap.size;
+
+      const invalidUserIds: string[] = [];
+      const usersByPhone = new Map<string, Array<{ id: string; data: Record<string, any> }>>();
+      let usersWithoutPhoneCount = 0;
+
+      usersSnap.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, any>;
+        const hasPhone = typeof data.phone === 'string' && data.phone.trim().length > 0;
+        const hasEmail = typeof data.email === 'string' && data.email.trim().length > 0;
+        const isMock = isMockOrTestProfile({
+          id: docSnap.id,
+          workerId: data.workerId,
+          name: data.name,
+          email: data.email,
+          phone: hasPhone ? data.phone : undefined
+        });
+
+        if (isMock || !data.name || (!hasPhone && !hasEmail)) {
+          invalidUserIds.push(docSnap.id);
+          return;
+        }
+
+        if (hasPhone) {
+          const phone10 = normalizePhone10(data.phone);
+          if (!isGenuinePhone10(phone10)) {
+            invalidUserIds.push(docSnap.id);
+            return;
+          }
+          const group = usersByPhone.get(phone10) || [];
+          group.push({ id: docSnap.id, data });
+          usersByPhone.set(phone10, group);
+        } else {
+          usersWithoutPhoneCount += 1;
+        }
+      });
+
+      const duplicateUserIds: string[] = [];
+      const survivingUserByPhone = new Map<string, { id: string; data: Record<string, any> }>();
+      for (const [phone10, group] of usersByPhone.entries()) {
+        group.sort((a, b) => {
+          const scoreDiff = getUserCanonicalScore(b.data) - getUserCanonicalScore(a.data);
+          if (scoreDiff !== 0) return scoreDiff;
+          return String(b.data.createdAt || '').localeCompare(String(a.data.createdAt || ''));
+        });
+        survivingUserByPhone.set(phone10, group[0]);
+        for (let i = 1; i < group.length; i++) {
+          duplicateUserIds.push(group[i].id);
+        }
+      }
+
+      // Sync canonical userPhoneRegistry locks & phoneNormalized FIRST
+      for (const [phone10, winner] of survivingUserByPhone.entries()) {
+        try {
+          await setDoc(doc(activeDb, USER_PHONE_REGISTRY_COLLECTION, phone10), {
+            phone10,
+            userDocId: winner.id,
+            updatedAt: new Date().toISOString()
+          });
+          if (winner.data.phoneNormalized !== phone10) {
+            await setDoc(
+              doc(activeDb, USERS_COLLECTION, winner.id),
+              { phoneNormalized: phone10 },
+              { merge: true }
+            );
+          }
+        } catch (err: any) {
+          report.errors.push(`userPhoneRegistry/${phone10}: ${err?.message || String(err)}`);
+        }
+      }
+
+      for (const badUid of invalidUserIds) {
+        try {
+          await deleteDoc(doc(activeDb, USERS_COLLECTION, badUid));
+          report.deletedMockOrInvalidUsers.push(badUid);
+        } catch (err: any) {
+          report.errors.push(`delete users/${badUid}: ${err?.message || String(err)}`);
+        }
+      }
+
+      for (const dupUid of duplicateUserIds) {
+        try {
+          await deleteDoc(doc(activeDb, USERS_COLLECTION, dupUid));
+          report.deletedDuplicateUsers.push(dupUid);
+        } catch (err: any) {
+          report.errors.push(`delete dup users/${dupUid}: ${err?.message || String(err)}`);
+        }
+      }
+
+      // Clean orphaned userPhoneRegistry locks
+      try {
+        const uRegSnap = await getDocs(collection(activeDb, USER_PHONE_REGISTRY_COLLECTION));
+        for (const docSnap of uRegSnap.docs) {
+          const phone10 = docSnap.id;
+          const data = docSnap.data() as Record<string, any>;
+          const survivor = survivingUserByPhone.get(phone10);
+          if (!isGenuinePhone10(phone10) || !survivor || data.userDocId !== survivor.id) {
+            await deleteDoc(doc(activeDb, USER_PHONE_REGISTRY_COLLECTION, phone10)).catch(() => {});
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+
+      report.usersRetained = usersByPhone.size + usersWithoutPhoneCount;
+    } catch (err: any) {
+      report.errors.push(`users cleanup notice: ${err?.message || String(err)}`);
+    }
+
+    // 4. Clean mock/test artifacts in /callLogs and /reviews
+    try {
+      const logsSnap = await getDocs(collection(activeDb, CALL_LOGS_COLLECTION));
+      for (const docSnap of logsSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const workerId = String(d.workerId || '');
+        const isMockLog =
+          deletedWorkerIds.has(workerId) ||
+          isMockOrTestProfile({
+            id: workerId,
+            name: d.workerName,
+            phone: d.workerPhone
+          });
+        if (isMockLog) {
+          try {
+            await deleteDoc(doc(activeDb, CALL_LOGS_COLLECTION, docSnap.id));
+            report.deletedMockCallLogs.push(docSnap.id);
+          } catch {
+            // ignore non-fatal cleanup error
+          }
+        }
+      }
+    } catch {
+      // callLogs cleanup skipped if unavailable
+    }
+
+    try {
+      const revSnap = await getDocs(collection(activeDb, REVIEWS_COLLECTION));
+      for (const docSnap of revSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const workerId = String(d.workerId || '');
+        const isMockRev =
+          deletedWorkerIds.has(workerId) ||
+          isMockOrTestProfile({
+            id: workerId,
+            name: d.customerName
+          });
+        if (isMockRev) {
+          try {
+            await deleteDoc(doc(activeDb, REVIEWS_COLLECTION, docSnap.id));
+            report.deletedMockReviews.push(docSnap.id);
+          } catch {
+            // ignore non-fatal cleanup error
+          }
+        }
+      }
+    } catch {
+      // reviews cleanup skipped if unavailable
+    }
+
+    lastCleanupTimestamp = Date.now();
+    return report;
+  };
+
+  activeCleanupPromise = run().finally(() => {
+    activeCleanupPromise = null;
+  });
+
+  return activeCleanupPromise;
+}
+
+/**
+ * Automatically run connection check & database integrity cleanup on DB initialization.
+ */
+export function initializeDatabaseSecurity(): void {
+  if (!db) return;
+  testConnection()
+    .then((connected) => {
+      if (connected) {
+        return enforceFirestoreSecurityAndCleanup();
+      }
+      return undefined;
+    })
+    .then((report) => {
+      if (!report) return;
+      const totalDeleted =
+        report.deletedMockOrInvalidWorkers.length +
+        report.deletedDuplicateWorkers.length +
+        report.deletedMockOrInvalidUsers.length +
+        report.deletedDuplicateUsers.length +
+        report.deletedMockCallLogs.length +
+        report.deletedMockReviews.length;
+      if (totalDeleted > 0) {
+        console.info(
+          `[Quick Karya Firestore Security] Cleaned ${totalDeleted} invalid/mock/duplicate record(s). Retained ${report.workersRetained} unique genuine worker(s).`
+        );
+      }
+    })
+    .catch((err) => {
+      console.warn('Database initialization cleanup skipped safely:', err?.message || err);
+    });
+}
+
+initializeDatabaseSecurity();
+
+/**
+ * Save worker profile to Cloud Firestore with strict validation & duplicate phone blocking
  */
 export async function saveWorkerToCloud(worker: WorkerProfile): Promise<void> {
   if (!db) return;
+
+  const validation = validateGenuineWorker(worker);
+  if (!validation.valid) {
+    throw new Error(
+      validation.reason ||
+        'Blocked: Only genuine artisan profiles with a valid 10-digit mobile number can be registered.'
+    );
+  }
+
+  const phone10 = validation.phone10;
+  const normalizedWorkerId = worker.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`;
+
+  // 1. Scan for any existing worker sharing the same 10-digit phone under a different document ID
+  const duplicateQuery = query(
+    collection(db, WORKERS_COLLECTION),
+    where('phoneNormalized', '==', phone10)
+  );
+  let dupSnap;
   try {
-    const workerDocRef = doc(db, WORKERS_COLLECTION, worker.id);
-    const cleanData: Record<string, any> = {
-      id: worker.id,
-      workerId: worker.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`,
-      name: worker.name,
-      category: worker.category,
-      experience: worker.experience,
-      rating: worker.rating || 5.0,
-      reviewCount: worker.reviewCount || 1,
-      hourlyRate: 0,
-      rate: 0,
-      phone: worker.phone,
-      city: worker.city,
-      state: worker.state || '',
-      pincode: worker.pincode,
-      latitude: worker.latitude,
-      longitude: worker.longitude,
-      verified: false,
-      isVerified: false,
-      available: worker.available ?? true,
-      completedJobs: worker.completedJobs ?? 1,
-      languages: worker.languages || ['Hindi', 'Local'],
-      skills: worker.skills || [worker.category],
-      emergencyAvailable: worker.category === 'Emergency Highway Assistance',
-      createdAt: new Date().toISOString()
-    };
-
-    if (worker.subRole) cleanData.subRole = worker.subRole;
-    const photoVal = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
-    if (photoVal) {
-      cleanData.photo = photoVal;
-      cleanData.avatar = photoVal;
-      cleanData.avatarUrl = photoVal;
-    }
-    if (worker.vehicleType) cleanData.vehicleType = worker.vehicleType;
-    if (worker.fcmToken) cleanData.fcmToken = worker.fcmToken;
-    if (worker.pushToken) cleanData.pushToken = worker.pushToken;
-
-    await setDoc(workerDocRef, cleanData);
+    dupSnap = await getDocs(duplicateQuery);
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.LIST, WORKERS_COLLECTION);
+    }
+    throw err;
+  }
+
+  for (const existingDoc of dupSnap.docs) {
+    if (existingDoc.id !== worker.id) {
+      throw new Error(
+        `Duplicate phone number blocked: +91 ${phone10} is already registered to another Quick Karya artisan.`
+      );
+    }
+  }
+
+  // Fallback full-collection check for legacy documents without phoneNormalized
+  try {
+    const allSnap = await getDocs(collection(db, WORKERS_COLLECTION));
+    for (const existingDoc of allSnap.docs) {
+      if (existingDoc.id !== worker.id) {
+        const existingPhone10 = normalizePhone10((existingDoc.data() as any)?.phone);
+        if (existingPhone10 && existingPhone10 === phone10) {
+          throw new Error(
+            `Duplicate phone number blocked: +91 ${phone10} is already registered to another Quick Karya artisan.`
+          );
+        }
+      }
+    }
+  } catch (err: any) {
+    if (err?.message?.includes('Duplicate phone number blocked')) {
+      throw err;
+    }
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.LIST, WORKERS_COLLECTION);
+    }
+  }
+
+  const workerDocRef = doc(db, WORKERS_COLLECTION, worker.id);
+  const phoneRegistryRef = doc(db, PHONE_REGISTRY_COLLECTION, phone10);
+
+  const cleanData: Record<string, any> = {
+    id: worker.id,
+    workerId: normalizedWorkerId,
+    name: worker.name.trim(),
+    category: worker.category,
+    experience: worker.experience,
+    rating: worker.rating || 5.0,
+    reviewCount: worker.reviewCount ?? 0,
+    hourlyRate: 0,
+    rate: 0,
+    phone: worker.phone,
+    phoneNormalized: phone10,
+    city: worker.city,
+    state: worker.state || '',
+    pincode: worker.pincode,
+    latitude: worker.latitude,
+    longitude: worker.longitude,
+    verified: Boolean(worker.verified),
+    isVerified: Boolean(worker.isVerified ?? worker.verified),
+    available: worker.available ?? true,
+    completedJobs: worker.completedJobs ?? 0,
+    languages: worker.languages || ['Hindi', 'Local'],
+    skills: worker.skills || [worker.category],
+    emergencyAvailable: worker.category === 'Emergency Highway Assistance',
+    createdAt: (worker as any).createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (worker.subRole) cleanData.subRole = worker.subRole;
+  const photoVal = worker.photo || worker.avatar || worker.avatarUrl || worker.photoUrl;
+  if (photoVal) {
+    cleanData.photo = photoVal;
+    cleanData.avatar = photoVal;
+    cleanData.avatarUrl = photoVal;
+  }
+  if (worker.vehicleType) cleanData.vehicleType = worker.vehicleType;
+  if (worker.fcmToken) cleanData.fcmToken = worker.fcmToken;
+  if (worker.pushToken) cleanData.pushToken = worker.pushToken;
+  if ((worker as any).userId) cleanData.userId = (worker as any).userId;
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const regSnap = await tx.get(phoneRegistryRef);
+      if (regSnap.exists()) {
+        const regData = regSnap.data() as Record<string, any>;
+        if (regData.workerDocId && regData.workerDocId !== worker.id) {
+          const ownerSnap = await tx.get(doc(db!, WORKERS_COLLECTION, regData.workerDocId));
+          if (ownerSnap.exists()) {
+            throw new Error(
+              `Duplicate phone number blocked: +91 ${phone10} is already locked to another artisan profile.`
+            );
+          }
+        }
+      }
+
+      tx.set(phoneRegistryRef, {
+        phone10,
+        workerDocId: worker.id,
+        workerId: normalizedWorkerId,
+        updatedAt: new Date().toISOString()
+      });
+
+      tx.set(workerDocRef, stripUndefined(cleanData));
+    });
+  } catch (err: any) {
+    if (err?.message?.includes('Duplicate phone number blocked')) {
+      throw err;
+    }
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.WRITE, `${WORKERS_COLLECTION}/${worker.id}`);
+    }
     console.warn('Could not save worker to Cloud Firestore:', err);
+    throw err;
   }
 }
 
 /**
- * Delete worker profile from Cloud Firestore
+ * Delete worker profile from Cloud Firestore (and release its phoneRegistry lock if owned by it)
  */
 export async function deleteWorkerFromCloud(workerId: string): Promise<void> {
   if (!db) return;
   try {
     const workerDocRef = doc(db, WORKERS_COLLECTION, workerId);
+    const snap = await getDoc(workerDocRef);
+    const phone10 = snap.exists() ? normalizePhone10((snap.data() as any)?.phone) : '';
+
     await deleteDoc(workerDocRef);
+
+    if (phone10) {
+      const regRef = doc(db, PHONE_REGISTRY_COLLECTION, phone10);
+      const regSnap = await getDoc(regRef);
+      if (regSnap.exists() && regSnap.data()?.workerDocId === workerId) {
+        await deleteDoc(regRef).catch(() => {});
+      }
+    }
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.DELETE, `${WORKERS_COLLECTION}/${workerId}`);
+    }
     console.warn('Could not delete worker from Cloud Firestore:', err);
   }
 }
@@ -594,7 +1335,7 @@ export async function fetchWorkersFromCloud(): Promise<WorkerProfile[]> {
         ...data,
         id: docSnap.id,
         workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
-        photo: photo,
+        photo,
         avatar: photo,
         verified: Boolean(data.isVerified ?? data.verified),
         isVerified: Boolean(data.isVerified ?? data.verified),
@@ -604,6 +1345,9 @@ export async function fetchWorkersFromCloud(): Promise<WorkerProfile[]> {
     });
     return cleanAndDeduplicateWorkers(list);
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.LIST, WORKERS_COLLECTION);
+    }
     console.warn('Could not fetch workers from Cloud Firestore:', err);
     return [];
   }
@@ -633,7 +1377,7 @@ export function subscribeWorkersFromCloud(
             ...data,
             id: docSnap.id,
             workerId: data.workerId || `QK-${data.id?.slice(-5).toUpperCase()}`,
-            photo: photo,
+            photo,
             avatar: photo,
             verified: Boolean(data.isVerified ?? data.verified),
             isVerified: Boolean(data.isVerified ?? data.verified),
@@ -644,6 +1388,14 @@ export function subscribeWorkersFromCloud(
         onUpdate(cleanAndDeduplicateWorkers(list));
       },
       (err) => {
+        if (isPermissionDeniedError(err)) {
+          try {
+            handleFirestoreError(err, OperationType.LIST, WORKERS_COLLECTION);
+          } catch (wrappedErr: any) {
+            if (onError) onError(wrappedErr);
+            return;
+          }
+        }
         console.warn('Firestore subscription error:', err);
         if (onError) onError(err);
       }
@@ -660,10 +1412,22 @@ export function subscribeWorkersFromCloud(
  */
 export async function saveCallLogToCloud(callLog: CallLogRecord): Promise<void> {
   if (!db) return;
+  if (
+    isMockOrTestProfile({
+      id: callLog.workerId,
+      name: callLog.workerName,
+      phone: callLog.workerPhone
+    })
+  ) {
+    return;
+  }
   try {
     const logRef = doc(db, CALL_LOGS_COLLECTION, callLog.id);
-    await setDoc(logRef, callLog);
+    await setDoc(logRef, stripUndefined(callLog));
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.WRITE, `${CALL_LOGS_COLLECTION}/${callLog.id}`);
+    }
     console.warn('Could not save call log to Cloud Firestore:', err);
   }
 }
@@ -674,20 +1438,94 @@ export async function deleteCallLogFromCloud(callLogId: string): Promise<void> {
     const logRef = doc(db, CALL_LOGS_COLLECTION, callLogId);
     await deleteDoc(logRef);
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.DELETE, `${CALL_LOGS_COLLECTION}/${callLogId}`);
+    }
     console.warn('Could not delete call log from Cloud Firestore:', err);
   }
 }
 
 /**
- * User Cloud Operations
+ * User Cloud Operations (blocks mock/test users and duplicate phone numbers)
  */
 export async function saveUserToCloud(user: AppUser): Promise<void> {
   if (!db) return;
+
+  const hasPhone = typeof user.phone === 'string' && user.phone.trim().length > 0;
+  if (
+    isMockOrTestProfile({
+      id: user.id,
+      workerId: user.workerId,
+      name: user.name,
+      email: user.email,
+      phone: hasPhone ? user.phone : undefined
+    })
+  ) {
+    throw new Error('Blocked: Mock, demo, or invalid user profiles cannot be saved to Firestore.');
+  }
+
+  let phone10 = '';
+  if (hasPhone) {
+    phone10 = normalizePhone10(user.phone);
+    if (!isGenuinePhone10(phone10)) {
+      throw new Error('Blocked: User phone number must be a genuine 10-digit Indian mobile number.');
+    }
+
+    // Check for duplicate phone across existing users
+    const dupUsersSnap = await getDocs(
+      query(collection(db, USERS_COLLECTION), where('phoneNormalized', '==', phone10))
+    );
+    for (const docSnap of dupUsersSnap.docs) {
+      if (docSnap.id !== user.id) {
+        throw new Error(
+          `Duplicate phone number blocked: +91 ${phone10} is already registered to another Quick Karya user.`
+        );
+      }
+    }
+  }
+
   try {
     const userRef = doc(db, USERS_COLLECTION, user.id);
-    await setDoc(userRef, user);
-  } catch (err) {
+    const payload: Record<string, any> = stripUndefined({
+      ...user,
+      ...(phone10 ? { phoneNormalized: phone10 } : {}),
+      updatedAt: new Date().toISOString()
+    });
+
+    if (phone10) {
+      const userPhoneRegRef = doc(db, USER_PHONE_REGISTRY_COLLECTION, phone10);
+      await runTransaction(db, async (tx) => {
+        const regSnap = await tx.get(userPhoneRegRef);
+        if (regSnap.exists()) {
+          const regData = regSnap.data() as Record<string, any>;
+          if (regData.userDocId && regData.userDocId !== user.id) {
+            const ownerSnap = await tx.get(doc(db!, USERS_COLLECTION, regData.userDocId));
+            if (ownerSnap.exists()) {
+              throw new Error(
+                `Duplicate phone number blocked: +91 ${phone10} is already registered to another Quick Karya user.`
+              );
+            }
+          }
+        }
+        tx.set(userPhoneRegRef, {
+          phone10,
+          userDocId: user.id,
+          updatedAt: new Date().toISOString()
+        });
+        tx.set(userRef, payload, { merge: true });
+      });
+    } else {
+      await setDoc(userRef, payload, { merge: true });
+    }
+  } catch (err: any) {
+    if (err?.message?.includes('Duplicate phone number blocked')) {
+      throw err;
+    }
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.WRITE, `${USERS_COLLECTION}/${user.id}`);
+    }
     console.warn('Could not save user to Cloud Firestore:', err);
+    throw err;
   }
 }
 
@@ -700,6 +1538,9 @@ export async function fetchUserFromCloud(userId: string): Promise<AppUser | null
       return snap.data() as AppUser;
     }
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.GET, `${USERS_COLLECTION}/${userId}`);
+    }
     console.warn('Could not fetch user from Cloud Firestore:', err);
   }
   return null;
@@ -714,23 +1555,29 @@ export async function saveReviewToCloud(
   if (!db) {
     return { newRating: review.rating, newCount: 1 };
   }
-  const reviewRef = doc(db, REVIEWS_COLLECTION, review.id);
-  await setDoc(reviewRef, review);
+  try {
+    const reviewRef = doc(db, REVIEWS_COLLECTION, review.id);
+    await setDoc(reviewRef, stripUndefined(review));
 
-  // Update worker rating and reviewCount in Firestore
-  const workerRef = doc(db, WORKERS_COLLECTION, review.workerId);
-  const workerSnap = await getDoc(workerRef);
-  let newRating = review.rating;
-  let newCount = 1;
-  if (workerSnap.exists()) {
-    const wData = workerSnap.data() as WorkerProfile;
-    const currentCount = wData.reviewCount || 0;
-    const currentRating = wData.rating || 5.0;
-    newCount = currentCount + 1;
-    newRating = Number(((currentRating * currentCount + review.rating) / newCount).toFixed(1));
-    await setDoc(workerRef, { rating: newRating, reviewCount: newCount }, { merge: true });
+    const workerRef = doc(db, WORKERS_COLLECTION, review.workerId);
+    const workerSnap = await getDoc(workerRef);
+    let newRating = review.rating;
+    let newCount = 1;
+    if (workerSnap.exists()) {
+      const wData = workerSnap.data() as WorkerProfile;
+      const currentCount = wData.reviewCount || 0;
+      const currentRating = wData.rating || 5.0;
+      newCount = currentCount + 1;
+      newRating = Number(((currentRating * currentCount + review.rating) / newCount).toFixed(1));
+      await setDoc(workerRef, { rating: newRating, reviewCount: newCount }, { merge: true });
+    }
+    return { newRating, newCount };
+  } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.WRITE, `${REVIEWS_COLLECTION}/${review.id}`);
+    }
+    throw err;
   }
-  return { newRating, newCount };
 }
 
 export async function fetchReviewsForWorker(workerId: string): Promise<WorkerReview[]> {
@@ -745,6 +1592,9 @@ export async function fetchReviewsForWorker(workerId: string): Promise<WorkerRev
     });
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.LIST, REVIEWS_COLLECTION);
+    }
     console.warn('Could not fetch reviews from Cloud Firestore:', err);
     return [];
   }
@@ -757,8 +1607,11 @@ export async function saveServiceRequestToCloud(req: ServiceRequest): Promise<vo
   if (!db) return;
   try {
     const reqRef = doc(db, SERVICE_REQUESTS_COLLECTION, req.id);
-    await setDoc(reqRef, req);
+    await setDoc(reqRef, stripUndefined(req));
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.WRITE, `${SERVICE_REQUESTS_COLLECTION}/${req.id}`);
+    }
     console.warn('Could not save service request to Cloud Firestore:', err);
   }
 }
@@ -776,6 +1629,9 @@ export async function fetchUserRequests(userId: string, isWorker: boolean): Prom
     });
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.LIST, SERVICE_REQUESTS_COLLECTION);
+    }
     console.warn('Could not fetch user requests from Cloud Firestore:', err);
     return [];
   }

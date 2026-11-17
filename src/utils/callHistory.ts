@@ -1,5 +1,6 @@
 import { CallLogRecord } from '../types';
 import { getApiUrl } from '../config';
+import { saveCallLogToCloud, deleteCallLogFromCloud } from '../firebase';
 
 const CALL_HISTORY_STORAGE_KEY = 'quickkarya_call_history_v1';
 export const CALL_HISTORY_UPDATED_EVENT = 'quickkarya_call_history_updated';
@@ -79,7 +80,7 @@ export function getCallHistory(): CallLogRecord[] {
 }
 
 /**
- * Record a new call or WhatsApp contact attempt into persistent history
+ * Record a new call or WhatsApp contact attempt into persistent history (local + Cloud Firestore + API)
  */
 export function addCallRecord(
   entry: Omit<CallLogRecord, 'id' | 'timestamp'> & { id?: string; timestamp?: string }
@@ -124,6 +125,19 @@ export function addCallRecord(
 
     notifyListeners();
 
+    // Sync directly to Cloud Firestore (works natively in APK without needing local server)
+    try {
+      const cloudRecord: CallLogRecord = { ...newRecord };
+      Object.keys(cloudRecord).forEach((k) => {
+        if ((cloudRecord as any)[k] === undefined) {
+          delete (cloudRecord as any)[k];
+        }
+      });
+      saveCallLogToCloud(cloudRecord).catch(() => {});
+    } catch {
+      // ignore cloud sync error
+    }
+
     // Asynchronously sync to backend endpoint if available
     fetch(getApiUrl('/api/call-logs'), {
       method: 'POST',
@@ -150,6 +164,12 @@ export function deleteCallRecord(id: string): void {
     }
     notifyListeners();
 
+    try {
+      deleteCallLogFromCloud(id).catch(() => {});
+    } catch {
+      // ignore
+    }
+
     fetch(getApiUrl(`/api/call-logs/${id}`), {
       method: 'DELETE'
     }).catch(() => {});
@@ -163,11 +183,20 @@ export function deleteCallRecord(id: string): void {
  */
 export function clearCallHistory(): void {
   try {
+    const existing = getCallHistory();
     inMemoryCallHistory = [];
     if (typeof localStorage !== 'undefined' && typeof localStorage.removeItem === 'function') {
       localStorage.removeItem(CALL_HISTORY_STORAGE_KEY);
     }
     notifyListeners();
+
+    existing.forEach((item) => {
+      try {
+        deleteCallLogFromCloud(item.id).catch(() => {});
+      } catch {
+        // ignore
+      }
+    });
 
     fetch(getApiUrl('/api/call-logs'), {
       method: 'DELETE'

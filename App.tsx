@@ -14,7 +14,9 @@ import {
   BackHandler,
   ToastAndroid,
   Animated,
-  ActivityIndicator
+  ActivityIndicator,
+  PanResponder,
+  Share
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -43,12 +45,16 @@ import {
   AppUser,
   UserRole,
   WorkerReview,
-  CallLogRecord
+  CallLogRecord,
+  DriverSubCategory
 } from './src/types';
 import {
   saveWorkerToCloud,
   subscribeWorkersFromCloud,
   cleanAndDeduplicateWorkers,
+  isGenuinePhone10,
+  isMockOrTestProfile,
+  normalizePhone10,
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveUserToCloud,
@@ -70,11 +76,21 @@ import {
   subscribeCallHistoryUpdates,
   hydrateCallHistory
 } from './src/utils/callHistory';
+import { KNOWN_LOCATIONS, CityCoord, lookupCityCoords, formatDistance } from './src/utils/geo';
+import { getDriverSubCategory, formatWorkerPricing } from './src/utils/pricing';
 import { getApiUrl } from './src/config';
 
 const STORAGE_KEY = '@quickkarya_workers_v3';
 const AUTH_STORAGE_KEY = '@quickkarya_user_session_v1';
 const CALL_HISTORY_ASYNC_KEY = '@quickkarya_call_history_v1';
+const SAVED_GOOGLE_ACCOUNTS_KEY = '@quickkarya_saved_google_accounts_v1';
+
+interface SavedGoogleAccount {
+  uid: string;
+  name: string;
+  email: string;
+  photoUrl?: string;
+}
 
 const AnimatedView = Animated.View as any;
 const AnimatedText = Animated.Text as any;
@@ -129,6 +145,59 @@ function NativeApp() {
   const [authFullName, setAuthFullName] = useState('');
   const [authShowPassword, setAuthShowPassword] = useState(false);
   const [authEmailLoading, setAuthEmailLoading] = useState(false);
+
+  // Interactive Google Account Picker State (Native APK Parity)
+  const [isGooglePickerOpen, setIsGooglePickerOpen] = useState(false);
+  const [savedGoogleAccounts, setSavedGoogleAccounts] = useState<SavedGoogleAccount[]>([]);
+  const [googleAddAccountMode, setGoogleAddAccountMode] = useState(false);
+  const [googleCustomName, setGoogleCustomName] = useState('');
+  const [googleCustomEmail, setGoogleCustomEmail] = useState('');
+
+  // Interactive Photo Crop, Zoom & Framing Modal State
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropRotation, setCropRotation] = useState(0);
+  const [cropOffset, setCropOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const cropOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const cropPanStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const cropPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        cropPanStartRef.current = { ...cropOffsetRef.current };
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const nextX = Math.max(-110, Math.min(110, cropPanStartRef.current.x + gestureState.dx));
+        const nextY = Math.max(-110, Math.min(110, cropPanStartRef.current.y + gestureState.dy));
+        cropOffsetRef.current = { x: nextX, y: nextY };
+        setCropOffset({ x: nextX, y: nextY });
+      }
+    })
+  ).current;
+
+  // Profile Name Editing State
+  const [isEditingProfileName, setIsEditingProfileName] = useState(false);
+  const [editProfileNameInput, setEditProfileNameInput] = useState('');
+  const [savingProfileName, setSavingProfileName] = useState(false);
+
+  // Location Switcher Modal State
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [locationSearchInput, setLocationSearchInput] = useState('');
+  const [isLiveGpsMode, setIsLiveGpsMode] = useState(true);
+
+  // Driver Sub-Category Filter
+  const [driverSubFilter, setDriverSubFilter] = useState<DriverSubCategory>('all');
+
+  // Call & WhatsApp Dispatch Modal State (Web CallModal parity)
+  const [callingWorker, setCallingWorker] = useState<WorkerProfile | null>(null);
+  const [callPickupLocation, setCallPickupLocation] = useState('');
+  const [callDropLocation, setCallDropLocation] = useState('');
+  const [callLocatingGps, setCallLocatingGps] = useState(false);
+  const [callGpsCoords, setCallGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [callValidationError, setCallValidationError] = useState<string | null>(null);
+
   const [activeCallAlert, setActiveCallAlert] = useState<{ workerName: string; category: string } | null>(null);
   const [nativeCallHistory, setNativeCallHistory] = useState<CallLogRecord[]>(() => {
     try {
@@ -137,6 +206,20 @@ function NativeApp() {
       return [];
     }
   });
+
+  // Load saved Google accounts for interactive picker on native Android
+  useEffect(() => {
+    AsyncStorage.getItem(SAVED_GOOGLE_ACCOUNTS_KEY)
+      .then((raw) => {
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setSavedGoogleAccounts(parsed);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -234,19 +317,26 @@ function NativeApp() {
     checkUserSession();
   }, []);
 
-  // Modern Google Sign-In with 1-Tap Profile Auto-Fill
-  const handleNativeGoogleSignIn = async () => {
+  // Interactive Google Account Sign-In with Native Account Picker Popup
+  const completeGoogleAccountSignIn = async (account: SavedGoogleAccount) => {
     setAuthError(null);
     setAuthLoading(true);
-
     try {
-      const gUser = await signInWithGoogle();
+      const updatedList = [
+        account,
+        ...savedGoogleAccounts.filter(
+          (a) => a.email.toLowerCase() !== account.email.toLowerCase()
+        )
+      ].slice(0, 6);
+      setSavedGoogleAccounts(updatedList);
+      await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(updatedList)).catch(() => {});
+
       const verifiedUserObj: AppUser = {
-        id: gUser.uid,
-        name: gUser.name,
-        email: gUser.email,
-        profilePhoto: gUser.photoUrl,
-        avatar: gUser.photoUrl,
+        id: account.uid,
+        name: account.name,
+        email: account.email,
+        profilePhoto: account.photoUrl,
+        avatar: account.photoUrl,
         authProvider: 'google',
         role: 'customer',
         verified: true,
@@ -256,10 +346,10 @@ function NativeApp() {
       setCurrentUser(verifiedUserObj);
       setPendingVerifiedUser(verifiedUserObj);
       setLoginName(verifiedUserObj.name);
-      setLoginEmail(gUser.email);
+      setLoginEmail(account.email);
       setRegName(verifiedUserObj.name);
-      if (gUser.photoUrl) {
-        setRegPhoto(gUser.photoUrl);
+      if (account.photoUrl) {
+        setRegPhoto(account.photoUrl);
       }
 
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(verifiedUserObj)).catch(() => {});
@@ -269,11 +359,70 @@ function NativeApp() {
       }
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
 
+      setIsGooglePickerOpen(false);
+      setGoogleAddAccountMode(false);
       setAuthStep('role_selection');
     } catch (err: any) {
       setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const handleNativeGoogleSignIn = async () => {
+    setAuthError(null);
+    if (Platform.OS === 'web') {
+      setAuthLoading(true);
+      try {
+        const gUser = await signInWithGoogle();
+        await completeGoogleAccountSignIn({
+          uid: gUser.uid,
+          name: gUser.name,
+          email: gUser.email,
+          photoUrl: gUser.photoUrl
+        });
+      } catch (err: any) {
+        setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
+        setAuthLoading(false);
+      }
+      return;
+    }
+
+    // Native Android/iOS: Open interactive Google Account Picker popup
+    setGoogleAddAccountMode(savedGoogleAccounts.length === 0);
+    setGoogleCustomName('');
+    setGoogleCustomEmail('');
+    setIsGooglePickerOpen(true);
+  };
+
+  const handleAddCustomGoogleAccount = async () => {
+    const cleanName = googleCustomName.trim();
+    const cleanEmail = googleCustomEmail.trim().toLowerCase();
+    if (!cleanName) {
+      setAuthError('Please enter your Google account full name.');
+      return;
+    }
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setAuthError('Please enter a valid Gmail or Google email address.');
+      return;
+    }
+
+    const sanitizedUid = `google_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+    const avatarSeed = encodeURIComponent(cleanName);
+    await completeGoogleAccountSignIn({
+      uid: sanitizedUid,
+      name: cleanName,
+      email: cleanEmail,
+      photoUrl: `https://ui-avatars.com/api/?name=${avatarSeed}&background=001F3F&color=FFA500&bold=true&size=256`
+    });
+  };
+
+  const handleRemoveSavedGoogleAccount = async (uid: string) => {
+    const next = savedGoogleAccounts.filter((a) => a.uid !== uid);
+    setSavedGoogleAccounts(next);
+    await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(next)).catch(() => {});
+    if (next.length === 0) {
+      setGoogleAddAccountMode(true);
     }
   };
 
@@ -721,7 +870,28 @@ Please dispatch assistance immediately!`;
     let lastBackPressTime = 0;
 
     const backAction = () => {
-      // 0. If Highway SOS screen is open, close it
+      // 0. If Crop Modal, Call Dispatch Modal, Location Modal, or Google Picker is open, close it first
+      if (isCropModalOpen) {
+        setIsCropModalOpen(false);
+        return true;
+      }
+
+      if (callingWorker) {
+        setCallingWorker(null);
+        return true;
+      }
+
+      if (isLocationModalOpen) {
+        setIsLocationModalOpen(false);
+        return true;
+      }
+
+      if (isGooglePickerOpen) {
+        setIsGooglePickerOpen(false);
+        return true;
+      }
+
+      // 0.0 If Highway SOS screen is open, close it
       if (isHighwaySosOpen) {
         setIsHighwaySosOpen(false);
         return true;
@@ -746,7 +916,7 @@ Please dispatch assistance immediately!`;
           return true;
         }
         if (ToastAndroid?.show) {
-          ToastAndroid.show('Please sign in with Google to continue', ToastAndroid.SHORT);
+          ToastAndroid.show('Please sign in to continue', ToastAndroid.SHORT);
         }
         return true;
       }
@@ -764,10 +934,11 @@ Please dispatch assistance immediately!`;
       // 2. If viewing a category filter, reset to 'All'
       if (selectedCategory !== 'All') {
         setSelectedCategory('All');
+        setDriverSubFilter('all');
         return true;
       }
 
-      // 3. If on an inner tab (Register, Categories, Profile), navigate back to Home
+      // 3. If on an inner tab (Register, Categories, Profile, Settings), navigate back to Home
       if (activeTab !== 'home' && activeTab !== 'workers') {
         setActiveTab('home');
         return true;
@@ -797,6 +968,11 @@ Please dispatch assistance immediately!`;
     return () => backHandler.remove();
   }, [
     isAuthModalOpen,
+    isGooglePickerOpen,
+    isCropModalOpen,
+    callingWorker,
+    isLocationModalOpen,
+    isHighwaySosOpen,
     currentUser,
     authStep,
     isStateModalOpen,
@@ -853,7 +1029,100 @@ Please dispatch assistance immediately!`;
     requestDeviceLocation();
   }, [requestDeviceLocation]);
 
-  // 3. Expo Image Picker: Library & Camera
+  // 3. Interactive Photo Crop & Picker Helpers (Gallery + Camera + Crop Framing Modal)
+  const openCropModalWithUri = (photoUri: string) => {
+    setCropSourceUri(photoUri);
+    setCropZoom(1);
+    setCropRotation(0);
+    cropOffsetRef.current = { x: 0, y: 0 };
+    setCropOffset({ x: 0, y: 0 });
+    setIsCropModalOpen(true);
+  };
+
+  const applyCroppedPhoto = async (photoUri: string) => {
+    setRegPhoto(photoUri);
+    if (currentUser) {
+      const updatedUser: AppUser = {
+        ...currentUser,
+        profilePhoto: photoUri,
+        avatar: photoUri
+      };
+      setCurrentUser(updatedUser);
+      AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser)).catch(() => {});
+      saveUserToCloud(updatedUser).catch(() => {});
+      fetch(getApiUrl('/api/auth/profile'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentUser.id, profilePhoto: photoUri })
+      }).catch(() => {});
+
+      const matchingWorker = workers.find(
+        (w) =>
+          (currentUser.workerId && w.workerId === currentUser.workerId) ||
+          w.id === currentUser.id ||
+          (currentUser.phone && w.phone.replace(/[^0-9]/g, '').slice(-10) === currentUser.phone.replace(/[^0-9]/g, '').slice(-10))
+      );
+      if (matchingWorker) {
+        const updatedWorker: WorkerProfile = {
+          ...matchingWorker,
+          photo: photoUri,
+          avatar: photoUri,
+          avatarUrl: photoUri
+        };
+        const updatedList = workers.map((w) => (w.id === matchingWorker.id ? updatedWorker : w));
+        setWorkers(updatedList);
+        AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList)).catch(() => {});
+        saveWorkerToCloud(updatedWorker).catch(() => {});
+      }
+    }
+    if (Platform.OS === 'android' && ToastAndroid) {
+      ToastAndroid.show('✓ Profile photo framed and saved!', ToastAndroid.SHORT);
+    }
+  };
+
+  const handleSaveProfileName = async () => {
+    const trimmed = editProfileNameInput.trim();
+    if (!trimmed) {
+      Alert.alert('Required Field', 'Please enter your full name.');
+      return;
+    }
+    setSavingProfileName(true);
+    try {
+      setRegName(trimmed);
+      if (currentUser) {
+        const updatedUser: AppUser = { ...currentUser, name: trimmed };
+        setCurrentUser(updatedUser);
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser)).catch(() => {});
+        await saveUserToCloud(updatedUser).catch(() => {});
+        fetch(getApiUrl('/api/auth/profile'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: currentUser.id, name: trimmed })
+        }).catch(() => {});
+
+        const matchingWorker = workers.find(
+          (w) =>
+            (currentUser.workerId && w.workerId === currentUser.workerId) ||
+            w.id === currentUser.id ||
+            (currentUser.phone && w.phone.replace(/[^0-9]/g, '').slice(-10) === currentUser.phone.replace(/[^0-9]/g, '').slice(-10))
+        );
+        if (matchingWorker) {
+          const updatedWorker: WorkerProfile = { ...matchingWorker, name: trimmed };
+          const updatedList = workers.map((w) => (w.id === matchingWorker.id ? updatedWorker : w));
+          setWorkers(updatedList);
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList)).catch(() => {});
+          saveWorkerToCloud(updatedWorker).catch(() => {});
+        }
+      }
+      setIsEditingProfileName(false);
+      if (Platform.OS === 'android' && ToastAndroid) {
+        ToastAndroid.show('✓ Display name updated!', ToastAndroid.SHORT);
+      }
+    } finally {
+      setSavingProfileName(false);
+    }
+  };
+
   const handlePickFromGallery = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -868,27 +1137,13 @@ Please dispatch assistance immediately!`;
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 0.7,
         base64: true
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const asset = res.assets[0];
         const photoUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-        setRegPhoto(photoUri);
-        if (currentUser) {
-          const updatedUser: AppUser = {
-            ...currentUser,
-            profilePhoto: photoUri,
-            avatar: photoUri
-          };
-          setCurrentUser(updatedUser);
-          AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser)).catch(() => {});
-          fetch(getApiUrl('/api/auth/profile'), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: currentUser.id, profilePhoto: photoUri })
-          }).catch(() => {});
-        }
+        openCropModalWithUri(photoUri);
       }
     } catch (err) {
       console.warn('Image picker error:', err);
@@ -908,13 +1163,13 @@ Please dispatch assistance immediately!`;
       const res = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 0.7,
         base64: true
       });
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const asset = res.assets[0];
         const photoUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-        setRegPhoto(photoUri);
+        openCropModalWithUri(photoUri);
       }
     } catch (err) {
       console.warn('Camera capture error:', err);
@@ -922,7 +1177,13 @@ Please dispatch assistance immediately!`;
   };
 
   // Direct Phone Call handler using Expo Linking with explicit customer identity push alert & toast
-  const handleCall = (workerPhone: string, workerName?: string, workerCategory?: string) => {
+  const handleCall = (
+    workerPhone: string,
+    workerName?: string,
+    workerCategory?: string,
+    workerMeta?: WorkerProfile,
+    customLocation?: string
+  ) => {
     const cleanPhone = workerPhone.replace(/[^0-9+]/g, '');
     const callerName = currentUser?.name || regName || 'Customer';
     const callerPhone = currentUser?.phone || (regPhone ? `+91 ${regPhone}` : '+91 9876543210');
@@ -949,17 +1210,20 @@ Please dispatch assistance immediately!`;
       callerPhone
     ).catch(() => {});
 
-    // Save call to Call History
+    // Save call to Call History (Local + AsyncStorage + Cloud Firestore + Backend)
     try {
       addCallRecord({
-        workerId: `w_${cleanPhone.slice(-6)}`,
-        workerName: workerName || 'Artisan',
-        workerCategory: workerCategory || 'Artisan',
+        workerId: workerMeta?.id || `w_${cleanPhone.slice(-6)}`,
+        workerName: workerName || workerMeta?.name || 'Artisan',
+        workerCategory: workerCategory || workerMeta?.category || 'Artisan',
         workerPhone: cleanPhone,
+        workerPhoto: workerMeta?.photo || workerMeta?.avatar,
+        workerCity: workerMeta?.city,
+        workerRating: workerMeta?.rating,
         type: 'phone',
         callerId: currentUser?.id,
         callerName,
-        location: userLocationName
+        location: customLocation || userLocationName
       });
     } catch {}
 
@@ -969,13 +1233,77 @@ Please dispatch assistance immediately!`;
     });
   };
 
-  // Customer GPS Location & Service Address Sharing with artisan
-  const handleShareGpsWithWorker = (worker: WorkerProfile) => {
-    const coords = `${userCoords.latitude.toFixed(5)}, ${userCoords.longitude.toFixed(5)}`;
+  // Open Web-parity Call & WhatsApp Dispatch Modal for any worker
+  const openCallDispatchModal = (worker: WorkerProfile) => {
+    setCallingWorker(worker);
+    setCallPickupLocation(
+      isLiveGpsMode ? `Live GPS Area (${userLocationName})` : userLocationName
+    );
+    setCallDropLocation('');
+    setCallGpsCoords({ lat: userCoords.latitude, lng: userCoords.longitude });
+    setCallValidationError(null);
+  };
+
+  const handleCallModalDetectGps = async () => {
+    setCallLocatingGps(true);
+    setCallValidationError(null);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setCallValidationError('Location permission denied. Please type your job site or pickup address.');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
+      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      setCallGpsCoords(coords);
+      setUserCoords({ latitude: coords.lat, longitude: coords.lng });
+      try {
+        const [geo] = await Location.reverseGeocodeAsync({
+          latitude: coords.lat,
+          longitude: coords.lng
+        });
+        if (geo) {
+          const area = [geo.name || geo.street, geo.city || geo.subregion, geo.region, geo.postalCode]
+            .filter(Boolean)
+            .join(', ');
+          if (area) setCallPickupLocation(area);
+          const shortLoc = `${geo.city || geo.subregion || 'Current Area'}${geo.region ? ', ' + geo.region : ''}`;
+          setUserLocationName(shortLoc);
+          setIsLiveGpsMode(true);
+        } else {
+          setCallPickupLocation(`GPS Pin (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`);
+        }
+      } catch {
+        setCallPickupLocation(`GPS Pin (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`);
+      }
+    } catch {
+      setCallValidationError('Could not detect GPS coordinates. Enter address manually.');
+    } finally {
+      setCallLocatingGps(false);
+    }
+  };
+
+  // Customer GPS Location & Service Address Sharing with artisan (Direct WhatsApp + Map Pin)
+  const handleShareGpsWithWorker = (
+    worker: WorkerProfile,
+    overrideAddress?: string,
+    overrideCoords?: { lat: number; lng: number } | null,
+    overrideDrop?: string
+  ) => {
+    const pinLat = overrideCoords?.lat ?? userCoords.latitude;
+    const pinLng = overrideCoords?.lng ?? userCoords.longitude;
+    const coords = `${pinLat.toFixed(5)}, ${pinLng.toFixed(5)}`;
     const mapsUrl = `https://maps.google.com/?q=${coords}`;
     const cleanPhone = (worker.phone || '').replace(/[^0-9]/g, '');
     const targetPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone.slice(-10)}`;
-    const msg = `Hello ${worker.name}, here is my service location for Quick Karya:\n📍 Address: ${userLocationName}\n🗺️ Google Maps Navigation Pin: ${mapsUrl}\nCustomer: ${currentUser?.name || 'Customer'}\nPlease navigate to this location. Thank you!`;
+    const addressText = (overrideAddress ?? userLocationName).trim() || userLocationName;
+    const isDriver = worker.category === 'Driver';
+
+    const msg = isDriver
+      ? `Hello ${worker.name}, I would like to book a ride via Quick Karya:\n📍 Pickup: ${addressText}\n🎯 Drop: ${overrideDrop?.trim() || 'Full Day / As required'}\n🗺️ Google Maps Pin: ${mapsUrl}\n👤 Customer: ${currentUser?.name || 'Customer'}\nPlease confirm your availability. Thank you!`
+      : `Hello ${worker.name}, here is my service location for Quick Karya (${worker.category}):\n📍 Address: ${addressText}\n🗺️ Google Maps Navigation Pin: ${mapsUrl}\n👤 Customer: ${currentUser?.name || 'Customer'}\nPlease navigate to this location. Thank you!`;
 
     // Save WhatsApp sharing to Call History
     try {
@@ -990,22 +1318,51 @@ Please dispatch assistance immediately!`;
         type: 'whatsapp',
         callerId: currentUser?.id,
         callerName: currentUser?.name || 'Customer',
-        location: userLocationName
+        location: addressText
       });
     } catch {}
 
     if (Platform.OS === 'android' && ToastAndroid) {
-      ToastAndroid.show(`📍 Service Location & Map Pin copied! Opening WhatsApp...`, ToastAndroid.LONG);
-    } else {
-      Alert.alert(
-        'Service Location Ready',
-        `Google Maps Navigation Pin:\n${mapsUrl}\n\nAddress: ${userLocationName}\n\nOpening messaging app so the artisan can navigate straight to your job site!`
-      );
+      ToastAndroid.show('📍 Opening WhatsApp with your GPS Map Pin!', ToastAndroid.LONG);
     }
 
     Linking.openURL(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`).catch(() => {
-      Linking.openURL(`sms:${worker.phone}?body=${encodeURIComponent(msg)}`).catch(() => {});
+      Linking.openURL(`sms:${worker.phone}?body=${encodeURIComponent(msg)}`).catch(() => {
+        Alert.alert('Service Location Ready', `Google Maps Pin:\n${mapsUrl}\n\nAddress: ${addressText}`);
+      });
     });
+  };
+
+  // Manual Location Switcher Handler
+  const handleSelectPresetLocation = (loc: CityCoord) => {
+    setUserCoords({ latitude: loc.lat, longitude: loc.lng });
+    setUserLocationName(`${loc.city}, ${loc.state}`);
+    setRegCity(loc.city);
+    setRegState(loc.state);
+    setRegPincode(loc.pincode);
+    setIsLiveGpsMode(false);
+    setIsLocationModalOpen(false);
+  };
+
+  const handleSearchCustomLocation = async () => {
+    const q = locationSearchInput.trim();
+    if (!q) return;
+    const matched = lookupCityCoords(q);
+    if (matched) {
+      handleSelectPresetLocation(matched);
+      setLocationSearchInput('');
+      return;
+    }
+    try {
+      const results = await Location.geocodeAsync(q);
+      if (results && results.length > 0) {
+        setUserCoords({ latitude: results[0].latitude, longitude: results[0].longitude });
+      }
+    } catch {}
+    setUserLocationName(q);
+    setIsLiveGpsMode(false);
+    setLocationSearchInput('');
+    setIsLocationModalOpen(false);
   };
 
   // Dynamic distance calculation for all workers based on user coords
@@ -1022,10 +1379,14 @@ Please dispatch assistance immediately!`;
     };
   });
 
-  // Filter workers by category and search keyword
+  // Filter workers by category, driver sub-category, and search keyword
   const filteredWorkers = workersWithDistance.filter((w) => {
     const matchesCategory =
       selectedCategory === 'All' || w.category === selectedCategory;
+    const matchesDriverSub =
+      selectedCategory !== 'Driver' ||
+      driverSubFilter === 'all' ||
+      getDriverSubCategory(w.vehicleType) === driverSubFilter;
     const matchesSearch =
       !searchQuery.trim() ||
       w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1035,33 +1396,53 @@ Please dispatch assistance immediately!`;
         w.skills.some((s) =>
           s.toLowerCase().includes(searchQuery.toLowerCase())
         ));
-    return matchesCategory && matchesSearch;
+    return matchesCategory && matchesDriverSub && matchesSearch;
   });
 
-  // Submit registration: persist to AsyncStorage & update local state
+  // Submit registration: validate genuine phone/profile, persist to AsyncStorage & Cloud Firestore
   const handleRegisterSubmit = async () => {
     if (!regName.trim()) {
       Alert.alert('Required Field', 'Please enter your full name or artisan team name.');
       return;
     }
-    const cleanPhone = regPhone.replace(/[^0-9]/g, '');
-    if (cleanPhone.length < 10) {
-      Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile phone number.');
+    const cleanPhone = normalizePhone10(regPhone);
+    if (!isGenuinePhone10(regPhone)) {
+      Alert.alert(
+        'Invalid Phone Number',
+        'Please enter a genuine 10-digit Indian mobile number (starting with 6–9). Test or repeated digits are not permitted.'
+      );
       return;
     }
+    if (isMockOrTestProfile({ name: regName.trim(), phone: cleanPhone })) {
+      Alert.alert(
+        'Invalid Profile',
+        'Test, demo, or placeholder artisan names are not allowed. Please enter your genuine name.'
+      );
+      return;
+    }
+
     const expNum = parseInt(regExperience, 10) || 1;
+    const formattedPhone = `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}`;
 
-    const formattedPhone = cleanPhone.startsWith('91')
-      ? `+${cleanPhone}`
-      : `+91 ${cleanPhone.slice(-10, -5)} ${cleanPhone.slice(-5)}`;
-
-    const existing = workers.find(
+    const ownerMatch = workers.find(
       (w) =>
-        (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) ||
         (currentUser?.workerId && w.workerId === currentUser.workerId) ||
         (currentUser?.id && (w.id === currentUser.id || (w as any).userId === currentUser.id))
     );
 
+    const phoneConflict = workers.find(
+      (w) => normalizePhone10(w.phone) === cleanPhone && (!ownerMatch || w.id !== ownerMatch.id)
+    );
+
+    if (phoneConflict) {
+      Alert.alert(
+        'Duplicate Phone Blocked',
+        `Mobile number +91 ${cleanPhone} is already registered to another Quick Karya profile. Only one genuine profile per phone number is allowed.`
+      );
+      return;
+    }
+
+    const existing = ownerMatch;
     let targetWorker: WorkerProfile;
 
     if (existing) {
@@ -1080,13 +1461,6 @@ Please dispatch assistance immediately!`;
         photo: regPhoto || existing.photo,
         skills: regSubRole ? [regSubRole.trim(), regCategory] : [regCategory]
       };
-      const updated = workers.map((w) => (w.id === existing.id ? targetWorker : w));
-      setWorkers(updated);
-      try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Failed saving to AsyncStorage:', e);
-      }
     } else {
       targetWorker = {
         id: `w-local-${Date.now()}`,
@@ -1096,7 +1470,7 @@ Please dispatch assistance immediately!`;
         subRole: regSubRole ? regSubRole.trim() : undefined,
         experience: expNum,
         rating: 5.0,
-        reviewCount: 1,
+        reviewCount: 0,
         hourlyRate: 0,
         rate: 0,
         phone: formattedPhone,
@@ -1108,25 +1482,34 @@ Please dispatch assistance immediately!`;
         verified: false,
         isVerified: false,
         available: true,
-        completedJobs: 1,
+        completedJobs: 0,
         languages: ['Bengali', 'Hindi', 'English'],
         skills: regSubRole ? [regSubRole.trim(), regCategory] : [regCategory],
         photo: regPhoto || undefined,
         emergencyAvailable: regCategory === 'Emergency Highway Assistance'
       };
-      const updated = [targetWorker, ...workers.filter((w) => w.id !== targetWorker.id)];
-      setWorkers(updated);
-      try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (e) {
-        console.warn('Failed saving to AsyncStorage:', e);
-      }
     }
 
-    // 1. Save directly to Cloud Firestore so all devices receive live update immediately
-    saveWorkerToCloud(targetWorker).catch((err) => {
-      console.warn('Could not sync to cloud database immediately:', err);
-    });
+    // 1. Save directly to Cloud Firestore (enforces uniqueness lock & security rules)
+    try {
+      await saveWorkerToCloud(targetWorker);
+    } catch (cloudErr: any) {
+      Alert.alert(
+        'Registration Blocked',
+        cloudErr?.message || 'Could not verify and save worker profile in Firestore.'
+      );
+      return;
+    }
+
+    const updated = existing
+      ? workers.map((w) => (w.id === existing.id ? targetWorker : w))
+      : [targetWorker, ...workers.filter((w) => w.id !== targetWorker.id)];
+    setWorkers(updated);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed saving to AsyncStorage:', e);
+    }
 
     // 2. Also dispatch to central backend API endpoint
     try {
@@ -1242,10 +1625,11 @@ Please dispatch assistance immediately!`;
         </View>
         <TouchableOpacity
           style={styles.locationPill}
-          onPress={requestDeviceLocation}
+          onPress={() => setIsLocationModalOpen(true)}
+          activeOpacity={0.8}
         >
-          <Text style={styles.locationPillText}>
-            {gpsLoading ? '📍 Locating...' : `📍 ${userLocationName}`}
+          <Text style={styles.locationPillText} numberOfLines={1}>
+            {gpsLoading ? '📍 Locating...' : `📍 ${userLocationName} ▾`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1321,7 +1705,10 @@ Please dispatch assistance immediately!`;
                       styles.categoryPill,
                       selectedCategory === cat.name && styles.categoryPillActive
                     ]}
-                    onPress={() => setSelectedCategory(cat.name)}
+                    onPress={() => {
+                      setSelectedCategory(cat.name);
+                      if (cat.name !== 'Driver') setDriverSubFilter('all');
+                    }}
                   >
                     <Text
                       style={[
@@ -1335,6 +1722,42 @@ Please dispatch assistance immediately!`;
                 );
               })}
             </ScrollView>
+
+            {/* Driver Sub-Category Filter Pills */}
+            {selectedCategory === 'Driver' && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={[styles.categoryScroll, { paddingTop: 8 }]}
+              >
+                {(
+                  [
+                    { key: 'all', label: 'All Drivers' },
+                    { key: 'personal', label: '🚗 Personal & Family' },
+                    { key: 'commercial', label: '🚛 Commercial Freight' },
+                    { key: 'heavy', label: '🚜 JCB & Heavy Machinery' }
+                  ] as { key: DriverSubCategory; label: string }[]
+                ).map((sub) => (
+                  <TouchableOpacity
+                    key={sub.key}
+                    style={[
+                      styles.categoryPill,
+                      driverSubFilter === sub.key && styles.categoryPillActive
+                    ]}
+                    onPress={() => setDriverSubFilter(sub.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryPillText,
+                        driverSubFilter === sub.key && styles.categoryPillTextActive
+                      ]}
+                    >
+                      {sub.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
           </View>
 
           {/* WORKERS LIST / MATCHING CARDS */}
@@ -1578,7 +2001,7 @@ Please dispatch assistance immediately!`;
                             styles.callNowButtonHalf,
                             isEmergency && styles.callNowButtonEmergency
                           ]}
-                          onPress={() => handleCall(worker.phone, worker.name, worker.category)}
+                          onPress={() => openCallDispatchModal(worker)}
                         >
                           <Text style={styles.callNowButtonIcon}>📞</Text>
                           <Text style={styles.callNowButtonText}>
@@ -1827,6 +2250,12 @@ Please dispatch assistance immediately!`;
                   <View style={styles.photoPreviewActions}>
                     <Text style={styles.photoAttachedText}>✓ Photo Selected</Text>
                     <View style={styles.photoButtonRow}>
+                      <TouchableOpacity
+                        style={styles.photoActionButton}
+                        onPress={() => openCropModalWithUri(regPhoto)}
+                      >
+                        <Text style={styles.photoActionButtonText}>✂️ Crop</Text>
+                      </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.photoActionButton}
                         onPress={handlePickFromGallery}
@@ -2299,11 +2728,52 @@ Please dispatch assistance immediately!`;
                 )}
               </View>
               <View style={styles.profileHeaderInfo}>
-                <Text style={styles.profileUserName}>
-                  {currentUser?.name || regName || 'Quick Karya Member'}
-                </Text>
+                {isEditingProfileName ? (
+                  <View style={{ gap: 6 }}>
+                    <TextInput
+                      style={styles.profileNameInlineInput}
+                      value={editProfileNameInput}
+                      onChangeText={setEditProfileNameInput}
+                      placeholder="Enter your full name"
+                      placeholderTextColor="#9ca3af"
+                      autoFocus
+                    />
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        style={styles.profileNameSaveBtn}
+                        onPress={handleSaveProfileName}
+                        disabled={savingProfileName}
+                      >
+                        <Text style={styles.profileNameSaveBtnText}>
+                          {savingProfileName ? 'Saving...' : '✓ Save'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.profileNameCancelBtn}
+                        onPress={() => setIsEditingProfileName(false)}
+                      >
+                        <Text style={styles.profileNameCancelBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[styles.profileUserName, { flexShrink: 1 }]} numberOfLines={1}>
+                      {currentUser?.name || regName || 'Quick Karya Member'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditProfileNameInput(currentUser?.name || regName || '');
+                        setIsEditingProfileName(true);
+                      }}
+                      style={styles.profileEditNameChip}
+                    >
+                      <Text style={styles.profileEditNameChipText}>✎ Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 <Text style={styles.profileUserPhone}>
-                  {currentUser?.email || currentUser?.phone || (regPhone ? `+91 ${regPhone}` : 'Google Verified Account')}
+                  {currentUser?.email || currentUser?.phone || (regPhone ? `+91 ${regPhone}` : 'Verified Quick Karya Account')}
                 </Text>
                 <View style={styles.profileRoleBadge}>
                   <Text style={styles.profileRoleBadgeText}>
@@ -2352,18 +2822,39 @@ Please dispatch assistance immediately!`;
               </View>
             </View>
 
-            {/* Quick Actions */}
-            <TouchableOpacity
-              style={styles.profileActionBtn}
-              onPress={handlePickFromGallery}
-            >
-              <Text style={styles.profileActionBtnText}>
-                ✂️ Change & Crop Profile Photo
-              </Text>
-            </TouchableOpacity>
+            {/* Photo Crop, Gallery & Camera Quick Actions */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              <TouchableOpacity
+                style={[styles.profileActionBtn, { flex: 1 }]}
+                onPress={handlePickFromGallery}
+              >
+                <Text style={styles.profileActionBtnText}>
+                  🖼️ Gallery & Crop
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.profileActionBtn, { flex: 1 }]}
+                onPress={handleTakePhoto}
+              >
+                <Text style={styles.profileActionBtnText}>
+                  📷 Camera & Crop
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {(regPhoto || currentUser?.profilePhoto || currentUser?.avatar) && (
+              <TouchableOpacity
+                style={[styles.profileActionBtn, { backgroundColor: '#FFF8E7', borderWidth: 1, borderColor: '#FFA500', marginBottom: 8 }]}
+                onPress={() => openCropModalWithUri((regPhoto || currentUser?.profilePhoto || currentUser?.avatar)!)}
+              >
+                <Text style={[styles.profileActionBtnText, { color: '#001F3F' }]}>
+                  ✂️ Adjust Zoom & Circular Frame
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
-              style={styles.profileActionBtn}
+              style={[styles.profileActionBtn, { marginBottom: 10 }]}
               onPress={() => setActiveTab('register')}
             >
               <Text style={styles.profileActionBtnText}>
@@ -2531,68 +3022,122 @@ Please dispatch assistance immediately!`;
                 </View>
               ) : (
                 <View style={{ gap: 8 }}>
-                  {nativeCallHistory.slice(0, 10).map((log) => (
-                    <View
-                      key={log.id}
-                      style={{
-                        padding: 10,
-                        backgroundColor: '#f9fafb',
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: '#e5e7eb',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
-                      }}
-                    >
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#111827' }} numberOfLines={1}>
-                            {log.workerName}
-                          </Text>
-                          <View
-                            style={{
-                              paddingHorizontal: 6,
-                              paddingVertical: 1,
-                              borderRadius: 4,
-                              backgroundColor: log.type === 'sos' ? '#fee2e2' : log.type === 'whatsapp' ? '#dcfce7' : '#dbeafe'
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 9,
-                                fontWeight: 'bold',
-                                color: log.type === 'sos' ? '#991b1b' : log.type === 'whatsapp' ? '#166534' : '#1e40af'
-                              }}
-                            >
-                              {log.type === 'sos' ? '🚨 SOS' : log.type === 'whatsapp' ? '💬 WhatsApp' : '📞 Call'}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text style={{ fontSize: 11, color: '#b45309', marginTop: 1 }}>
-                          {log.workerCategory} • {log.workerPhone}
-                        </Text>
-                        <Text style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>
-                          {new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
-                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                      </View>
-
-                      <TouchableOpacity
-                        onPress={() => handleCall(log.workerPhone, log.workerName, log.workerCategory)}
+                  {nativeCallHistory.slice(0, 50).map((log) => {
+                    const matchedWorker = workers.find(
+                      (w) => w.id === log.workerId || w.phone.replace(/[^0-9]/g, '').slice(-10) === log.workerPhone.replace(/[^0-9]/g, '').slice(-10)
+                    );
+                    const initials = (log.workerName || 'WK')
+                      .split(' ')
+                      .map((n) => n[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase();
+                    return (
+                      <View
+                        key={log.id}
                         style={{
-                          backgroundColor: '#FFA500',
-                          paddingVertical: 6,
-                          paddingHorizontal: 10,
-                          borderRadius: 8
+                          padding: 10,
+                          backgroundColor: '#f9fafb',
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: '#e5e7eb',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8
                         }}
                       >
-                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#001F3F' }}>
-                          Call Again
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                        <View
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 19,
+                            backgroundColor: '#001F3F',
+                            borderWidth: 1.5,
+                            borderColor: '#FFA500',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          {log.workerPhoto ? (
+                            <Image source={{ uri: log.workerPhoto }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                          ) : (
+                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#FFD700' }}>{initials}</Text>
+                          )}
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#111827' }} numberOfLines={1}>
+                              {log.workerName}
+                            </Text>
+                            <View
+                              style={{
+                                paddingHorizontal: 6,
+                                paddingVertical: 1,
+                                borderRadius: 4,
+                                backgroundColor: log.type === 'sos' ? '#fee2e2' : log.type === 'whatsapp' ? '#dcfce7' : '#dbeafe'
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 'bold',
+                                  color: log.type === 'sos' ? '#991b1b' : log.type === 'whatsapp' ? '#166534' : '#1e40af'
+                                }}
+                              >
+                                {log.type === 'sos' ? '🚨 SOS' : log.type === 'whatsapp' ? '💬 WhatsApp' : '📞 Call'}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={{ fontSize: 11, color: '#b45309', marginTop: 1 }} numberOfLines={1}>
+                            {log.workerCategory} • {log.workerPhone}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }} numberOfLines={1}>
+                            {new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {log.location ? ` • 📍 ${log.location}` : ''}
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (matchedWorker) {
+                                openCallDispatchModal(matchedWorker);
+                              } else {
+                                handleCall(log.workerPhone, log.workerName, log.workerCategory);
+                              }
+                            }}
+                            style={{
+                              backgroundColor: '#FFA500',
+                              paddingVertical: 6,
+                              paddingHorizontal: 10,
+                              borderRadius: 8
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#001F3F' }}>
+                              Call Again
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => deleteCallRecord(log.id)}
+                            style={{
+                              backgroundColor: '#fee2e2',
+                              paddingVertical: 6,
+                              paddingHorizontal: 8,
+                              borderRadius: 8
+                            }}
+                            accessibilityLabel="Delete call log"
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#b91c1c' }}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -2635,10 +3180,10 @@ Please dispatch assistance immediately!`;
                 </View>
                 <TouchableOpacity
                   style={styles.settingsActionBtnSmall}
-                  onPress={requestDeviceLocation}
+                  onPress={() => setIsLocationModalOpen(true)}
                 >
                   <Text style={styles.settingsActionBtnSmallText}>
-                    {gpsLoading ? 'Locating...' : '📍 Re-check GPS'}
+                    {gpsLoading ? 'Locating...' : '📍 Change / GPS'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -3108,6 +3653,143 @@ Please dispatch assistance immediately!`;
               </View>
             )}
           </ScrollView>
+
+          {/* NATIVE GOOGLE ACCOUNT PICKER OVERLAY (ANDROID/iOS SAFE SINGLE-WINDOW) */}
+          {isGooglePickerOpen && (
+            <View style={styles.googlePickerBackdrop}>
+              <View style={styles.googlePickerCard}>
+                <View style={styles.googlePickerHeader}>
+                  <View style={styles.googlePickerBrandRow}>
+                    <View style={styles.googleIconBadge}>
+                      <Text style={styles.googleIconText}>G</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.googlePickerTitle}>Choose an account</Text>
+                      <Text style={styles.googlePickerSub}>to continue to Quick Karya</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIsGooglePickerOpen(false);
+                      setAuthError(null);
+                    }}
+                    style={styles.googlePickerCloseBtn}
+                  >
+                    <Text style={styles.googlePickerCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
+                  {!googleAddAccountMode && savedGoogleAccounts.length > 0 ? (
+                    <View style={{ padding: 14, gap: 10 }}>
+                      {savedGoogleAccounts.map((acc) => {
+                        const accInitials = (acc.name || 'G')
+                          .split(' ')
+                          .map((n) => n[0])
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .join('')
+                          .toUpperCase();
+                        return (
+                          <View key={acc.uid} style={styles.googleAccountRow}>
+                            <TouchableOpacity
+                              style={styles.googleAccountMainBtn}
+                              onPress={() => completeGoogleAccountSignIn(acc)}
+                              activeOpacity={0.8}
+                            >
+                              <View style={styles.googleAccountAvatar}>
+                                {acc.photoUrl ? (
+                                  <Image source={{ uri: acc.photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                                ) : (
+                                  <Text style={styles.googleAccountAvatarText}>{accInitials}</Text>
+                                )}
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.googleAccountName} numberOfLines={1}>{acc.name}</Text>
+                                <Text style={styles.googleAccountEmail} numberOfLines={1}>{acc.email}</Text>
+                              </View>
+                              <Text style={styles.googleAccountSelectArrow}>→</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleRemoveSavedGoogleAccount(acc.uid)}
+                              style={styles.googleAccountRemoveBtn}
+                            >
+                              <Text style={styles.googleAccountRemoveText}>✕</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+
+                      <TouchableOpacity
+                        style={styles.googleAddAnotherBtn}
+                        onPress={() => {
+                          setAuthError(null);
+                          setGoogleAddAccountMode(true);
+                        }}
+                      >
+                        <Text style={styles.googleAddAnotherIcon}>➕</Text>
+                        <Text style={styles.googleAddAnotherText}>Use another Google account</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={{ padding: 16, gap: 12 }}>
+                      {authError && (
+                        <View style={styles.authErrorBox}>
+                          <Text style={styles.authErrorText}>⚠️ {authError}</Text>
+                        </View>
+                      )}
+                      <View>
+                        <Text style={styles.googleInputLabel}>Full Name (Google Display Name)</Text>
+                        <TextInput
+                          style={styles.googleTextInput}
+                          placeholder="e.g. Rajesh Kumar"
+                          placeholderTextColor="#64748b"
+                          value={googleCustomName}
+                          onChangeText={setGoogleCustomName}
+                          autoCapitalize="words"
+                        />
+                      </View>
+                      <View>
+                        <Text style={styles.googleInputLabel}>Gmail / Google Email Address</Text>
+                        <TextInput
+                          style={styles.googleTextInput}
+                          placeholder="e.g. rajesh.kumar@gmail.com"
+                          placeholderTextColor="#64748b"
+                          value={googleCustomEmail}
+                          onChangeText={setGoogleCustomEmail}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.googleConfirmBtn, authLoading && styles.authBtnDisabled]}
+                        onPress={handleAddCustomGoogleAccount}
+                        disabled={authLoading}
+                      >
+                        <Text style={styles.googleConfirmBtnText}>
+                          {authLoading ? 'Continuing...' : 'Continue with This Google Account →'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {savedGoogleAccounts.length > 0 && (
+                        <TouchableOpacity
+                          style={styles.googleBackSavedBtn}
+                          onPress={() => {
+                            setAuthError(null);
+                            setGoogleAddAccountMode(false);
+                          }}
+                        >
+                          <Text style={styles.googleBackSavedText}>← Back to Saved Accounts</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          )}
         </SafeAreaView>
       </Modal>
 
@@ -3335,7 +4017,7 @@ Please dispatch assistance immediately!`;
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.detailBottomCallBtn}
-                onPress={() => handleCall(detailWorker.phone, detailWorker.name, detailWorker.category)}
+                onPress={() => openCallDispatchModal(detailWorker)}
               >
                 <Text style={styles.detailBottomCallBtnIcon}>📞</Text>
                 <Text style={styles.detailBottomCallBtnText}>Call Worker</Text>
@@ -3715,6 +4397,424 @@ Please dispatch assistance immediately!`;
             </TouchableOpacity>
           </View>
         </SafeAreaView>
+      </Modal>
+
+      {/* NATIVE CALL & WHATSAPP GPS DISPATCH MODAL (WEB CallModal PARITY) */}
+      <Modal
+        visible={Boolean(callingWorker)}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setCallingWorker(null)}
+      >
+        {callingWorker && (() => {
+          const isDriver = callingWorker.category === 'Driver';
+          const isKmRate = callingWorker.pricingType === 'per_km' || callingWorker.rateUnit === '/km';
+          const isDropMandatory = isDriver && isKmRate;
+          const pricing = formatWorkerPricing(callingWorker);
+          const pinCoords = callGpsCoords || { lat: userCoords.latitude, lng: userCoords.longitude };
+
+          const validateCallDispatch = (): boolean => {
+            if (isDriver && !callPickupLocation.trim()) {
+              setCallValidationError('Please enter a Pickup Location (or tap Share My GPS Pin).');
+              return false;
+            }
+            if (isDropMandatory && !callDropLocation.trim()) {
+              setCallValidationError('Please enter a Drop Location for per-km ride booking.');
+              return false;
+            }
+            setCallValidationError(null);
+            return true;
+          };
+
+          const handleDispatchCall = () => {
+            if (!validateCallDispatch()) return;
+            handleCall(
+              callingWorker.phone,
+              callingWorker.name,
+              callingWorker.category,
+              callingWorker,
+              callPickupLocation.trim() || userLocationName
+            );
+          };
+
+          const handleDispatchWhatsApp = () => {
+            if (!validateCallDispatch()) return;
+            handleShareGpsWithWorker(
+              callingWorker,
+              callPickupLocation,
+              pinCoords,
+              callDropLocation
+            );
+          };
+
+          const handleDispatchShareSummary = async () => {
+            const mapsLink = `https://maps.google.com/?q=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`;
+            const summary = isDriver
+              ? `Quick Karya Driver Booking\nDriver: ${callingWorker.name} (${callingWorker.phone})\nPickup: ${callPickupLocation.trim() || userLocationName}\nDrop: ${callDropLocation.trim() || 'Flexible'}\nMap Pin: ${mapsLink}`
+              : `Quick Karya Artisan Contact\nArtisan: ${callingWorker.name} (${callingWorker.category})\nPhone: ${callingWorker.phone}\nLocation: ${callPickupLocation.trim() || userLocationName}\nMap Pin: ${mapsLink}`;
+            try {
+              await Share.share({ message: summary });
+            } catch {
+              Alert.alert('Dispatch Details', summary);
+            }
+          };
+
+          return (
+            <View style={styles.nativeModalBackdrop}>
+              <View style={styles.nativeDispatchCard}>
+                {/* Header */}
+                <View style={styles.nativeDispatchHeader}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={styles.nativeDispatchName} numberOfLines={1}>
+                      {callingWorker.name}
+                    </Text>
+                    <Text style={styles.nativeDispatchSub} numberOfLines={1}>
+                      {callingWorker.category}
+                      {pricing.vehicleBadge ? ` • ${pricing.vehicleBadge}` : ''}
+                    </Text>
+                    <Text style={styles.nativeDispatchLoc} numberOfLines={1}>
+                      📍 {callingWorker.city}{callingWorker.state ? `, ${callingWorker.state}` : ''} • {formatDistance(callingWorker.distanceKm)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.nativeDispatchCloseBtn}
+                    onPress={() => setCallingWorker(null)}
+                  >
+                    <Text style={styles.nativeDispatchCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.nativeCallerIdStrip}>
+                  <Text style={styles.nativeCallerIdText}>🛡️ Caller ID: Quick Karya</Text>
+                  <Text style={styles.nativeCallerIdSub}>Direct Free Contact</Text>
+                </View>
+
+                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ padding: 14, gap: 12 }} keyboardShouldPersistTaps="handled">
+                  {/* Job Site / Pickup Address + Live GPS Pin */}
+                  <View style={styles.nativeDispatchBox}>
+                    <View style={styles.nativeDispatchBoxTop}>
+                      <Text style={styles.nativeDispatchBoxLabel}>
+                        {isDriver ? '📍 Pickup Location *' : '📍 Job Site Address / GPS Pin'}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.nativeDetectGpsBtn}
+                        onPress={handleCallModalDetectGps}
+                        disabled={callLocatingGps}
+                      >
+                        <Text style={styles.nativeDetectGpsBtnText}>
+                          {callLocatingGps ? 'Detecting...' : '🎯 Share My GPS Pin'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <TextInput
+                      style={styles.nativeDispatchInput}
+                      value={callPickupLocation}
+                      onChangeText={(t) => {
+                        setCallPickupLocation(t);
+                        if (callValidationError) setCallValidationError(null);
+                      }}
+                      placeholder="Enter house/shop address or landmark..."
+                      placeholderTextColor="#64748b"
+                    />
+
+                    {isDriver && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={styles.nativeDispatchBoxLabel}>
+                          🎯 Drop Location {isDropMandatory ? '*' : '(Optional)'}
+                        </Text>
+                        <TextInput
+                          style={[styles.nativeDispatchInput, { marginTop: 4 }]}
+                          value={callDropLocation}
+                          onChangeText={(t) => {
+                            setCallDropLocation(t);
+                            if (callValidationError) setCallValidationError(null);
+                          }}
+                          placeholder="Enter destination / drop landmark..."
+                          placeholderTextColor="#64748b"
+                        />
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.nativeMapPinRow}
+                      onPress={() => Linking.openURL(`https://maps.google.com/?q=${pinCoords.lat.toFixed(5)},${pinCoords.lng.toFixed(5)}`).catch(() => {})}
+                    >
+                      <Text style={styles.nativeMapPinCoord} numberOfLines={1}>
+                        📍 GPS: {pinCoords.lat.toFixed(4)}, {pinCoords.lng.toFixed(4)}
+                      </Text>
+                      <Text style={styles.nativeMapPinLink}>Open Map ↗</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {callValidationError && (
+                    <View style={styles.authErrorBox}>
+                      <Text style={styles.authErrorText}>⚠️ {callValidationError}</Text>
+                    </View>
+                  )}
+
+                  {/* Phone Number Highlight Box */}
+                  <View style={styles.nativePhoneBox}>
+                    <Text style={styles.nativePhoneLabel}>
+                      {isDriver ? 'DRIVER DIRECT PHONE' : 'ARTISAN DIRECT CONTACT'}
+                    </Text>
+                    <Text style={styles.nativePhoneValue}>{callingWorker.phone}</Text>
+                    <Text style={styles.nativePhoneAvail}>● Available for immediate dispatch</Text>
+                  </View>
+
+                  {/* Primary Call Now Action */}
+                  <TouchableOpacity
+                    style={styles.nativePrimaryCallBtn}
+                    onPress={handleDispatchCall}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.nativePrimaryCallBtnText}>
+                      📞 {isDriver ? 'Call Driver Now' : `Call ${callingWorker.name.split(' ')[0]} Now`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* WhatsApp + Share Details */}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity
+                      style={styles.nativeWhatsappBtn}
+                      onPress={handleDispatchWhatsApp}
+                    >
+                      <Text style={styles.nativeWhatsappBtnText}>💬 WhatsApp GPS</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.nativeShareDetailsBtn}
+                      onPress={handleDispatchShareSummary}
+                    >
+                      <Text style={styles.nativeShareDetailsBtnText}>📋 Share Details</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
+          );
+        })()}
+      </Modal>
+
+      {/* LOCATION SWITCHER MODAL (WEB LocationModal PARITY) */}
+      <Modal
+        visible={isLocationModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsLocationModalOpen(false)}
+      >
+        <View style={styles.nativeModalBackdrop}>
+          <View style={styles.nativeLocationCard}>
+            <View style={styles.nativeLocationHeader}>
+              <View>
+                <Text style={styles.nativeLocationTitle}>📍 Select Your Location</Text>
+                <Text style={styles.nativeLocationSub}>
+                  Find nearest artisans with live GPS distance sorting
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.nativeDispatchCloseBtn}
+                onPress={() => setIsLocationModalOpen(false)}
+              >
+                <Text style={styles.nativeDispatchCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ padding: 14, gap: 12 }} keyboardShouldPersistTaps="handled">
+              {/* Live GPS Button */}
+              <TouchableOpacity
+                style={styles.nativeLiveGpsCard}
+                onPress={() => {
+                  setIsLiveGpsMode(true);
+                  requestDeviceLocation();
+                  setIsLocationModalOpen(false);
+                }}
+              >
+                <View style={styles.nativeLiveGpsIconBox}>
+                  <Text style={{ fontSize: 18 }}>🧭</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.nativeLiveGpsTitle}>Use Live Device GPS</Text>
+                    {isLiveGpsMode && (
+                      <View style={styles.nativeLiveBadge}>
+                        <Text style={styles.nativeLiveBadgeText}>ACTIVE</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.nativeLiveGpsSub}>
+                    Detect current latitude/longitude &amp; pincode automatically
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Search City or Pincode */}
+              <View style={{ gap: 6 }}>
+                <Text style={styles.nativeLocInputLabel}>Search City, District or Pincode</Text>
+                <View style={styles.nativeLocSearchRow}>
+                  <TextInput
+                    style={styles.nativeLocSearchInput}
+                    placeholder="e.g., Agartala, Tripura or 799001"
+                    placeholderTextColor="#64748b"
+                    value={locationSearchInput}
+                    onChangeText={setLocationSearchInput}
+                    onSubmitEditing={handleSearchCustomLocation}
+                  />
+                  <TouchableOpacity
+                    style={styles.nativeLocSearchBtn}
+                    onPress={handleSearchCustomLocation}
+                  >
+                    <Text style={styles.nativeLocSearchBtnText}>Search</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Preset Popular Hubs */}
+              <Text style={styles.nativeLocSectionLabel}>POPULAR SERVICE REGIONS</Text>
+              <View style={{ gap: 8 }}>
+                {KNOWN_LOCATIONS.map((loc) => {
+                  const isSel = !isLiveGpsMode && regCity.toLowerCase() === loc.city.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      key={loc.city}
+                      style={[
+                        styles.nativeLocPresetItem,
+                        isSel && styles.nativeLocPresetItemActive
+                      ]}
+                      onPress={() => handleSelectPresetLocation(loc)}
+                    >
+                      <Text style={[styles.nativeLocPresetText, isSel && styles.nativeLocPresetTextActive]}>
+                        📍 {loc.city}, {loc.state} ({loc.pincode})
+                      </Text>
+                      {isSel && <Text style={{ color: '#FFA500', fontWeight: '900' }}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* INTERACTIVE PROFILE PHOTO CROP, ZOOM & FRAMING MODAL */}
+      <Modal
+        visible={isCropModalOpen && Boolean(cropSourceUri)}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsCropModalOpen(false)}
+      >
+        <View style={styles.cropModalOverlay}>
+          <View style={styles.cropModalCard}>
+            <View style={styles.cropModalHeader}>
+              <Text style={styles.cropModalTitle}>✨ Adjust Profile Picture</Text>
+              <TouchableOpacity
+                onPress={() => setIsCropModalOpen(false)}
+                style={styles.nativeDispatchCloseBtn}
+              >
+                <Text style={styles.nativeDispatchCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.cropModalBody}>
+              <Text style={styles.cropModalHint}>
+                ✋ Drag photo to frame face inside the golden circle
+              </Text>
+
+              {/* 240x240 Interactive Viewport with Circular Ring Mask */}
+              <View style={styles.cropViewport} {...cropPanResponder.panHandlers}>
+                {cropSourceUri && (
+                  <AnimatedView
+                    style={{
+                      width: 240,
+                      height: 240,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transform: [
+                        { translateX: cropOffset.x },
+                        { translateY: cropOffset.y },
+                        { rotate: `${cropRotation}deg` },
+                        { scale: cropZoom }
+                      ]
+                    }}
+                  >
+                    <Image
+                      source={{ uri: cropSourceUri }}
+                      style={{ width: 240, height: 240 }}
+                      resizeMode="cover"
+                    />
+                  </AnimatedView>
+                )}
+
+                {/* Golden Circular Ring Overlay */}
+                <View pointerEvents="none" style={styles.cropMaskOverlay}>
+                  <View style={styles.cropGoldenRing} />
+                </View>
+
+                <View style={styles.cropStatusPill}>
+                  <Text style={styles.cropStatusText}>
+                    {Math.round(cropZoom * 100)}% • {cropRotation}°
+                  </Text>
+                </View>
+              </View>
+
+              {/* Zoom Step Controls */}
+              <View style={styles.cropControlsRow}>
+                <TouchableOpacity
+                  style={styles.cropControlBtn}
+                  onPress={() => setCropZoom((z) => Math.max(1, Math.round((z - 0.2) * 10) / 10))}
+                >
+                  <Text style={styles.cropControlBtnText}>➖ Zoom Out</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cropControlBtn}
+                  onPress={() => setCropZoom((z) => Math.min(3, Math.round((z + 0.2) * 10) / 10))}
+                >
+                  <Text style={styles.cropControlBtnText}>➕ Zoom In</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Rotate & Reset Controls */}
+              <View style={styles.cropControlsRow}>
+                <TouchableOpacity
+                  style={styles.cropControlBtn}
+                  onPress={() => setCropRotation((r) => (r + 90) % 360)}
+                >
+                  <Text style={styles.cropControlBtnText}>↻ Rotate 90°</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cropControlBtn}
+                  onPress={() => {
+                    setCropZoom(1);
+                    setCropRotation(0);
+                    cropOffsetRef.current = { x: 0, y: 0 };
+                    setCropOffset({ x: 0, y: 0 });
+                  }}
+                >
+                  <Text style={styles.cropControlBtnText}>↺ Reset View</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.cropFooterRow}>
+              <TouchableOpacity
+                style={styles.cropCancelBtn}
+                onPress={() => setIsCropModalOpen(false)}
+              >
+                <Text style={styles.cropCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cropApplyBtn}
+                onPress={() => {
+                  if (cropSourceUri) {
+                    applyCroppedPhoto(cropSourceUri);
+                  }
+                  setIsCropModalOpen(false);
+                }}
+              >
+                <Text style={styles.cropApplyBtnText}>✓ Apply Photo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   </SafeAreaProvider>
@@ -7219,5 +8319,700 @@ const styles = StyleSheet.create({
     color: '#001F3F',
     fontSize: 14,
     fontWeight: 'bold'
+  },
+
+  /* PROFILE INLINE NAME EDIT STYLES */
+  profileNameInlineInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a'
+  },
+  profileNameSaveBtn: {
+    backgroundColor: '#001F3F',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 6
+  },
+  profileNameSaveBtnText: {
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  profileNameCancelBtn: {
+    backgroundColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 6
+  },
+  profileNameCancelBtnText: {
+    color: '#374151',
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  profileEditNameChip: {
+    backgroundColor: '#FFF8E7',
+    borderWidth: 1,
+    borderColor: '#FFA500',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2
+  },
+  profileEditNameChipText: {
+    color: '#001F3F',
+    fontSize: 10,
+    fontWeight: '800'
+  },
+
+  /* NATIVE GOOGLE ACCOUNT PICKER OVERLAY */
+  googlePickerBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 10, 25, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18
+  },
+  googlePickerCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#0B192C',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    overflow: 'hidden',
+    elevation: 12
+  },
+  googlePickerHeader: {
+    backgroundColor: '#001428',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 165, 0, 0.25)'
+  },
+  googlePickerBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1
+  },
+  googlePickerTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  googlePickerSub: {
+    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1
+  },
+  googlePickerCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  googlePickerCloseText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  googleAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#001F3F',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1e4d8c',
+    overflow: 'hidden'
+  },
+  googleAccountMainBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 10
+  },
+  googleAccountAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#001428',
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden'
+  },
+  googleAccountAvatarText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: '900'
+  },
+  googleAccountName: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  googleAccountEmail: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 1
+  },
+  googleAccountSelectArrow: {
+    color: '#FFA500',
+    fontSize: 16,
+    fontWeight: '900'
+  },
+  googleAccountRemoveBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    borderLeftWidth: 1,
+    borderLeftColor: '#0a2e5c'
+  },
+  googleAccountRemoveText: {
+    color: '#f87171',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  googleAddAnotherBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFA500',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(255, 165, 0, 0.08)'
+  },
+  googleAddAnotherIcon: {
+    fontSize: 13
+  },
+  googleAddAnotherText: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  googleInputLabel: {
+    color: '#e2e8f0',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4
+  },
+  googleTextInput: {
+    backgroundColor: '#001428',
+    borderWidth: 1,
+    borderColor: '#1e4d8c',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 14
+  },
+  googleConfirmBtn: {
+    backgroundColor: '#FFA500',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 4
+  },
+  googleConfirmBtnText: {
+    color: '#001F3F',
+    fontSize: 13,
+    fontWeight: '900'
+  },
+  googleBackSavedBtn: {
+    alignItems: 'center',
+    paddingVertical: 8
+  },
+  googleBackSavedText: {
+    color: '#93c5fd',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+
+  /* SHARED NATIVE MODAL BACKDROP + CALL DISPATCH MODAL */
+  nativeModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    justifyContent: 'flex-end'
+  },
+  nativeDispatchCard: {
+    backgroundColor: '#0B192C',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1.5,
+    borderColor: '#FFA500',
+    overflow: 'hidden',
+    paddingBottom: 16
+  },
+  nativeDispatchHeader: {
+    backgroundColor: '#001428',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 165, 0, 0.25)'
+  },
+  nativeDispatchName: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '800'
+  },
+  nativeDispatchSub: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2
+  },
+  nativeDispatchLoc: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    marginTop: 3
+  },
+  nativeDispatchCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  nativeDispatchCloseText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  nativeCallerIdStrip: {
+    backgroundColor: '#001F3F',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#0a2e5c'
+  },
+  nativeCallerIdText: {
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  nativeCallerIdSub: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600'
+  },
+  nativeDispatchBox: {
+    backgroundColor: '#001428',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 165, 0, 0.35)',
+    padding: 12
+  },
+  nativeDispatchBoxTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  nativeDispatchBoxLabel: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 6
+  },
+  nativeDetectGpsBtn: {
+    backgroundColor: '#FFA500',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5
+  },
+  nativeDetectGpsBtnText: {
+    color: '#001F3F',
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  nativeDispatchInput: {
+    backgroundColor: '#001F3F',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 165, 0, 0.4)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: '#ffffff',
+    fontSize: 13
+  },
+  nativeMapPinRow: {
+    marginTop: 8,
+    backgroundColor: '#001F3F',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  nativeMapPinCoord: {
+    color: '#fde68a',
+    fontSize: 11,
+    flex: 1,
+    marginRight: 8
+  },
+  nativeMapPinLink: {
+    color: '#FFA500',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  nativePhoneBox: {
+    backgroundColor: '#001428',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 165, 0, 0.3)',
+    padding: 12,
+    alignItems: 'center'
+  },
+  nativePhoneLabel: {
+    color: '#fbbf24',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8
+  },
+  nativePhoneValue: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 2
+  },
+  nativePhoneAvail: {
+    color: '#34d399',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 3
+  },
+  nativePrimaryCallBtn: {
+    backgroundColor: '#FFA500',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center'
+  },
+  nativePrimaryCallBtnText: {
+    color: '#001F3F',
+    fontSize: 15,
+    fontWeight: '900'
+  },
+  nativeWhatsappBtn: {
+    flex: 1,
+    backgroundColor: '#002a1a',
+    borderWidth: 1,
+    borderColor: '#10b981',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center'
+  },
+  nativeWhatsappBtnText: {
+    color: '#6ee7b7',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  nativeShareDetailsBtn: {
+    flex: 1,
+    backgroundColor: '#001428',
+    borderWidth: 1,
+    borderColor: '#1e4d8c',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center'
+  },
+  nativeShareDetailsBtnText: {
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+
+  /* LOCATION SWITCHER MODAL STYLES */
+  nativeLocationCard: {
+    backgroundColor: '#0B192C',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1.5,
+    borderColor: '#FFA500',
+    overflow: 'hidden',
+    paddingBottom: 18
+  },
+  nativeLocationHeader: {
+    backgroundColor: '#001428',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 165, 0, 0.25)'
+  },
+  nativeLocationTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  nativeLocationSub: {
+    color: '#fbbf24',
+    fontSize: 11,
+    marginTop: 2
+  },
+  nativeLiveGpsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#001428',
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    borderRadius: 14,
+    padding: 12
+  },
+  nativeLiveGpsIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#001F3F',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  nativeLiveGpsTitle: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  nativeLiveBadge: {
+    backgroundColor: '#FFA500',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1
+  },
+  nativeLiveBadgeText: {
+    color: '#001F3F',
+    fontSize: 9,
+    fontWeight: '900'
+  },
+  nativeLiveGpsSub: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    marginTop: 2
+  },
+  nativeLocInputLabel: {
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  nativeLocSearchRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  nativeLocSearchInput: {
+    flex: 1,
+    backgroundColor: '#001428',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 165, 0, 0.4)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: '#ffffff',
+    fontSize: 13
+  },
+  nativeLocSearchBtn: {
+    backgroundColor: '#FFA500',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    justifyContent: 'center'
+  },
+  nativeLocSearchBtnText: {
+    color: '#001F3F',
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  nativeLocSectionLabel: {
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.7
+  },
+  nativeLocPresetItem: {
+    backgroundColor: '#001428',
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  nativeLocPresetItemActive: {
+    backgroundColor: '#001F3F',
+    borderColor: '#FFA500'
+  },
+  nativeLocPresetText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  nativeLocPresetTextActive: {
+    color: '#FFD700',
+    fontWeight: '800'
+  },
+
+  /* INTERACTIVE PHOTO CROP MODAL STYLES */
+  cropModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16
+  },
+  cropModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#0B192C',
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#FFA500',
+    overflow: 'hidden'
+  },
+  cropModalHeader: {
+    backgroundColor: '#001F3F',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 165, 0, 0.3)'
+  },
+  cropModalTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  cropModalBody: {
+    padding: 16,
+    alignItems: 'center',
+    gap: 12
+  },
+  cropModalHint: {
+    color: '#cbd5e1',
+    fontSize: 11,
+    textAlign: 'center',
+    fontWeight: '600'
+  },
+  cropViewport: {
+    width: 240,
+    height: 240,
+    borderRadius: 18,
+    backgroundColor: '#001428',
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative'
+  },
+  cropMaskOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cropGoldenRing: {
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    borderWidth: 2.5,
+    borderColor: '#FFA500',
+    backgroundColor: 'transparent'
+  },
+  cropStatusPill: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  cropStatusText: {
+    color: '#fbbf24',
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  cropControlsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%'
+  },
+  cropControlBtn: {
+    flex: 1,
+    backgroundColor: '#002b54',
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center'
+  },
+  cropControlBtnText: {
+    color: '#fbbf24',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  cropFooterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 14,
+    backgroundColor: '#001428',
+    borderTopWidth: 1,
+    borderTopColor: '#0a2e5c'
+  },
+  cropCancelBtn: {
+    flex: 1,
+    backgroundColor: '#002b54',
+    borderWidth: 1,
+    borderColor: '#0a2e5c',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center'
+  },
+  cropCancelBtnText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  cropApplyBtn: {
+    flex: 1,
+    backgroundColor: '#FFA500',
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center'
+  },
+  cropApplyBtnText: {
+    color: '#001F3F',
+    fontSize: 13,
+    fontWeight: '900'
   }
 });

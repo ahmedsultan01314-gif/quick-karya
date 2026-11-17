@@ -8,6 +8,11 @@ import {
   fetchWorkersFromCloud,
   subscribeWorkersFromCloud,
   cleanAndDeduplicateWorkers,
+  validateGenuineWorker,
+  normalizePhone10,
+  isGenuinePhone10,
+  isMockOrTestProfile,
+  enforceFirestoreSecurityAndCleanup,
   saveCallLogToCloud,
   deleteCallLogFromCloud,
   saveUserToCloud,
@@ -773,7 +778,7 @@ app.get('/api/workers', (req, res) => {
   res.json(results);
 });
 
-// Register worker
+// Register worker (strictly blocks mock/demo profiles, invalid phones, and duplicate phone numbers)
 app.post('/api/workers', async (req, res) => {
   const {
     name,
@@ -793,19 +798,48 @@ app.post('/api/workers', async (req, res) => {
     userId
   } = req.body;
 
-  if (!name || !category || !experience || !phone || !city) {
+  if (!name || !category || experience === undefined || !phone || !city) {
     return res.status(400).json({ error: 'Missing required worker onboarding fields' });
   }
 
-  // Check for existing profile by mobile number or worker ID to update in-place (no duplicates)
-  const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-10);
-  const existingWorker = workers.find(
+  const validation = validateGenuineWorker({
+    id: req.body.id,
+    workerId: req.body.workerId,
+    name,
+    category,
+    phone
+  });
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.reason || 'Invalid or mock artisan profile blocked.' });
+  }
+
+  const cleanPhone = validation.phone10;
+  if (!isGenuinePhone10(cleanPhone) || isMockOrTestProfile({ id: req.body.id, workerId: req.body.workerId, name, phone: cleanPhone })) {
+    return res.status(400).json({ error: 'Only genuine profiles with valid 10-digit mobile numbers are permitted.' });
+  }
+
+  // Sync latest cloud workers list before checking duplicates
+  const cloudWorkers = await fetchWorkersFromCloud().catch(() => []);
+  const combinedWorkers = cleanAndDeduplicateWorkers([...workers, ...cloudWorkers]);
+
+  const ownerMatchedWorker = combinedWorkers.find(
     (w) =>
-      (cleanPhone && w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone) ||
       (req.body.id && w.id === req.body.id) ||
       (req.body.workerId && w.workerId === req.body.workerId) ||
       (userId && (w as any).userId === userId)
   );
+
+  const phoneConflictWorker = combinedWorkers.find(
+    (w) => normalizePhone10(w.phone) === cleanPhone && (!ownerMatchedWorker || w.id !== ownerMatchedWorker.id)
+  );
+
+  if (phoneConflictWorker) {
+    return res.status(409).json({
+      error: `Duplicate phone number blocked: +91 ${cleanPhone} is already registered to another Quick Karya profile.`
+    });
+  }
+
+  const existingWorker = ownerMatchedWorker;
 
   let workerLat = typeof latitude === 'number' ? latitude : null;
   let workerLng = typeof longitude === 'number' ? longitude : null;
@@ -832,6 +866,7 @@ app.post('/api/workers', async (req, res) => {
     existingWorker.category = category as ServiceCategory;
     if (subRole) existingWorker.subRole = subRole.trim();
     existingWorker.experience = parseInt(experience, 10) || existingWorker.experience;
+    existingWorker.phone = `+91${cleanPhone}`;
     existingWorker.city = city.trim();
     existingWorker.state = determinedState;
     existingWorker.pincode = pincode ? pincode.trim() : existingWorker.pincode;
@@ -848,7 +883,13 @@ app.post('/api/workers', async (req, res) => {
       existingWorker.languages = Array.isArray(languages) ? languages : languages.split(',').map((l: string) => l.trim()).filter(Boolean);
     }
 
-    await saveWorkerToCloud(existingWorker).catch((e) => console.warn('Could not save updated worker to cloud:', e));
+    try {
+      await saveWorkerToCloud(existingWorker);
+    } catch (e: any) {
+      const msg = e?.message || 'Could not update worker profile in Firestore.';
+      const status = msg.includes('Duplicate phone number') ? 409 : 400;
+      return res.status(status).json({ error: msg });
+    }
 
     return res.json({
       success: true,
@@ -891,13 +932,19 @@ app.post('/api/workers', async (req, res) => {
       : subRole ? [subRole.trim(), category] : [category],
     emergencyAvailable: category === 'Emergency Highway Assistance'
   };
+  if (userId) {
+    (newWorker as any).userId = userId;
+  }
 
-  workers.unshift(newWorker);
+  try {
+    await saveWorkerToCloud(newWorker);
+  } catch (err: any) {
+    const msg = err?.message || 'Could not save worker to Firestore.';
+    const status = msg.includes('Duplicate phone number') ? 409 : 400;
+    return res.status(status).json({ error: msg });
+  }
 
-  // Sync to Cloud Firestore
-  await saveWorkerToCloud(newWorker).catch((err) => {
-    console.warn('Could not sync worker to Firestore:', err);
-  });
+  workers = cleanAndDeduplicateWorkers([newWorker, ...workers]);
 
   // If registering user ID is provided, update user record with Worker ID
   if (userId) {

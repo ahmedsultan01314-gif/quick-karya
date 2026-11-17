@@ -21,6 +21,7 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CALL_PHONE",
+        "CAMERA",
         "POST_NOTIFICATIONS",
         "VIBRATE"
       ]

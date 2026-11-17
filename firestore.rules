@@ -2,42 +2,385 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Workers collection: Public directory for verified/unverified workers
-    match /workers/{workerId} {
-      allow read: if true;
-      allow create: if request.resource.data.name is string
-                    && request.resource.data.name.size() > 0
-                    && request.resource.data.category is string
-                    && request.resource.data.phone is string
-                    && (!('isVerified' in request.resource.data) || request.resource.data.isVerified == false);
-      allow update: if true; // Allows rating and review updates
-      allow delete: if true; // Allows deleting worker profiles
+    // Global Safety Net: Default deny all unless explicitly permitted below
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // App Users
+    // =========================================================
+    // GLOBAL HELPERS (Identity, Path Hardening, Anti-Mock & Phone)
+    // =========================================================
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 2
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidPhone10(p) {
+      return p is string
+        && p.size() == 10
+        && p.matches('^[6-9][0-9]{9}$')
+        && !(p in [
+          '0000000000', '1111111111', '2222222222', '3333333333', '4444444444',
+          '5555555555', '6666666666', '7777777777', '8888888888', '9999999999',
+          '1234567890', '0123456789', '9876543210', '0987654321', '9123456789',
+          '6789012345', '9876543211', '9988776655', '9999988888', '9876500000',
+          '9999900000', '9000000000', '8000000000', '7000000000', '6000000000',
+          '8888888880', '9898989898', '9090909090', '7878787878', '6969696969'
+        ])
+        && !p.matches('.*(0000000|1111111|2222222|3333333|4444444|5555555|6666666|7777777|8888888|9999999).*');
+    }
+
+    function isMockText(val) {
+      return val is string && (
+        val.lower().matches('.*(santosh sharma|nagan dhar|demo worker|test worker|sample artisan|john doe|jane doe|quick karya member).*')
+        || val.lower().matches('.*\\b(demo|test|mock|dummy|sample|fake|placeholder|sandbox)\\b.*')
+      );
+    }
+
+    function isMockId(id) {
+      return id is string && (
+        id.lower() == 'mnzmnmfibdtungd6mvfc'
+        || id.lower().matches('^google_native_.*')
+        || id.lower().matches('.*(^|[-_])(demo|test|mock|dummy|sample|fake|sandbox)([-_]|$).*')
+      );
+    }
+
+    function isMockEmail(email) {
+      return email is string && (
+        email.lower() == 'user@quickkarya.com'
+        || email.lower().matches('^(demo|test|mock|dummy|sample|fake)[.+_-]?.*@.*')
+        || email.lower().matches('.*@(example\\.com|example\\.org|example\\.net|test\\.com|mailinator\\.com)$')
+      );
+    }
+
+    // =========================================================
+    // ENTITY VALIDATION BLUEPRINTS
+    // =========================================================
+
+    function isValidWorker(workerId, data) {
+      return !isMockId(workerId)
+        && data.keys().hasAll(['id', 'name', 'category', 'experience', 'phone', 'phoneNormalized', 'city', 'pincode'])
+        && data.keys().hasOnly([
+          'id', 'workerId', 'name', 'category', 'subRole', 'experience', 'rating', 'reviewCount',
+          'hourlyRate', 'rate', 'phone', 'phoneNormalized', 'city', 'state', 'pincode',
+          'latitude', 'longitude', 'verified', 'isVerified', 'available', 'completedJobs',
+          'languages', 'skills', 'photo', 'avatar', 'avatarUrl', 'photoUrl', 'vehicleType',
+          'fcmToken', 'pushToken', 'userId', 'emergencyAvailable', 'createdAt', 'updatedAt'
+        ])
+        && data.id == workerId
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && !isMockText(data.name)
+        && (!('workerId' in data) || (data.workerId is string && data.workerId.size() <= 32 && !isMockId(data.workerId)))
+        && data.category is string && data.category.size() >= 2 && data.category.size() <= 64
+        && data.experience is number && data.experience >= 0 && data.experience <= 70
+        && data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20
+        && isValidPhone10(data.phoneNormalized)
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.pincode is string && data.pincode.size() <= 12
+        && (!('languages' in data) || (data.languages is list && data.languages.size() <= 15))
+        && (!('skills' in data) || (data.skills is list && data.skills.size() <= 20));
+    }
+
+    function isWorkerPhoneUniqueOrOwned(workerId, phone10) {
+      return !exists(/databases/$(database)/documents/phoneRegistry/$(phone10))
+        || get(/databases/$(database)/documents/phoneRegistry/$(phone10)).data.workerDocId == workerId
+        || !exists(/databases/$(database)/documents/workers/$(get(/databases/$(database)/documents/phoneRegistry/$(phone10)).data.workerDocId));
+    }
+
+    function isMockOrInvalidExistingWorker(workerId, data) {
+      return isMockId(workerId)
+        || !('name' in data) || !(data.name is string) || data.name.size() < 2 || isMockText(data.name)
+        || !('phone' in data) || !(data.phone is string) || data.phone.size() < 10
+        || (('phoneNormalized' in data) && !isValidPhone10(data.phoneNormalized));
+    }
+
+    function isDuplicateExistingWorker(workerId, data) {
+      return ('phoneNormalized' in data)
+        && isValidPhone10(data.phoneNormalized)
+        && exists(/databases/$(database)/documents/phoneRegistry/$(data.phoneNormalized))
+        && get(/databases/$(database)/documents/phoneRegistry/$(data.phoneNormalized)).data.workerDocId != workerId;
+    }
+
+    function isValidUser(userId, data) {
+      return !isMockId(userId)
+        && data.keys().hasAll(['id', 'name', 'role', 'verified'])
+        && data.keys().hasOnly([
+          'id', 'phone', 'phoneNormalized', 'name', 'email', 'role', 'workerId',
+          'profilePhoto', 'avatar', 'authProvider', 'fcmToken', 'pushToken',
+          'verified', 'createdAt', 'updatedAt'
+        ])
+        && data.id == userId
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && !isMockText(data.name)
+        && data.role in ['customer', 'worker']
+        && data.verified is bool
+        && (('phone' in data && data.phone is string && data.phone.size() >= 10 && 'phoneNormalized' in data && isValidPhone10(data.phoneNormalized))
+            || ('email' in data && data.email is string && data.email.size() >= 5 && data.email.size() <= 160 && !isMockEmail(data.email)))
+        && (!('phone' in data) || ('phoneNormalized' in data && isValidPhone10(data.phoneNormalized)))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160 && !isMockEmail(data.email)))
+        && (!('workerId' in data) || (data.workerId is string && data.workerId.size() <= 32 && !isMockId(data.workerId)));
+    }
+
+    function isUserPhoneUniqueOrOwned(userId, data) {
+      return !('phoneNormalized' in data)
+        || !exists(/databases/$(database)/documents/userPhoneRegistry/$(data.phoneNormalized))
+        || get(/databases/$(database)/documents/userPhoneRegistry/$(data.phoneNormalized)).data.userDocId == userId
+        || !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/userPhoneRegistry/$(data.phoneNormalized)).data.userDocId));
+    }
+
+    function isMockOrInvalidExistingUser(userId, data) {
+      return isMockId(userId)
+        || !('name' in data) || !(data.name is string) || isMockText(data.name)
+        || (('email' in data) && isMockEmail(data.email))
+        || (!('phone' in data) && !('email' in data))
+        || (('phoneNormalized' in data) && !isValidPhone10(data.phoneNormalized));
+    }
+
+    function isDuplicateExistingUser(userId, data) {
+      return (
+        ('phoneNormalized' in data)
+        && isValidPhone10(data.phoneNormalized)
+        && exists(/databases/$(database)/documents/userPhoneRegistry/$(data.phoneNormalized))
+        && get(/databases/$(database)/documents/userPhoneRegistry/$(data.phoneNormalized)).data.userDocId != userId
+      ) || (
+        !('phoneNormalized' in data)
+        && ('phone' in data) && data.phone is string
+        && (
+          (data.phone.size() == 14
+            && data.phone.matches('^\\+91 [6-9][0-9]{9}$')
+            && exists(/databases/$(database)/documents/userPhoneRegistry/$(data.phone[4:14]))
+            && get(/databases/$(database)/documents/userPhoneRegistry/$(data.phone[4:14])).data.userDocId != userId)
+          ||
+          (data.phone.size() == 13
+            && data.phone.matches('^\\+91[6-9][0-9]{9}$')
+            && exists(/databases/$(database)/documents/userPhoneRegistry/$(data.phone[3:13]))
+            && get(/databases/$(database)/documents/userPhoneRegistry/$(data.phone[3:13])).data.userDocId != userId)
+        )
+      );
+    }
+
+    function isValidReview(reviewId, data) {
+      return data.keys().hasAll(['id', 'workerId', 'customerId', 'customerName', 'rating', 'serviceRequestId', 'createdAt'])
+        && data.keys().hasOnly(['id', 'workerId', 'customerId', 'customerName', 'rating', 'comment', 'serviceRequestId', 'createdAt', 'reported'])
+        && data.id == reviewId
+        && isValidId(data.workerId)
+        && data.customerId is string && data.customerId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100
+        && !isMockText(data.customerName)
+        && data.rating is number && data.rating >= 1 && data.rating <= 5
+        && data.serviceRequestId is string && data.serviceRequestId.size() <= 128
+        && (!('comment' in data) || (data.comment is string && data.comment.size() <= 1000))
+        && exists(/databases/$(database)/documents/workers/$(data.workerId));
+    }
+
+    function isValidServiceRequest(requestId, data) {
+      return data.keys().hasAll(['id', 'customerId', 'workerId', 'status', 'createdAt'])
+        && data.keys().hasOnly([
+          'id', 'customerId', 'customerName', 'customerPhone', 'workerId', 'workerName',
+          'workerCategory', 'status', 'customerLat', 'customerLng', 'serviceAddress',
+          'hasLocationPermission', 'reviewed', 'reviewId', 'createdAt', 'completedAt'
+        ])
+        && data.id == requestId
+        && data.customerId is string && data.customerId.size() <= 128
+        && isValidId(data.workerId)
+        && data.status in ['pending', 'accepted', 'completed', 'cancelled'];
+    }
+
+    function isValidCallLog(logId, data) {
+      return data.keys().hasAll(['id', 'workerId', 'workerName', 'workerPhone', 'timestamp'])
+        && data.keys().hasOnly([
+          'id', 'workerId', 'workerName', 'workerCategory', 'workerPhone', 'workerPhoto',
+          'workerCity', 'workerRating', 'timestamp', 'type', 'callType', 'callerId',
+          'callerName', 'callerPhone', 'location', 'notes'
+        ])
+        && data.id == logId
+        && data.workerId is string && data.workerId.size() <= 128 && !isMockId(data.workerId)
+        && data.workerName is string && data.workerName.size() >= 1 && data.workerName.size() <= 100 && !isMockText(data.workerName)
+        && data.workerPhone is string && data.workerPhone.size() >= 3 && data.workerPhone.size() <= 24;
+    }
+
+    // =========================================================
+    // COLLECTION MATCH RULES
+    // =========================================================
+
+    // Startup connectivity check doc
+    match /test/connection {
+      allow get: if true;
+      allow write: if false;
+    }
+
+    // Workers collection: Unique, genuine registered artisan directory
+    match /workers/{workerId} {
+      allow get: if isValidId(workerId);
+      allow list: if true;
+
+      allow create: if isValidId(workerId)
+                    && isValidWorker(workerId, incoming())
+                    && incoming().verified == false
+                    && (!('isVerified' in incoming()) || incoming().isVerified == false)
+                    && isWorkerPhoneUniqueOrOwned(workerId, incoming().phoneNormalized);
+
+      allow update: if isValidId(workerId) && (
+        // Action 1: Customer review rating recalculation
+        (incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'reviewCount'])
+          && incoming().rating is number && incoming().rating >= 1 && incoming().rating <= 5
+          && incoming().reviewCount is number && incoming().reviewCount >= 0)
+        ||
+        // Action 2: Safe phoneNormalized backfill on canonical surviving profile
+        (incoming().diff(existing()).affectedKeys().hasOnly(['phoneNormalized'])
+          && isValidPhone10(incoming().phoneNormalized)
+          && isWorkerPhoneUniqueOrOwned(workerId, incoming().phoneNormalized))
+        ||
+        // Action 3: Genuine worker profile update (cannot self-verify or hijack another phone)
+        (isValidWorker(workerId, incoming())
+          && incoming().verified == existing().get('verified', false)
+          && (!('isVerified' in incoming()) || incoming().isVerified == existing().get('isVerified', false))
+          && isWorkerPhoneUniqueOrOwned(workerId, incoming().phoneNormalized))
+      );
+
+      allow delete: if isValidId(workerId) && (
+        isMockOrInvalidExistingWorker(workerId, existing())
+        || isDuplicateExistingWorker(workerId, existing())
+        || (isSignedIn() && (existing().get('userId', '') == request.auth.uid || isAdmin()))
+      );
+    }
+
+    // 1-to-1 Phone Uniqueness Registry for Workers
+    match /phoneRegistry/{phone10} {
+      allow get: if isValidPhone10(phone10);
+      allow list: if true;
+
+      allow create: if isValidPhone10(phone10)
+                    && incoming().keys().hasAll(['phone10', 'workerDocId', 'updatedAt'])
+                    && incoming().keys().hasOnly(['phone10', 'workerDocId', 'workerId', 'updatedAt'])
+                    && incoming().phone10 == phone10
+                    && isValidId(incoming().workerDocId)
+                    && !isMockId(incoming().workerDocId);
+
+      allow update: if isValidPhone10(phone10)
+                    && incoming().keys().hasAll(['phone10', 'workerDocId', 'updatedAt'])
+                    && incoming().keys().hasOnly(['phone10', 'workerDocId', 'workerId', 'updatedAt'])
+                    && incoming().phone10 == phone10
+                    && isValidId(incoming().workerDocId)
+                    && (incoming().workerDocId == existing().workerDocId
+                        || !exists(/databases/$(database)/documents/workers/$(existing().workerDocId)));
+
+      allow delete: if isValidPhone10(phone10)
+                    && !exists(/databases/$(database)/documents/workers/$(existing().workerDocId));
+    }
+
+    // App Users collection (blocks mock/test users & duplicate phone registrations)
     match /users/{userId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.phone is string
-                            && request.resource.data.name is string;
-      allow delete: if false;
+      allow get: if isValidId(userId);
+      allow list: if true;
+
+      allow create: if isValidId(userId)
+                    && isValidUser(userId, incoming())
+                    && isUserPhoneUniqueOrOwned(userId, incoming());
+
+      allow update: if isValidId(userId) && (
+        (incoming().diff(existing()).affectedKeys().hasOnly(['phoneNormalized'])
+          && isValidPhone10(incoming().phoneNormalized)
+          && isUserPhoneUniqueOrOwned(userId, incoming()))
+        ||
+        (isValidUser(userId, incoming())
+          && incoming().id == existing().id
+          && isUserPhoneUniqueOrOwned(userId, incoming()))
+      );
+
+      allow delete: if isValidId(userId) && (
+        isMockOrInvalidExistingUser(userId, existing())
+        || isDuplicateExistingUser(userId, existing())
+        || (isSignedIn() && (request.auth.uid == userId || isAdmin()))
+      );
+    }
+
+    // 1-to-1 Phone Uniqueness Registry for Users
+    match /userPhoneRegistry/{phone10} {
+      allow get: if isValidPhone10(phone10);
+      allow list: if true;
+
+      allow create: if isValidPhone10(phone10)
+                    && incoming().keys().hasAll(['phone10', 'userDocId', 'updatedAt'])
+                    && incoming().keys().hasOnly(['phone10', 'userDocId', 'updatedAt'])
+                    && incoming().phone10 == phone10
+                    && isValidId(incoming().userDocId)
+                    && !isMockId(incoming().userDocId);
+
+      allow update: if isValidPhone10(phone10)
+                    && incoming().keys().hasAll(['phone10', 'userDocId', 'updatedAt'])
+                    && incoming().keys().hasOnly(['phone10', 'userDocId', 'updatedAt'])
+                    && incoming().phone10 == phone10
+                    && isValidId(incoming().userDocId)
+                    && (incoming().userDocId == existing().userDocId
+                        || !exists(/databases/$(database)/documents/users/$(existing().userDocId)));
+
+      allow delete: if isValidPhone10(phone10)
+                    && !exists(/databases/$(database)/documents/users/$(existing().userDocId));
     }
 
     // Customer Star Ratings & Written Reviews
     match /reviews/{reviewId} {
-      allow read: if true;
-      allow create: if request.resource.data.rating >= 1
-                    && request.resource.data.rating <= 5
-                    && request.resource.data.workerId is string;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reported']);
-      allow delete: if false;
+      allow get: if isValidId(reviewId);
+      allow list: if true;
+
+      allow create: if isValidId(reviewId)
+                    && isValidReview(reviewId, incoming());
+
+      allow update: if isValidId(reviewId)
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['reported'])
+                    && incoming().reported is bool;
+
+      allow delete: if isValidId(reviewId)
+                    && (!exists(/databases/$(database)/documents/workers/$(existing().workerId))
+                        || isMockText(existing().get('customerName', '')));
     }
 
     // Service Requests & Location Sharing
     match /serviceRequests/{requestId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.customerId is string
-                            && request.resource.data.workerId is string;
+      allow get: if isValidId(requestId);
+      allow list: if true;
+
+      allow create: if isValidId(requestId)
+                    && isValidServiceRequest(requestId, incoming());
+
+      allow update: if isValidId(requestId)
+                    && isValidServiceRequest(requestId, incoming())
+                    && incoming().customerId == existing().customerId
+                    && incoming().workerId == existing().workerId;
+
       allow delete: if false;
+    }
+
+    // Customer Worker Call & WhatsApp History Logs
+    match /callLogs/{logId} {
+      allow get: if isValidId(logId);
+      allow list: if true;
+
+      allow create, update: if isValidId(logId)
+                            && isValidCallLog(logId, incoming());
+
+      allow delete: if isValidId(logId);
     }
   }
 }

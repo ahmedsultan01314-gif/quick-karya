@@ -2,21 +2,24 @@
   "entities": {
     "worker": {
       "title": "Worker Profile",
-      "description": "Registered local artisan or worker profile in the Quick Karya proximity directory",
+      "description": "Unique genuine local artisan or worker profile in the Quick Karya proximity directory",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "workerId": { "type": "string" },
-        "name": { "type": "string" },
-        "category": { "type": "string" },
-        "subRole": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workerId": { "type": "string", "minLength": 3, "maxLength": 32 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "category": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "subRole": { "type": "string", "maxLength": 64 },
         "experience": { "type": "number" },
         "rating": { "type": "number" },
         "reviewCount": { "type": "number" },
-        "phone": { "type": "string" },
-        "city": { "type": "string" },
-        "state": { "type": "string" },
-        "pincode": { "type": "string" },
+        "hourlyRate": { "type": "number" },
+        "rate": { "type": "number" },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "phoneNormalized": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^[6-9][0-9]{9}$" },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "state": { "type": "string", "maxLength": 80 },
+        "pincode": { "type": "string", "maxLength": 12 },
         "latitude": { "type": "number" },
         "longitude": { "type": "number" },
         "verified": { "type": "boolean" },
@@ -25,41 +28,79 @@
         "completedJobs": { "type": "number" },
         "languages": { "type": "array" },
         "skills": { "type": "array" },
-        "photo": { "type": "string" },
+        "photo": { "type": "string", "maxLength": 900000 },
+        "avatar": { "type": "string", "maxLength": 900000 },
+        "avatarUrl": { "type": "string", "maxLength": 900000 },
+        "photoUrl": { "type": "string", "maxLength": 900000 },
+        "vehicleType": { "type": "string", "maxLength": 100 },
+        "fcmToken": { "type": "string", "maxLength": 512 },
+        "pushToken": { "type": "string", "maxLength": 512 },
+        "userId": { "type": "string", "maxLength": 128 },
         "emergencyAvailable": { "type": "boolean" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["name", "category", "experience", "phone", "city", "pincode"]
+      "required": ["id", "name", "category", "experience", "phone", "phoneNormalized", "city", "pincode"]
+    },
+    "phoneRegistry": {
+      "title": "Worker Phone Uniqueness Lock",
+      "description": "1-to-1 registry enforcing one unique genuine worker document per verified 10-digit Indian mobile number",
+      "type": "object",
+      "properties": {
+        "phone10": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^[6-9][0-9]{9}$" },
+        "workerDocId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workerId": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["phone10", "workerDocId", "updatedAt"]
     },
     "user": {
       "title": "App User",
-      "description": "Authenticated user profile for customer or worker with verified phone",
+      "description": "Authenticated user profile for customer or worker without mock/demo or duplicate phone accounts",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "phone": { "type": "string" },
-        "name": { "type": "string" },
-        "role": { "type": "string" },
-        "workerId": { "type": "string" },
-        "profilePhoto": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "phoneNormalized": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^[6-9][0-9]{9}$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 160 },
+        "role": { "type": "string", "enum": ["customer", "worker"] },
+        "workerId": { "type": "string", "maxLength": 32 },
+        "profilePhoto": { "type": "string", "maxLength": 900000 },
+        "avatar": { "type": "string", "maxLength": 900000 },
+        "authProvider": { "type": "string", "enum": ["google", "phone", "email"] },
+        "fcmToken": { "type": "string", "maxLength": 512 },
+        "pushToken": { "type": "string", "maxLength": 512 },
         "verified": { "type": "boolean" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["id", "phone", "name", "role", "verified"]
+      "required": ["id", "name", "role", "verified"]
+    },
+    "userPhoneRegistry": {
+      "title": "User Phone Uniqueness Lock",
+      "description": "1-to-1 registry enforcing one unique user account per verified 10-digit Indian mobile number",
+      "type": "object",
+      "properties": {
+        "phone10": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^[6-9][0-9]{9}$" },
+        "userDocId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["phone10", "userDocId", "updatedAt"]
     },
     "review": {
       "title": "Worker Review",
       "description": "Customer star rating and written review for a completed service",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "workerId": { "type": "string" },
-        "customerId": { "type": "string" },
-        "customerName": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workerId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "customerId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 100 },
         "rating": { "type": "number" },
-        "comment": { "type": "string" },
-        "serviceRequestId": { "type": "string" },
-        "createdAt": { "type": "string" },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "serviceRequestId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 },
         "reported": { "type": "boolean" }
       },
       "required": ["workerId", "customerId", "rating", "serviceRequestId"]
@@ -69,42 +110,78 @@
       "description": "Job engagement between customer and worker with location authorization",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "customerId": { "type": "string" },
-        "customerName": { "type": "string" },
-        "customerPhone": { "type": "string" },
-        "workerId": { "type": "string" },
-        "workerName": { "type": "string" },
-        "workerCategory": { "type": "string" },
-        "status": { "type": "string" },
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "customerName": { "type": "string", "maxLength": 100 },
+        "customerPhone": { "type": "string", "maxLength": 20 },
+        "workerId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "workerName": { "type": "string", "maxLength": 100 },
+        "workerCategory": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "completed", "cancelled"] },
         "customerLat": { "type": "number" },
         "customerLng": { "type": "number" },
-        "serviceAddress": { "type": "string" },
+        "serviceAddress": { "type": "string", "maxLength": 300 },
         "hasLocationPermission": { "type": "boolean" },
         "reviewed": { "type": "boolean" },
-        "reviewId": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "completedAt": { "type": "string" }
+        "reviewId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "completedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["customerId", "workerId", "status"]
+    },
+    "callLog": {
+      "title": "Customer Call History Record",
+      "description": "Persistent log of phone, WhatsApp, or SOS dispatches to registered artisans",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workerId": { "type": "string", "maxLength": 128 },
+        "workerName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "workerCategory": { "type": "string", "maxLength": 64 },
+        "workerPhone": { "type": "string", "minLength": 3, "maxLength": 24 },
+        "workerPhoto": { "type": "string", "maxLength": 900000 },
+        "workerCity": { "type": "string", "maxLength": 80 },
+        "workerRating": { "type": "number" },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "enum": ["phone", "whatsapp", "sos"] },
+        "callType": { "type": "string", "enum": ["phone", "whatsapp", "sos"] },
+        "callerId": { "type": "string", "maxLength": 128 },
+        "callerName": { "type": "string", "maxLength": 100 },
+        "callerPhone": { "type": "string", "maxLength": 20 },
+        "location": { "type": "string", "maxLength": 256 },
+        "notes": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "workerId", "workerName", "workerPhone", "timestamp"]
     }
   },
   "firestore": {
     "/workers/{workerId}": {
       "schema": { "$ref": "#/entities/worker" },
-      "description": "Collection of registered workers and artisans in the directory"
+      "description": "Unique genuine registered artisans and workers in the Quick Karya directory"
+    },
+    "/phoneRegistry/{phone10}": {
+      "schema": { "$ref": "#/entities/phoneRegistry" },
+      "description": "1-to-1 uniqueness lock mapping each verified 10-digit mobile number to a single worker document"
     },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/user" },
-      "description": "Registered and authenticated users"
+      "description": "Registered and authenticated application users"
+    },
+    "/userPhoneRegistry/{phone10}": {
+      "schema": { "$ref": "#/entities/userPhoneRegistry" },
+      "description": "1-to-1 uniqueness lock mapping each verified 10-digit mobile number to a single user document"
     },
     "/reviews/{reviewId}": {
       "schema": { "$ref": "#/entities/review" },
-      "description": "Verified customer ratings and reviews"
+      "description": "Customer ratings and reviews linked to registered workers"
     },
     "/serviceRequests/{requestId}": {
       "schema": { "$ref": "#/entities/serviceRequest" },
-      "description": "Customer service bookings and location sharing requests"
+      "description": "Customer service requests and GPS location sharing sessions"
+    },
+    "/callLogs/{logId}": {
+      "schema": { "$ref": "#/entities/callLog" },
+      "description": "Customer worker call and WhatsApp dispatch history logs"
     }
   }
 }
