@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { CATEGORIES } from './src/data/categories';
-import { WorkerProfile, ServiceCategory, AppUser, WorkerReview, ServiceRequest, CallLogRecord } from './src/types';
+import { WorkerProfile, ServiceCategory, AppUser, WorkerReview, ServiceRequest, CallLogRecord, WorkerNotification } from './src/types';
 import {
   saveWorkerToCloud,
   fetchWorkersFromCloud,
@@ -20,7 +20,8 @@ import {
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveServiceRequestToCloud,
-  fetchUserRequests
+  fetchUserRequests,
+  saveWorkerNotificationToCloud
 } from './src/firebase';
 
 const app = express();
@@ -513,36 +514,88 @@ const deviceTokenStore = new Map<string, string>(); // phone (10 digits) or work
 app.post('/api/notifications/register-token', async (req, res) => {
   const { phone, workerId, token } = req.body;
   if (!token) return res.status(400).json({ error: 'Token is required' });
-  if (phone) {
-    const clean = phone.replace(/[^0-9]/g, '').slice(-10);
+  const clean = phone ? normalizePhone10(phone) : '';
+  if (clean) {
     deviceTokenStore.set(clean, token);
   }
   if (workerId) {
     deviceTokenStore.set(workerId, token);
   }
+  for (const w of workers) {
+    if (
+      (workerId && (w.id === workerId || w.workerId === workerId)) ||
+      (clean && normalizePhone10(w.phone) === clean)
+    ) {
+      w.pushToken = token;
+    }
+  }
   return res.json({ success: true, registered: true });
 });
 
 // Targeted Worker Push Notification:
-// When customer taps 'Call Worker', route notification directly to target Worker's FCM device token ONLY
+// When customer taps 'Call Worker' or shares GPS pin, notify worker with "Quick Karya se kaam aaya!"
 app.post('/api/notifications/notify-worker', async (req, res) => {
-  const { workerId, workerPhone, workerName, customerName, customerPhone, category, actionType } = req.body;
-  const cleanWorkerPhone = (workerPhone || '').replace(/[^0-9]/g, '').slice(-10);
+  const {
+    workerId,
+    workerPhone,
+    workerName,
+    customerId,
+    customerName,
+    customerPhone,
+    category,
+    location,
+    actionType,
+    skipFirestoreWrite
+  } = req.body;
+  const cleanWorkerPhone = normalizePhone10(workerPhone || '');
   const callerName = customerName?.trim() || 'Customer';
   const callerPhone = customerPhone?.trim() || 'Mobile Caller';
+  const trade = category || 'Service';
   const isGpsShare = actionType === 'gps_share';
 
-  const notificationTitle = 'Quick Karya';
+  const notificationTitle = '🔔 Quick Karya se kaam aaya!';
   const notificationBody = isGpsShare
-    ? `New Service Location Pin: ${callerName} shared a GPS location & Quick Karya request with you!`
-    : 'New Customer Call Alert: A client from Quick Karya is calling you for work!';
+    ? `Quick Karya se kaam aaya! ${callerName} ne ${trade} kaam ke liye live location pin & request bheji hai.${location ? ` (${location})` : ''}`
+    : `Quick Karya se kaam aaya! ${callerName} (${trade}) aapko kaam ke liye call kar rahe hain.${location ? ` (${location})` : ''}`;
 
-  // Lookup target worker's registered FCM / Expo device token
+  // Persist notification to Firestore if client did not already write it directly
+  if (!skipFirestoreWrite && isGenuinePhone10(cleanWorkerPhone)) {
+    const notifDoc: WorkerNotification = {
+      id: `wn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      workerId: workerId || `w_${cleanWorkerPhone}`,
+      workerPhone: workerPhone || `+91${cleanWorkerPhone}`,
+      workerPhoneNormalized: cleanWorkerPhone,
+      workerName: workerName?.trim() || 'Artisan',
+      workerCategory: trade,
+      customerId: customerId || undefined,
+      customerName: callerName,
+      customerPhone: callerPhone !== 'Mobile Caller' ? callerPhone : undefined,
+      actionType: isGpsShare ? 'gps_share' : 'call',
+      title: notificationTitle,
+      message: notificationBody,
+      location: location ? String(location).trim() : undefined,
+      read: false,
+      createdAt: new Date().toISOString()
+    };
+    saveWorkerNotificationToCloud(notifDoc).catch((e) => console.warn('Server Firestore notif save error:', e));
+  }
+
+  // Lookup target worker's registered FCM / Expo device token (memory + cloud fallback)
   let targetToken = (workerId && deviceTokenStore.get(workerId)) || (cleanWorkerPhone && deviceTokenStore.get(cleanWorkerPhone));
   if (!targetToken) {
-    const matchedWorker = workers.find(
-      (w) => w.id === workerId || w.phone.replace(/[^0-9]/g, '').slice(-10) === cleanWorkerPhone
+    let matchedWorker = workers.find(
+      (w) =>
+        (workerId && (w.id === workerId || w.workerId === workerId)) ||
+        (cleanWorkerPhone && normalizePhone10(w.phone) === cleanWorkerPhone)
     );
+    if (!matchedWorker) {
+      const cloudWorkers = await fetchWorkersFromCloud().catch(() => []);
+      matchedWorker = cloudWorkers.find(
+        (w) =>
+          (workerId && (w.id === workerId || w.workerId === workerId)) ||
+          (cleanWorkerPhone && normalizePhone10(w.phone) === cleanWorkerPhone)
+      );
+    }
     targetToken = matchedWorker?.fcmToken || matchedWorker?.pushToken;
   }
 
@@ -563,10 +616,11 @@ app.post('/api/notifications/notify-worker', async (req, res) => {
             body: notificationBody,
             data: {
               type: 'CALL_REQUEST',
+              workerId: workerId || undefined,
               customerName: callerName,
               customerPhone: callerPhone,
               workerPhone: cleanWorkerPhone,
-              category
+              category: trade
             },
             channelId: 'quick-karya-alerts',
             priority: 'high'
@@ -598,7 +652,8 @@ app.post('/api/notifications/notify-worker', async (req, res) => {
               data: {
                 customerName: callerName,
                 customerPhone: callerPhone,
-                workerPhone: cleanWorkerPhone
+                workerPhone: cleanWorkerPhone,
+                category: trade
               }
             })
           });
@@ -614,6 +669,7 @@ app.post('/api/notifications/notify-worker', async (req, res) => {
     success: true,
     dispatched,
     message: `Targeted notification routed to worker +91${cleanWorkerPhone}`,
+    notificationTitle,
     notificationMessage: notificationBody
   });
 });

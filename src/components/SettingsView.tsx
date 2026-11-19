@@ -19,7 +19,9 @@ import {
   MessageSquare,
   Trash2,
   Clock,
-  ShieldAlert
+  ShieldAlert,
+  Share2,
+  ExternalLink
 } from 'lucide-react';
 import {
   getCallHistory,
@@ -51,7 +53,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [autoShareGps, setAutoShareGps] = useState(true);
   const [clearingCache, setClearingCache] = useState(false);
   const [clearedNotice, setClearedNotice] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [callHistory, setCallHistory] = useState<CallLogRecord[]>(() => getCallHistory());
+
+  const SHARE_APP_URL = 'https://ais-pre-hpm4hugeyt2slmwiro2zk5-94418484178.asia-southeast1.run.app';
+  const SHARE_APP_MESSAGE = `Check out Quick Karya — Direct Artisan Call Directory for Plumbers, Electricians, Drivers & Local Workers near you: ${SHARE_APP_URL}`;
+
+  const handleShareApp = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({
+          title: 'Quick Karya — Direct Artisan Call Directory',
+          text: 'Find verified local plumbers, electricians, drivers & artisans near you with zero middlemen.',
+          url: SHARE_APP_URL
+        });
+        return;
+      }
+    } catch {
+      // Fallback to clipboard below
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(SHARE_APP_MESSAGE);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 3000);
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     setCallHistory(getCallHistory());
@@ -407,6 +435,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Share & Connect (Share App & Instagram @quickkarya) */}
+        <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-xs space-y-3">
+          <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+            <Share2 className="w-4 h-4 text-[#FFA500]" />
+            <h4 className="font-bold text-gray-900 text-xs uppercase tracking-wider">
+              Share &amp; Connect
+            </h4>
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              id="settings-share-app-btn"
+              onClick={handleShareApp}
+              className="w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-[#001F3F] flex items-center justify-between cursor-pointer transition-all"
+            >
+              <span className="flex items-center gap-2">
+                <Share2 className="w-4 h-4 text-[#FFA500]" />
+                <span>{shareCopied ? '✓ App Invite Link Copied!' : 'Share App with Friends'}</span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-amber-600" />
+            </button>
+
+            <a
+              id="settings-instagram-link"
+              href="https://www.instagram.com/quickkarya/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#001F3F] to-[#0B192C] hover:opacity-95 border border-[#FFA500]/40 text-xs font-bold text-white flex items-center justify-between cursor-pointer transition-all"
+            >
+              <span className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-md bg-gradient-to-tr from-[#f58529] via-[#dd2a7b] to-[#8134af] flex items-center justify-center text-[11px] font-black text-white shadow-xs">
+                  IG
+                </span>
+                <span>Follow Instagram @quickkarya</span>
+              </span>
+              <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
+            </a>
           </div>
         </div>
 

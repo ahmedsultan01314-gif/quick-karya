@@ -47,7 +47,8 @@ import {
   WorkerReview,
   CallLogRecord,
   DriverSubCategory,
-  DriverVehicleType
+  DriverVehicleType,
+  WorkerNotification
 } from './src/types';
 import {
   saveWorkerToCloud,
@@ -59,16 +60,22 @@ import {
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveUserToCloud,
-  fetchGoogleAccountsFromCloud,
   enforceFirestoreSecurityAndCleanup,
   purgeLocalStorageArtifacts,
-  signInWithGoogle,
   signInWithEmail,
   signUpWithEmail,
-  auth
+  subscribeWorkerNotificationsFromCloud,
+  markWorkerNotificationReadInCloud
 } from './src/firebase';
 import {
+  configureNativeGoogleSignIn,
+  performNativeGoogleSignIn,
+  signOutNativeGoogle
+} from './src/utils/googleAuth';
+import {
   setupNotifications,
+  registerForWorkerPushTokenAsync,
+  triggerIncomingWorkerLocalNotification,
   triggerRegistrationNotification,
   triggerCallWorkerNotification
 } from './src/utils/notifications';
@@ -88,13 +95,8 @@ const STORAGE_KEY = '@quickkarya_workers_v3';
 const AUTH_STORAGE_KEY = '@quickkarya_user_session_v1';
 const CALL_HISTORY_ASYNC_KEY = '@quickkarya_call_history_v1';
 const SAVED_GOOGLE_ACCOUNTS_KEY = '@quickkarya_saved_google_accounts_v1';
-
-interface SavedGoogleAccount {
-  uid: string;
-  name: string;
-  email: string;
-  photoUrl?: string;
-}
+const SHARE_APP_URL = 'https://ais-pre-hpm4hugeyt2slmwiro2zk5-94418484178.asia-southeast1.run.app';
+const INSTAGRAM_PROFILE_URL = 'https://www.instagram.com/quickkarya/';
 
 const AnimatedView = Animated.View as any;
 const AnimatedText = Animated.Text as any;
@@ -150,12 +152,10 @@ function NativeApp() {
   const [authShowPassword, setAuthShowPassword] = useState(false);
   const [authEmailLoading, setAuthEmailLoading] = useState(false);
 
-  // Interactive Google Account Picker State (Native APK Parity)
-  const [isGooglePickerOpen, setIsGooglePickerOpen] = useState(false);
-  const [savedGoogleAccounts, setSavedGoogleAccounts] = useState<SavedGoogleAccount[]>([]);
-  const [googleAddAccountMode, setGoogleAddAccountMode] = useState(false);
-  const [googleCustomName, setGoogleCustomName] = useState('');
-  const [googleCustomEmail, setGoogleCustomEmail] = useState('');
+  // Worker Incoming Work Alerts ("Quick Karya se kaam aaya!")
+  const [workerNotifications, setWorkerNotifications] = useState<WorkerNotification[]>([]);
+  const seenWorkerNotifIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedInitialNotifsRef = useRef(false);
 
   // Interactive Photo Crop, Zoom & Framing Modal State
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
@@ -217,48 +217,12 @@ function NativeApp() {
     }
   });
 
-  // Load saved Google accounts (device AsyncStorage + Cloud Firestore) and purge mock/duplicate entries
+  // Configure native Google Sign-In & run startup mock/duplicate purge
   useEffect(() => {
-    let mounted = true;
-    const syncGoogleAccountsAndClean = async () => {
-      try {
-        purgeLocalStorageArtifacts();
-        enforceFirestoreSecurityAndCleanup().catch(() => {});
-
-        const raw = await AsyncStorage.getItem(SAVED_GOOGLE_ACCOUNTS_KEY).catch(() => null);
-        const localParsed: SavedGoogleAccount[] = raw ? JSON.parse(raw) : [];
-        const cloudAccs = await fetchGoogleAccountsFromCloud().catch(() => []);
-
-        const merged = [...(Array.isArray(localParsed) ? localParsed : []), ...cloudAccs];
-        const seenEmails = new Set<string>();
-        const cleanAccs: SavedGoogleAccount[] = [];
-        for (const acc of merged) {
-          if (!acc || !acc.email || !acc.name) continue;
-          const cleanEmail = String(acc.email).trim().toLowerCase();
-          if (seenEmails.has(cleanEmail)) continue;
-          if (isMockOrTestProfile({ id: acc.uid, name: acc.name, email: cleanEmail })) continue;
-          seenEmails.add(cleanEmail);
-          cleanAccs.push({
-            uid: acc.uid,
-            name: String(acc.name).trim(),
-            email: cleanEmail,
-            photoUrl: acc.photoUrl
-          });
-        }
-
-        if (mounted) {
-          setSavedGoogleAccounts(cleanAccs);
-        }
-        await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(cleanAccs)).catch(() => {});
-      } catch {
-        // ignore startup Google account sync error
-      }
-    };
-
-    syncGoogleAccountsAndClean();
-    return () => {
-      mounted = false;
-    };
+    configureNativeGoogleSignIn();
+    purgeLocalStorageArtifacts();
+    AsyncStorage.removeItem(SAVED_GOOGLE_ACCOUNTS_KEY).catch(() => {});
+    enforceFirestoreSecurityAndCleanup().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -376,145 +340,50 @@ function NativeApp() {
     checkUserSession();
   }, []);
 
-  const formatNameFromGmail = (emailStr: string): string => {
-    const localPart = emailStr.split('@')[0] || '';
-    const words = localPart
-      .replace(/[0-9]+/g, ' ')
-      .split(/[._\-+\s]+/)
-      .filter(Boolean)
-      .slice(0, 3);
-    if (words.length === 0) return 'Quick Karya User';
-    return words
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(' ');
-  };
-
-  // Interactive Google Account Sign-In with Native Account Picker Popup
-  const completeGoogleAccountSignIn = async (account: SavedGoogleAccount) => {
+  // Real Native Google Sign-In across all Android phones (opens system Google Account chooser)
+  const handleNativeGoogleSignIn = async () => {
     setAuthError(null);
     setAuthLoading(true);
     try {
-      const cleanEmail = account.email.trim().toLowerCase();
-      const cleanName = account.name.trim() || formatNameFromGmail(cleanEmail);
-      if (isMockOrTestProfile({ id: account.uid, name: cleanName, email: cleanEmail })) {
-        throw new Error('Test or demo Google accounts cannot be used. Please select your genuine Gmail account.');
+      const gUser = await performNativeGoogleSignIn();
+      const cleanEmail = gUser.email.trim().toLowerCase();
+      const cleanName = gUser.name.trim() || cleanEmail.split('@')[0] || 'Quick Karya User';
+      if (isMockOrTestProfile({ id: gUser.uid, name: cleanName, email: cleanEmail })) {
+        throw new Error('Test or demo accounts are blocked. Please select your genuine Google account.');
       }
 
-      const normalizedAcc: SavedGoogleAccount = {
-        uid: account.uid,
+      const verifiedUserObj: AppUser = {
+        id: gUser.uid,
         name: cleanName,
         email: cleanEmail,
-        photoUrl: account.photoUrl
-      };
-
-      const updatedList = [
-        normalizedAcc,
-        ...savedGoogleAccounts.filter(
-          (a) => a.email.toLowerCase() !== cleanEmail
-        )
-      ].slice(0, 8);
-      setSavedGoogleAccounts(updatedList);
-      await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(updatedList)).catch(() => {});
-
-      const verifiedUserObj: AppUser = {
-        id: normalizedAcc.uid,
-        name: normalizedAcc.name,
-        email: normalizedAcc.email,
-        profilePhoto: normalizedAcc.photoUrl,
-        avatar: normalizedAcc.photoUrl,
+        profilePhoto: gUser.photoUrl,
+        avatar: gUser.photoUrl,
         authProvider: 'google',
         role: 'customer',
         verified: true,
         createdAt: new Date().toISOString()
       };
 
-      // Keep Modal open until user completes Step 2 Role Selection
       setPendingVerifiedUser(verifiedUserObj);
       setLoginName(verifiedUserObj.name);
-      setLoginEmail(normalizedAcc.email);
+      setLoginEmail(cleanEmail);
       setRegName(verifiedUserObj.name);
-      if (normalizedAcc.photoUrl) {
-        setRegPhoto(normalizedAcc.photoUrl);
+      if (gUser.photoUrl) {
+        setRegPhoto(gUser.photoUrl);
       }
 
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
-
-      setIsGooglePickerOpen(false);
-      setGoogleAddAccountMode(false);
       setAuthStep('role_selection');
     } catch (err: any) {
-      setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
+      const msg =
+        err?.message ||
+        'Google Sign-In failed on this device. Please try again or use Email & Password below.';
+      setAuthError(msg);
+      if (!err?.isCancelled) {
+        Alert.alert('Google Sign-In Issue', msg);
+      }
     } finally {
       setAuthLoading(false);
-    }
-  };
-
-  const handleNativeGoogleSignIn = async () => {
-    setAuthError(null);
-    if (Platform.OS === 'web') {
-      setAuthLoading(true);
-      try {
-        const gUser = await signInWithGoogle();
-        await completeGoogleAccountSignIn({
-          uid: gUser.uid,
-          name: gUser.name,
-          email: gUser.email,
-          photoUrl: gUser.photoUrl
-        });
-      } catch (err: any) {
-        setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
-        setAuthLoading(false);
-      }
-      return;
-    }
-
-    // Native Android/iOS: Refresh saved accounts (including cloud) & open Google Account Chooser popup
-    let currentAccounts = savedGoogleAccounts;
-    if (currentAccounts.length === 0) {
-      try {
-        const cloudAccs = await fetchGoogleAccountsFromCloud();
-        if (cloudAccs.length > 0) {
-          currentAccounts = cloudAccs;
-          setSavedGoogleAccounts(cloudAccs);
-          await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(cloudAccs)).catch(() => {});
-        }
-      } catch {}
-    }
-
-    setGoogleAddAccountMode(currentAccounts.length === 0);
-    setGoogleCustomName('');
-    setGoogleCustomEmail('');
-    setIsGooglePickerOpen(true);
-  };
-
-  const handleAddCustomGoogleAccount = async () => {
-    const cleanEmail = googleCustomEmail.trim().toLowerCase();
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setAuthError('Please enter a valid Gmail or Google email address.');
-      return;
-    }
-    const cleanName = googleCustomName.trim() || formatNameFromGmail(cleanEmail);
-    if (isMockOrTestProfile({ name: cleanName, email: cleanEmail })) {
-      setAuthError('Test or demo accounts are blocked. Please enter your real Gmail name & address.');
-      return;
-    }
-
-    const sanitizedUid = `google_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
-    const avatarSeed = encodeURIComponent(cleanName);
-    await completeGoogleAccountSignIn({
-      uid: sanitizedUid,
-      name: cleanName,
-      email: cleanEmail,
-      photoUrl: `https://ui-avatars.com/api/?name=${avatarSeed}&background=001F3F&color=FFA500&bold=true&size=256`
-    });
-  };
-
-  const handleRemoveSavedGoogleAccount = async (uid: string) => {
-    const next = savedGoogleAccounts.filter((a) => a.uid !== uid);
-    setSavedGoogleAccounts(next);
-    await AsyncStorage.setItem(SAVED_GOOGLE_ACCOUNTS_KEY, JSON.stringify(next)).catch(() => {});
-    if (next.length === 0) {
-      setGoogleAddAccountMode(true);
     }
   };
 
@@ -604,11 +473,15 @@ function NativeApp() {
 
   const handleLogout = async () => {
     try {
+      await signOutNativeGoogle();
       await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
     } catch (e) {
       console.warn('AsyncStorage logout error:', e);
     }
     setCurrentUser(null);
+    setWorkerNotifications([]);
+    seenWorkerNotifIdsRef.current.clear();
+    hasLoadedInitialNotifsRef.current = false;
     setLoginName('');
     setLoginPhone('');
     setLoginEmail('');
@@ -952,6 +825,103 @@ Please dispatch assistance immediately!`;
     };
   }, []);
 
+  // Register device Expo push token & sync to worker/backend for targeted "Quick Karya se kaam aaya!" alerts
+  useEffect(() => {
+    if (!currentUser) return;
+    let active = true;
+    const syncPushToken = async () => {
+      try {
+        const token = await registerForWorkerPushTokenAsync();
+        if (!active || !token) return;
+
+        const cleanUserPhone = normalizePhone10(currentUser.phone || regPhone);
+        const matchedWorker = workers.find(
+          (w) =>
+            (currentUser.workerId && w.workerId === currentUser.workerId) ||
+            (cleanUserPhone && normalizePhone10(w.phone) === cleanUserPhone) ||
+            (w as any).userId === currentUser.id
+        );
+
+        fetch(getApiUrl('/api/notifications/register-token'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: cleanUserPhone || undefined,
+            workerId: matchedWorker?.id || currentUser.workerId,
+            token
+          })
+        }).catch(() => {});
+
+        if (matchedWorker && matchedWorker.pushToken !== token) {
+          saveWorkerToCloud({ ...matchedWorker, pushToken: token }).catch(() => {});
+        }
+      } catch {
+        // ignore push token registration errors on unsupported devices
+      }
+    };
+    syncPushToken();
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, currentUser?.phone, currentUser?.workerId, regPhone, workers.length]);
+
+  // Subscribe to real-time incoming worker job alerts ("Quick Karya se kaam aaya!")
+  useEffect(() => {
+    if (!currentUser) {
+      setWorkerNotifications([]);
+      hasLoadedInitialNotifsRef.current = false;
+      seenWorkerNotifIdsRef.current.clear();
+      return;
+    }
+
+    const cleanUserPhone = normalizePhone10(currentUser.phone || regPhone);
+    const matchedWorker = workers.find(
+      (w) =>
+        (currentUser.workerId && w.workerId === currentUser.workerId) ||
+        (cleanUserPhone && normalizePhone10(w.phone) === cleanUserPhone) ||
+        (w as any).userId === currentUser.id
+    );
+    const targetPhone = currentUser.phone || matchedWorker?.phone || regPhone;
+    const targetWorkerId = matchedWorker?.id || currentUser.workerId;
+
+    if (!targetPhone && !targetWorkerId) {
+      setWorkerNotifications([]);
+      return;
+    }
+
+    const unsubscribe = subscribeWorkerNotificationsFromCloud(
+      targetPhone,
+      targetWorkerId,
+      (notifs) => {
+        setWorkerNotifications(notifs);
+        if (!hasLoadedInitialNotifsRef.current) {
+          notifs.forEach((n) => seenWorkerNotifIdsRef.current.add(n.id));
+          hasLoadedInitialNotifsRef.current = true;
+          return;
+        }
+        for (const n of notifs) {
+          if (!seenWorkerNotifIdsRef.current.has(n.id)) {
+            seenWorkerNotifIdsRef.current.add(n.id);
+            if (!n.read) {
+              setActiveCallAlert({
+                workerName: n.customerName || 'Customer',
+                category: n.workerCategory || 'Service',
+                icon: '🔔',
+                title: n.title || '🔔 Quick Karya se kaam aaya!',
+                message: n.message
+              });
+              triggerIncomingWorkerLocalNotification(n).catch(() => {});
+            }
+          }
+        }
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser, regPhone, workers]);
+
   // Handle hardware Back button on Android smoothly without abrupt app exit
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -972,11 +942,6 @@ Please dispatch assistance immediately!`;
 
       if (isLocationModalOpen) {
         setIsLocationModalOpen(false);
-        return true;
-      }
-
-      if (isGooglePickerOpen) {
-        setIsGooglePickerOpen(false);
         return true;
       }
 
@@ -1057,7 +1022,6 @@ Please dispatch assistance immediately!`;
     return () => backHandler.remove();
   }, [
     isAuthModalOpen,
-    isGooglePickerOpen,
     isCropModalOpen,
     callingWorker,
     isLocationModalOpen,
@@ -1300,7 +1264,12 @@ Please dispatch assistance immediately!`;
       workerCategory || 'Artisan',
       callerName,
       callerPhone,
-      'call'
+      'call',
+      {
+        workerId: workerMeta?.id,
+        customerId: currentUser?.id,
+        location: customLocation || userLocationName
+      }
     ).catch(() => {});
 
     // Save call to Call History (Local + AsyncStorage + Cloud Firestore + Backend)
@@ -1414,7 +1383,12 @@ Please dispatch assistance immediately!`;
       worker.category,
       customerName,
       customerPhone,
-      'gps_share'
+      'gps_share',
+      {
+        workerId: worker.id,
+        customerId: currentUser?.id,
+        location: addressText
+      }
     ).catch(() => {});
 
     const msg = isDriver
@@ -1612,6 +1586,12 @@ Please dispatch assistance immediately!`;
         photo: regPhoto || undefined,
         emergencyAvailable: regCategory === 'Emergency Highway Assistance'
       };
+    }
+
+    // Attach Expo Push Token if device permissions allow
+    const expoPushToken = await registerForWorkerPushTokenAsync().catch(() => null);
+    if (expoPushToken) {
+      targetWorker.pushToken = expoPushToken;
     }
 
     // 1. Save directly to Cloud Firestore (enforces uniqueness lock & security rules)
@@ -2987,6 +2967,93 @@ Please dispatch assistance immediately!`;
               </Text>
             </TouchableOpacity>
 
+            {/* Incoming Job Alerts ("Quick Karya se kaam aaya!") */}
+            {(currentUser?.role === 'worker' ||
+              workers.some((w) => regPhone && w.phone.includes(regPhone)) ||
+              workerNotifications.length > 0) && (
+              <View
+                style={{
+                  backgroundColor: '#FFFBEB',
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: '#F59E0B',
+                  padding: 12,
+                  marginBottom: 12
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#001F3F' }}>
+                    🔔 Incoming Work Alerts ({workerNotifications.filter((n) => !n.read).length} unread)
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#b45309' }}>
+                    Quick Karya se kaam aaya
+                  </Text>
+                </View>
+
+                {workerNotifications.length === 0 ? (
+                  <Text style={{ fontSize: 11, color: '#6b7280' }}>
+                    No customer call alerts yet. When a customer taps Call or shares GPS with you, an alert arrives here.
+                  </Text>
+                ) : (
+                  workerNotifications.slice(0, 10).map((notif) => (
+                    <View
+                      key={notif.id}
+                      style={{
+                        backgroundColor: notif.read ? '#ffffff' : '#FEF3C7',
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: notif.read ? '#e5e7eb' : '#F59E0B',
+                        padding: 10,
+                        marginTop: 6
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 6 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#001F3F', flex: 1 }}>
+                          {notif.title}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#6b7280' }}>
+                          {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: '#374151', marginTop: 3 }}>
+                        {notif.message}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                        {notif.customerPhone ? (
+                          <TouchableOpacity
+                            onPress={() => Linking.openURL(`tel:${notif.customerPhone!.replace(/[^0-9+]/g, '')}`).catch(() => {})}
+                            style={{ backgroundColor: '#FFA500', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#001F3F' }}>
+                              📞 Call Customer
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={{ fontSize: 10, color: '#6b7280' }}>
+                            From: {notif.customerName}
+                          </Text>
+                        )}
+                        {!notif.read && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setWorkerNotifications((prev) =>
+                                prev.map((x) => (x.id === notif.id ? { ...x, read: true } : x))
+                              );
+                              markWorkerNotificationReadInCloud(notif.id).catch(() => {});
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#001F3F', textDecorationLine: 'underline' }}>
+                              Mark Read
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+
             {/* Worker Call History Preview Card */}
             <View
               style={{
@@ -3320,6 +3387,50 @@ Please dispatch assistance immediately!`;
                 </View>
                 <Text style={styles.settingsToggleOn}>AUTO ON ✓</Text>
               </View>
+            </View>
+
+            {/* Share App & Official Instagram */}
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsSectionTitle}>SHARE &amp; CONNECT</Text>
+              <TouchableOpacity
+                style={[styles.settingsMenuBtn, { backgroundColor: '#FFF8E7', borderColor: '#FFA500' }]}
+                onPress={async () => {
+                  try {
+                    await Share.share({
+                      title: 'Quick Karya — Direct Artisan Call Directory',
+                      message: `Check out Quick Karya — Find verified local Plumbers, Electricians, Drivers & Artisans near you with zero middlemen: ${SHARE_APP_URL}`,
+                      url: SHARE_APP_URL
+                    });
+                  } catch {
+                    Alert.alert('Share Quick Karya', SHARE_APP_URL);
+                  }
+                }}
+              >
+                <Text style={[styles.settingsMenuBtnText, { color: '#001F3F' }]}>
+                  📤 Share Quick Karya App with Friends
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.settingsMenuBtn, { backgroundColor: '#001F3F', borderColor: '#FFA500', marginBottom: 0 }]}
+                onPress={async () => {
+                  try {
+                    const igDeepLink = 'instagram://user?username=quickkarya';
+                    const canOpenIgApp = await Linking.canOpenURL(igDeepLink).catch(() => false);
+                    if (canOpenIgApp) {
+                      await Linking.openURL(igDeepLink);
+                    } else {
+                      await Linking.openURL(INSTAGRAM_PROFILE_URL);
+                    }
+                  } catch {
+                    Alert.alert('Instagram @quickkarya', `Visit us on Instagram: ${INSTAGRAM_PROFILE_URL}`);
+                  }
+                }}
+              >
+                <Text style={[styles.settingsMenuBtnText, { color: '#FFD700' }]}>
+                  📸 Follow Us on Instagram (@quickkarya)
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Cache & Sign Out */}
@@ -3779,151 +3890,6 @@ Please dispatch assistance immediately!`;
             )}
           </ScrollView>
 
-          {/* NATIVE GOOGLE ACCOUNT PICKER OVERLAY (ANDROID/iOS SAFE SINGLE-WINDOW) */}
-          {isGooglePickerOpen && (
-            <View style={styles.googlePickerBackdrop}>
-              <View style={styles.googlePickerCard}>
-                <View style={styles.googlePickerHeader}>
-                  <View style={styles.googlePickerBrandRow}>
-                    <View style={styles.googleIconBadge}>
-                      <Text style={styles.googleIconText}>G</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.googlePickerTitle}>Choose an account</Text>
-                      <Text style={styles.googlePickerSub}>to continue to Quick Karya</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setIsGooglePickerOpen(false);
-                      setAuthError(null);
-                    }}
-                    style={styles.googlePickerCloseBtn}
-                  >
-                    <Text style={styles.googlePickerCloseText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
-                  {!googleAddAccountMode && savedGoogleAccounts.length > 0 ? (
-                    <View style={{ padding: 14, gap: 10 }}>
-                      {savedGoogleAccounts.map((acc) => {
-                        const accInitials = (acc.name || 'G')
-                          .split(' ')
-                          .map((n) => n[0])
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase();
-                        return (
-                          <View key={acc.uid} style={styles.googleAccountRow}>
-                            <TouchableOpacity
-                              style={styles.googleAccountMainBtn}
-                              onPress={() => completeGoogleAccountSignIn(acc)}
-                              activeOpacity={0.8}
-                            >
-                              <View style={styles.googleAccountAvatar}>
-                                {acc.photoUrl ? (
-                                  <Image source={{ uri: acc.photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                                ) : (
-                                  <Text style={styles.googleAccountAvatarText}>{accInitials}</Text>
-                                )}
-                              </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.googleAccountName} numberOfLines={1}>{acc.name}</Text>
-                                <Text style={styles.googleAccountEmail} numberOfLines={1}>{acc.email}</Text>
-                              </View>
-                              <Text style={styles.googleAccountSelectArrow}>→</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => handleRemoveSavedGoogleAccount(acc.uid)}
-                              style={styles.googleAccountRemoveBtn}
-                            >
-                              <Text style={styles.googleAccountRemoveText}>✕</Text>
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })}
-
-                      <TouchableOpacity
-                        style={styles.googleAddAnotherBtn}
-                        onPress={() => {
-                          setAuthError(null);
-                          setGoogleAddAccountMode(true);
-                        }}
-                      >
-                        <Text style={styles.googleAddAnotherIcon}>➕</Text>
-                        <Text style={styles.googleAddAnotherText}>Use another Google account</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View style={{ padding: 16, gap: 12 }}>
-                      {authError && (
-                        <View style={styles.authErrorBox}>
-                          <Text style={styles.authErrorText}>⚠️ {authError}</Text>
-                        </View>
-                      )}
-                      <View>
-                        <Text style={styles.googleInputLabel}>Gmail / Google Email Address</Text>
-                        <TextInput
-                          style={styles.googleTextInput}
-                          placeholder="e.g. rajesh.kumar@gmail.com"
-                          placeholderTextColor="#64748b"
-                          value={googleCustomEmail}
-                          onChangeText={(text) => {
-                            setGoogleCustomEmail(text);
-                            if (authError) setAuthError(null);
-                            if (text.includes('@') && !googleCustomName.trim()) {
-                              setGoogleCustomName(formatNameFromGmail(text));
-                            }
-                          }}
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                        />
-                      </View>
-                      <View>
-                        <Text style={styles.googleInputLabel}>Full Name (Auto-filled / Editable)</Text>
-                        <TextInput
-                          style={styles.googleTextInput}
-                          placeholder="e.g. Rajesh Kumar"
-                          placeholderTextColor="#64748b"
-                          value={googleCustomName}
-                          onChangeText={(text) => {
-                            setGoogleCustomName(text);
-                            if (authError) setAuthError(null);
-                          }}
-                          autoCapitalize="words"
-                        />
-                      </View>
-
-                      <TouchableOpacity
-                        style={[styles.googleConfirmBtn, authLoading && styles.authBtnDisabled]}
-                        onPress={handleAddCustomGoogleAccount}
-                        disabled={authLoading}
-                      >
-                        <Text style={styles.googleConfirmBtnText}>
-                          {authLoading ? 'Continuing...' : 'Continue with This Google Account →'}
-                        </Text>
-                      </TouchableOpacity>
-
-                      {savedGoogleAccounts.length > 0 && (
-                        <TouchableOpacity
-                          style={styles.googleBackSavedBtn}
-                          onPress={() => {
-                            setAuthError(null);
-                            setGoogleAddAccountMode(false);
-                          }}
-                        >
-                          <Text style={styles.googleBackSavedText}>← Back to Saved Accounts</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-                </ScrollView>
-              </View>
-            </View>
-          )}
         </SafeAreaView>
       </Modal>
 

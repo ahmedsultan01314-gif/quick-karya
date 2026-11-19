@@ -5,7 +5,8 @@ import {
   UserLocation,
   WorkerProfile,
   AppUser,
-  ServiceRequest
+  ServiceRequest,
+  WorkerNotification
 } from './types';
 import { Header } from './components/Header';
 import { LocationBar } from './components/LocationBar';
@@ -28,9 +29,12 @@ import {
   cleanAndDeduplicateWorkers,
   purgeLocalStorageArtifacts,
   enforceFirestoreSecurityAndCleanup,
-  isMockOrTestProfile
+  isMockOrTestProfile,
+  subscribeWorkerNotificationsFromCloud,
+  markWorkerNotificationReadInCloud,
+  normalizePhone10
 } from './firebase';
-import { setupNotifications } from './utils/notifications';
+import { setupNotifications, triggerIncomingWorkerLocalNotification } from './utils/notifications';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
@@ -49,6 +53,11 @@ export default function App() {
   // Service Request & Rating State
   const [activeServiceRequest, setActiveServiceRequest] = useState<ServiceRequest | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+
+  // Worker Incoming Work Notifications ("Quick Karya se kaam aaya!")
+  const [workerNotifications, setWorkerNotifications] = useState<WorkerNotification[]>([]);
+  const seenWorkerNotifIdsRef = React.useRef<Set<string>>(new Set());
+  const hasLoadedInitialNotifsRef = React.useRef(false);
 
   // Check persistent local user session on mount, purge mock/duplicate records, and initialize notifications
   useEffect(() => {
@@ -209,6 +218,54 @@ export default function App() {
     };
   }, [fetchWorkers]);
 
+  // Subscribe to incoming worker job alerts ("Quick Karya se kaam aaya!")
+  useEffect(() => {
+    if (!currentUser) {
+      setWorkerNotifications([]);
+      hasLoadedInitialNotifsRef.current = false;
+      seenWorkerNotifIdsRef.current.clear();
+      return;
+    }
+    const cleanPhone = normalizePhone10(currentUser.phone);
+    const matchingWorker = workers.find(
+      (w) =>
+        (currentUser.workerId && w.workerId === currentUser.workerId) ||
+        (cleanPhone && normalizePhone10(w.phone) === cleanPhone) ||
+        (w as any).userId === currentUser.id
+    );
+    const targetPhone = currentUser.phone || matchingWorker?.phone;
+    const targetWorkerId = matchingWorker?.id || currentUser.workerId;
+
+    if (!targetPhone && !targetWorkerId) {
+      setWorkerNotifications([]);
+      return;
+    }
+
+    const unsubscribe = subscribeWorkerNotificationsFromCloud(
+      targetPhone,
+      targetWorkerId,
+      (notifs) => {
+        setWorkerNotifications(notifs);
+        if (!hasLoadedInitialNotifsRef.current) {
+          notifs.forEach((n) => seenWorkerNotifIdsRef.current.add(n.id));
+          hasLoadedInitialNotifsRef.current = true;
+          return;
+        }
+        for (const n of notifs) {
+          if (!seenWorkerNotifIdsRef.current.has(n.id)) {
+            seenWorkerNotifIdsRef.current.add(n.id);
+            if (!n.read) {
+              triggerIncomingWorkerLocalNotification(n).catch(() => {});
+            }
+          }
+        }
+      }
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser, workers]);
+
   // Handle browser back button smoothly for Web/PWA
   useEffect(() => {
     const handlePopState = () => {
@@ -357,6 +414,13 @@ export default function App() {
               workers={workers}
               onGoToRegister={() => setActiveTab('register')}
               onOpenSettings={() => setActiveTab('settings')}
+              workerNotifications={workerNotifications}
+              onMarkNotificationRead={(id) => {
+                setWorkerNotifications((prev) =>
+                  prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+                );
+                markWorkerNotificationReadInCloud(id).catch(() => {});
+              }}
             />
           )}
 

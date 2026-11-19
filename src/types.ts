@@ -198,3 +198,21 @@ export interface CallLogRecord {
   notes?: string;
 }
 
+export interface WorkerNotification {
+  id: string;
+  workerId: string;
+  workerPhone: string;
+  workerPhoneNormalized: string;
+  workerName: string;
+  workerCategory?: string;
+  customerId?: string;
+  customerName: string;
+  customerPhone?: string;
+  actionType: 'call' | 'whatsapp' | 'gps_share' | 'sos';
+  title: string;
+  message: string;
+  location?: string;
+  read: boolean;
+  createdAt: string;
+}
+

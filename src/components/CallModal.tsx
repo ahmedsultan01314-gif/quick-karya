@@ -244,7 +244,13 @@ export const CallModal: React.FC<CallModalProps> = ({
       worker.phone,
       worker.category,
       currentUser?.name,
-      currentUser?.phone
+      currentUser?.phone,
+      'call',
+      {
+        workerId: worker.id,
+        customerId: currentUser?.id,
+        location: pickupLocation.trim() || userLocation?.city
+      }
     ).catch(() => {});
 
     // Save call to local & cloud Call History
@@ -308,7 +314,12 @@ export const CallModal: React.FC<CallModalProps> = ({
       worker.category,
       currentUser?.name,
       currentUser?.phone,
-      'gps_share'
+      'gps_share',
+      {
+        workerId: worker.id,
+        customerId: currentUser?.id,
+        location: pickupLocation.trim() || userLocation?.city
+      }
     ).catch(() => {});
 
     // Save WhatsApp sharing to Call History

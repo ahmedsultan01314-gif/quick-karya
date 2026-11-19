@@ -4,6 +4,7 @@ export default ({ config } = {}) => {
     ...baseConfig,
     name: "Quick Karya",
     slug: "quick-karya",
+    scheme: "quickkarya",
     owner: "sultanquickkaryas-team",
     version: "1.0.0",
     icon: "./assets/icon.png",
@@ -12,6 +13,15 @@ export default ({ config } = {}) => {
       resizeMode: "contain",
       backgroundColor: "#001F3F"
     },
+    plugins: [
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          iosUrlScheme: "com.googleusercontent.apps.149463790904-u3gf07vile2kskuvad69fu7b18utm6pb"
+        }
+      ],
+      "expo-notifications"
+    ],
     android: {
       ...(baseConfig.android || {}),
       package: "com.quickkarya.app",
@@ -24,6 +34,7 @@ export default ({ config } = {}) => {
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "CALL_PHONE",
+        "CAMERA",
         "POST_NOTIFICATIONS",
         "VIBRATE"
       ]

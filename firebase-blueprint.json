@@ -152,6 +152,29 @@
         "notes": { "type": "string", "maxLength": 500 }
       },
       "required": ["id", "workerId", "workerName", "workerPhone", "timestamp"]
+    },
+    "workerNotification": {
+      "title": "Worker Call / Job Alert Notification",
+      "description": "Real-time incoming customer call or GPS share alert dispatched to a Quick Karya worker",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workerId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "workerPhone": { "type": "string", "minLength": 10, "maxLength": 24 },
+        "workerPhoneNormalized": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^[6-9][0-9]{9}$" },
+        "workerName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "workerCategory": { "type": "string", "maxLength": 64 },
+        "customerId": { "type": "string", "maxLength": 128 },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "customerPhone": { "type": "string", "maxLength": 24 },
+        "actionType": { "type": "string", "enum": ["call", "whatsapp", "gps_share", "sos"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "message": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "location": { "type": "string", "maxLength": 256 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "workerId", "workerPhone", "workerPhoneNormalized", "workerName", "customerName", "actionType", "title", "message", "read", "createdAt"]
     }
   },
   "firestore": {
@@ -182,6 +205,10 @@
     "/callLogs/{logId}": {
       "schema": { "$ref": "#/entities/callLog" },
       "description": "Customer worker call and WhatsApp dispatch history logs"
+    },
+    "/workerNotifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/workerNotification" },
+      "description": "Real-time Quick Karya se kaam aaya notifications delivered to workers when a customer initiates a call or GPS share"
     }
   }
 }

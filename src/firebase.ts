@@ -30,7 +30,7 @@ import {
   type Auth
 } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
-import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord } from './types';
+import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord, WorkerNotification } from './types';
 import { getApiUrl } from './config';
 
 // ==========================================
@@ -724,6 +724,7 @@ export const USER_PHONE_REGISTRY_COLLECTION = 'userPhoneRegistry';
 export const REVIEWS_COLLECTION = 'reviews';
 export const SERVICE_REQUESTS_COLLECTION = 'serviceRequests';
 export const CALL_LOGS_COLLECTION = 'callLogs';
+export const WORKER_NOTIFICATIONS_COLLECTION = 'workerNotifications';
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Record<string, any> {
   const clean: Record<string, any> = {};
@@ -928,10 +929,13 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
 
     const deletedWorkerIds = new Set<string>();
     const survivorByPhone = new Map<string, { id: string; data: Record<string, any> }>();
+    const validWorkerIds = new Set<string>();
+    let workersScanSucceeded = false;
 
     // 1. Scan & clean /workers
     try {
       const workersSnap = await getDocs(collection(activeDb, WORKERS_COLLECTION));
+      workersScanSucceeded = true;
       report.workersScanned = workersSnap.size;
 
       const invalidWorkerIds: string[] = [];
@@ -958,6 +962,7 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
         group.sort((a, b) => getWorkerCanonicalScore(b.data as WorkerProfile) - getWorkerCanonicalScore(a.data as WorkerProfile));
         const winner = group[0];
         survivorByPhone.set(phone10, winner);
+        validWorkerIds.add(winner.id);
         for (let i = 1; i < group.length; i++) {
           duplicateWorkerIds.push(group[i].id);
         }
@@ -1153,14 +1158,19 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
       report.errors.push(`users cleanup notice: ${err?.message || String(err)}`);
     }
 
-    // 4. Clean mock/test artifacts in /callLogs and /reviews
+    // 4. Clean mock/test/orphaned artifacts in /callLogs, /reviews, and /workerNotifications
     try {
       const logsSnap = await getDocs(collection(activeDb, CALL_LOGS_COLLECTION));
       for (const docSnap of logsSnap.docs) {
         const d = docSnap.data() as Record<string, any>;
         const workerId = String(d.workerId || '');
+        const isOrphanedWorkerLog =
+          workersScanSucceeded &&
+          workerId.startsWith('w-') &&
+          !validWorkerIds.has(workerId);
         const isMockLog =
           deletedWorkerIds.has(workerId) ||
+          isOrphanedWorkerLog ||
           isMockOrTestProfile({
             id: workerId,
             name: d.workerName,
@@ -1184,8 +1194,10 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
       for (const docSnap of revSnap.docs) {
         const d = docSnap.data() as Record<string, any>;
         const workerId = String(d.workerId || '');
+        const isOrphanedReview = workersScanSucceeded && !validWorkerIds.has(workerId);
         const isMockRev =
           deletedWorkerIds.has(workerId) ||
+          isOrphanedReview ||
           isMockOrTestProfile({
             id: workerId,
             name: d.customerName
@@ -1201,6 +1213,28 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
       }
     } catch {
       // reviews cleanup skipped if unavailable
+    }
+
+    try {
+      const notifSnap = await getDocs(collection(activeDb, WORKER_NOTIFICATIONS_COLLECTION));
+      for (const docSnap of notifSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const workerId = String(d.workerId || '');
+        if (
+          isMockOrTestProfile({
+            id: workerId,
+            name: d.workerName,
+            phone: d.workerPhone
+          }) ||
+          isMockOrTestProfile({
+            name: d.customerName
+          })
+        ) {
+          await deleteDoc(doc(activeDb, WORKER_NOTIFICATIONS_COLLECTION, docSnap.id)).catch(() => {});
+        }
+      }
+    } catch {
+      // workerNotifications cleanup skipped if unavailable
     }
 
     lastCleanupTimestamp = Date.now();
@@ -1771,5 +1805,100 @@ export async function fetchUserRequests(userId: string, isWorker: boolean): Prom
     }
     console.warn('Could not fetch user requests from Cloud Firestore:', err);
     return [];
+  }
+}
+
+/**
+ * Worker Notifications ("Quick Karya se kaam aaya!")
+ */
+export async function saveWorkerNotificationToCloud(notif: WorkerNotification): Promise<void> {
+  if (!db) return;
+  const phone10 = normalizePhone10(notif.workerPhoneNormalized || notif.workerPhone);
+  if (!isGenuinePhone10(phone10)) return;
+  if (
+    isMockOrTestProfile({ id: notif.workerId, name: notif.workerName, phone: phone10 }) ||
+    isMockOrTestProfile({ name: notif.customerName })
+  ) {
+    return;
+  }
+
+  try {
+    const cleanPayload: WorkerNotification = {
+      id: notif.id,
+      workerId: notif.workerId || `w_${phone10}`,
+      workerPhone: notif.workerPhone,
+      workerPhoneNormalized: phone10,
+      workerName: notif.workerName.trim().slice(0, 100),
+      workerCategory: notif.workerCategory ? notif.workerCategory.slice(0, 64) : undefined,
+      customerId: notif.customerId ? notif.customerId.slice(0, 128) : undefined,
+      customerName: (notif.customerName || 'Customer').trim().slice(0, 100),
+      customerPhone: notif.customerPhone ? notif.customerPhone.slice(0, 24) : undefined,
+      actionType: notif.actionType,
+      title: notif.title.slice(0, 140),
+      message: notif.message.slice(0, 500),
+      location: notif.location ? notif.location.slice(0, 256) : undefined,
+      read: false,
+      createdAt: notif.createdAt || new Date().toISOString()
+    };
+
+    await setDoc(doc(db, WORKER_NOTIFICATIONS_COLLECTION, notif.id), stripUndefined(cleanPayload));
+  } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      handleFirestoreError(err, OperationType.WRITE, `${WORKER_NOTIFICATIONS_COLLECTION}/${notif.id}`);
+    }
+    console.warn('Could not save worker notification to Firestore:', err);
+  }
+}
+
+export function subscribeWorkerNotificationsFromCloud(
+  workerPhone: string | undefined,
+  workerId: string | undefined,
+  onUpdate: (notifications: WorkerNotification[]) => void
+) {
+  const phone10 = normalizePhone10(workerPhone);
+  if (!db || (!isGenuinePhone10(phone10) && !workerId)) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  try {
+    const notifRef = collection(db, WORKER_NOTIFICATIONS_COLLECTION);
+    const q = isGenuinePhone10(phone10)
+      ? query(notifRef, where('workerPhoneNormalized', '==', phone10))
+      : query(notifRef, where('workerId', '==', workerId!));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list: WorkerNotification[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as WorkerNotification;
+          if (data && data.title && data.message) {
+            list.push({ ...data, id: docSnap.id });
+          }
+        });
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        onUpdate(list.slice(0, 30));
+      },
+      (err) => {
+        console.warn('Worker notifications subscription error:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Worker notifications listener init error:', err);
+    return () => {};
+  }
+}
+
+export async function markWorkerNotificationReadInCloud(notificationId: string): Promise<void> {
+  if (!db || !notificationId) return;
+  try {
+    await setDoc(
+      doc(db, WORKER_NOTIFICATIONS_COLLECTION, notificationId),
+      { read: true },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not mark worker notification read:', err);
   }
 }

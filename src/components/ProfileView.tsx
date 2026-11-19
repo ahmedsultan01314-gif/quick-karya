@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppUser, WorkerProfile, WorkerReview } from '../types';
+import { AppUser, WorkerProfile, WorkerReview, WorkerNotification } from '../types';
 import { getApiUrl } from '../config';
 import {
   User,
@@ -19,7 +19,8 @@ import {
   Shield,
   Settings,
   Crop,
-  PhoneCall
+  PhoneCall,
+  Bell
 } from 'lucide-react';
 import { PhotoCropModal } from './PhotoCropModal';
 import { getCallHistory } from '../utils/callHistory';
@@ -31,6 +32,8 @@ interface ProfileViewProps {
   workers: WorkerProfile[];
   onGoToRegister: () => void;
   onOpenSettings?: () => void;
+  workerNotifications?: WorkerNotification[];
+  onMarkNotificationRead?: (id: string) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -39,7 +42,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onLogout,
   workers,
   onGoToRegister,
-  onOpenSettings
+  onOpenSettings,
+  workerNotifications = [],
+  onMarkNotificationRead
 }) => {
   const [workerProfile, setWorkerProfile] = useState<WorkerProfile | null>(null);
   const [reviews, setReviews] = useState<WorkerReview[]>([]);
@@ -557,6 +562,72 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <p className="text-[10px] text-gray-400">
                     {new Date(rev.createdAt).toLocaleDateString()}
                   </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Incoming Job Alerts ("Quick Karya se kaam aaya!") */}
+      {(isWorker || workerNotifications.length > 0) && (
+        <div className="bg-white rounded-2xl border border-amber-300 p-4 space-y-2.5 shadow-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-[#FFA500]" />
+              <h3 className="text-xs font-bold text-[#001F3F]">
+                Incoming Job Alerts ({workerNotifications.filter((n) => !n.read).length} unread)
+              </h3>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#001F3F] text-amber-300">
+              Quick Karya se kaam aaya
+            </span>
+          </div>
+
+          {workerNotifications.length === 0 ? (
+            <p className="text-[11px] text-gray-500 py-1">
+              No incoming customer work alerts yet. When a customer taps Call or shares GPS with you, an alert will arrive here instantly.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {workerNotifications.map((notif) => (
+                <div
+                  key={notif.id}
+                  className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                    notif.read
+                      ? 'bg-gray-50 border-gray-200'
+                      : 'bg-amber-50/80 border-amber-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-extrabold text-[#001F3F]">{notif.title}</p>
+                    <span className="text-[10px] text-gray-400 shrink-0">
+                      {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-700 leading-snug">{notif.message}</p>
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    {notif.customerPhone ? (
+                      <a
+                        href={`tel:${notif.customerPhone.replace(/[^0-9+]/g, '')}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FFA500] text-[#001F3F] font-bold text-[11px]"
+                      >
+                        <Phone className="w-3 h-3" />
+                        <span>Call Customer</span>
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-gray-500">From: {notif.customerName}</span>
+                    )}
+                    {!notif.read && onMarkNotificationRead && (
+                      <button
+                        type="button"
+                        onClick={() => onMarkNotificationRead(notif.id)}
+                        className="text-[11px] font-bold text-[#001F3F] underline cursor-pointer"
+                      >
+                        Mark Read
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

@@ -1,6 +1,13 @@
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { getApiUrl } from '../config';
+import {
+  saveWorkerNotificationToCloud,
+  normalizePhone10,
+  isGenuinePhone10
+} from '../firebase';
+import type { WorkerNotification } from '../types';
 
 export type NotificationBannerData = {
   id: string;
@@ -51,10 +58,8 @@ export async function setupNotifications() {
     });
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+      await Notifications.requestPermissionsAsync();
     }
 
     if (Platform.OS === 'android') {
@@ -62,12 +67,62 @@ export async function setupNotifications() {
         name: 'Quick Karya Service Alerts',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#064e3b',
+        lightColor: '#FFA500',
         sound: 'default'
       });
     }
   } catch (err) {
     console.warn('Native notification setup error:', err);
+  }
+}
+
+export async function registerForWorkerPushTokenAsync(): Promise<string | null> {
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      return null;
+    }
+
+    const projectId =
+      (Constants as any)?.expoConfig?.extra?.eas?.projectId ||
+      (Constants as any)?.easConfig?.projectId ||
+      '2914b087-2f1d-41fa-926f-ffd005769c8c';
+
+    const tokenRes = await Notifications.getExpoPushTokenAsync({ projectId });
+    return tokenRes?.data || null;
+  } catch (err) {
+    console.warn('Expo push token registration skipped cleanly:', err);
+    return null;
+  }
+}
+
+export async function triggerIncomingWorkerLocalNotification(notif: WorkerNotification): Promise<void> {
+  dispatchInAppBanner(notif.title, notif.message, 'call');
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: notif.title,
+        body: notif.message,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        color: '#FFA500',
+        data: {
+          notificationId: notif.id,
+          workerId: notif.workerId,
+          customerName: notif.customerName,
+          customerPhone: notif.customerPhone,
+          actionType: notif.actionType
+        }
+      },
+      trigger: null
+    });
+  } catch (err) {
+    console.warn('Could not display local incoming worker notification:', err);
   }
 }
 
@@ -84,7 +139,7 @@ export async function triggerRegistrationNotification(workerName: string, catego
         body,
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority.HIGH,
-        color: '#064e3b'
+        color: '#001F3F'
       },
       trigger: null
     });
@@ -99,50 +154,73 @@ export async function triggerCallWorkerNotification(
   category?: string,
   customerName?: string,
   customerPhone?: string,
-  actionType: 'call' | 'gps_share' = 'call'
+  actionType: 'call' | 'gps_share' = 'call',
+  extra?: { workerId?: string; customerId?: string; location?: string }
 ) {
-  const callerName = customerName || 'Customer';
-  const callerPhone = customerPhone || '';
+  const callerName = (customerName || 'Customer').trim() || 'Customer';
+  const callerPhone = (customerPhone || '').trim();
   const isGpsShare = actionType === 'gps_share';
+  const trade = category || 'Service';
+
+  const workerAlertTitle = '🔔 Quick Karya se kaam aaya!';
+  const workerAlertBody = isGpsShare
+    ? `Quick Karya se kaam aaya! ${callerName} ne ${trade} kaam ke liye live location pin & request bheji hai.${extra?.location ? ` (${extra.location})` : ''}`
+    : `Quick Karya se kaam aaya! ${callerName} (${trade}) aapko kaam ke liye call kar rahe hain.${extra?.location ? ` (${extra.location})` : ''}`;
 
   const bannerTitle = isGpsShare
-    ? 'Quick Karya - GPS & Service Request Sent'
-    : 'Quick Karya - Call Service Alert Sent';
-  const bannerBody = isGpsShare
-    ? `Incoming service request & live GPS pin shared with ${workerName} (${category || 'Artisan'}) from ${callerName}.`
-    : `Connecting call to ${workerName} (${category || 'Artisan'}). Service alert dispatched from ${callerName}.`;
+    ? 'Quick Karya - GPS & Kaam Alert Bheja Gaya'
+    : 'Quick Karya - Call & Kaam Alert Bheja Gaya';
+  const bannerBody = `${workerName} ko "${workerAlertTitle}" notification bheja gaya (${callerName}).`;
 
-  // Trigger banner event for immediate in-app feedback
-  const banner: NotificationBannerData = {
-    id: `call-alert-${Date.now()}`,
-    title: bannerTitle,
-    body: bannerBody,
-    type: 'call',
-    timestamp: Date.now()
-  };
-  bannerListeners.forEach((fn) => {
+  // Trigger banner event for immediate customer-side feedback
+  dispatchInAppBanner(bannerTitle, bannerBody, 'call');
+
+  const phone10 = normalizePhone10(workerPhone);
+  let wroteToFirestore = false;
+  if (isGenuinePhone10(phone10)) {
+    const notifDoc: WorkerNotification = {
+      id: `wn_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      workerId: extra?.workerId || `w_${phone10}`,
+      workerPhone,
+      workerPhoneNormalized: phone10,
+      workerName,
+      workerCategory: trade,
+      customerId: extra?.customerId,
+      customerName: callerName,
+      customerPhone: callerPhone || undefined,
+      actionType,
+      title: workerAlertTitle,
+      message: workerAlertBody,
+      location: extra?.location,
+      read: false,
+      createdAt: new Date().toISOString()
+    };
     try {
-      fn(banner);
-    } catch {
-      // ignore
+      await saveWorkerNotificationToCloud(notifDoc);
+      wroteToFirestore = true;
+    } catch (e) {
+      console.warn('Firestore worker notification save error:', e);
     }
-  });
+  }
 
   try {
     await fetch(getApiUrl('/api/notifications/notify-worker'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        workerId: extra?.workerId,
         workerName,
         workerPhone,
-        category,
+        category: trade,
+        customerId: extra?.customerId,
         customerName: callerName,
         customerPhone: callerPhone,
-        actionType
+        location: extra?.location,
+        actionType,
+        skipFirestoreWrite: wroteToFirestore
       })
     });
   } catch (err) {
     console.warn('Failed to dispatch targeted push notification to worker:', err);
   }
 }
-

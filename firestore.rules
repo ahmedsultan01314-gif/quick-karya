@@ -219,6 +219,34 @@ service cloud.firestore {
         && data.workerPhone is string && data.workerPhone.size() >= 3 && data.workerPhone.size() <= 24;
     }
 
+    function isValidWorkerNotification(notificationId, data) {
+      return !isMockId(notificationId)
+        && data.keys().hasAll([
+          'id', 'workerId', 'workerPhone', 'workerPhoneNormalized', 'workerName',
+          'customerName', 'actionType', 'title', 'message', 'read', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'workerId', 'workerPhone', 'workerPhoneNormalized', 'workerName',
+          'workerCategory', 'customerId', 'customerName', 'customerPhone',
+          'actionType', 'title', 'message', 'location', 'read', 'createdAt'
+        ])
+        && data.id == notificationId
+        && data.workerId is string && data.workerId.size() >= 2 && data.workerId.size() <= 128 && !isMockId(data.workerId)
+        && data.workerPhone is string && data.workerPhone.size() >= 10 && data.workerPhone.size() <= 24
+        && isValidPhone10(data.workerPhoneNormalized)
+        && data.workerName is string && data.workerName.size() >= 1 && data.workerName.size() <= 100 && !isMockText(data.workerName)
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 && !isMockText(data.customerName)
+        && data.actionType in ['call', 'whatsapp', 'gps_share', 'sos']
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 140
+        && data.message is string && data.message.size() >= 2 && data.message.size() <= 500
+        && data.read is bool
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && (!('workerCategory' in data) || (data.workerCategory is string && data.workerCategory.size() <= 64))
+        && (!('customerId' in data) || (data.customerId is string && data.customerId.size() <= 128))
+        && (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 24))
+        && (!('location' in data) || (data.location is string && data.location.size() <= 256));
+    }
+
     // =========================================================
     // COLLECTION MATCH RULES
     // =========================================================
@@ -381,6 +409,26 @@ service cloud.firestore {
                             && isValidCallLog(logId, incoming());
 
       allow delete: if isValidId(logId);
+    }
+
+    // Worker Real-time Incoming Call & Job Alert Notifications ("Quick Karya se kaam aaya")
+    match /workerNotifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if true;
+
+      allow create: if isValidId(notificationId)
+                    && isValidWorkerNotification(notificationId, incoming())
+                    && incoming().read == false;
+
+      allow update: if isValidId(notificationId)
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['read'])
+                    && incoming().read is bool;
+
+      allow delete: if isValidId(notificationId)
+                    && (isMockId(existing().get('workerId', ''))
+                        || isMockText(existing().get('workerName', ''))
+                        || isMockText(existing().get('customerName', ''))
+                        || !isValidPhone10(existing().get('workerPhoneNormalized', '')));
     }
   }
 }

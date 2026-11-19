@@ -59,7 +59,13 @@ export const HighwaySosModal: React.FC<HighwaySosModalProps> = ({
       phone,
       'Emergency Highway Assistance',
       currentUser?.name || 'Driver in Distress',
-      currentUser?.phone || ''
+      currentUser?.phone || '',
+      'call',
+      {
+        workerId: `sos_${phone.replace(/[^0-9]/g, '').slice(-6)}`,
+        customerId: currentUser?.id,
+        location: locationLabel
+      }
     );
     try {
       addCallRecord({
