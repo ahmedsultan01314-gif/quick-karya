@@ -12,6 +12,8 @@ import {
   normalizePhone10,
   isGenuinePhone10,
   isMockOrTestProfile,
+  isPurgedAccountProfile,
+  deleteAccountAndAssociatedData,
   enforceFirestoreSecurityAndCleanup,
   saveCallLogToCloud,
   deleteCallLogFromCloud,
@@ -408,6 +410,12 @@ app.post('/api/auth/register-email', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    if (isPurgedAccountProfile({ email: cleanEmail }) || isMockOrTestProfile({ email: cleanEmail, name: name || 'Member' })) {
+      return res.status(403).json({
+        success: false,
+        error: 'This email account has been permanently removed and cannot be registered.'
+      });
+    }
     const userId = `usr_email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
     let existingUser: AppUser | null = null;
@@ -467,6 +475,12 @@ app.post('/api/auth/login-email', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    if (isPurgedAccountProfile({ email: cleanEmail }) || isMockOrTestProfile({ email: cleanEmail, name: 'Member' })) {
+      return res.status(403).json({
+        success: false,
+        error: 'This account has been permanently deleted and is no longer accessible.'
+      });
+    }
     const userId = `usr_email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
     let user: AppUser | null = null;
@@ -504,6 +518,24 @@ app.post('/api/auth/login-email', async (req, res) => {
   } catch (err: any) {
     console.error('Login email unexpected error:', err);
     return res.status(500).json({ success: false, error: err?.message || 'Server error during login. Please try again.' });
+  }
+});
+
+// Delete Account & Associated Data permanently
+app.delete('/api/auth/account', async (req, res) => {
+  try {
+    const { email, userId, workerId, phone } = req.body || {};
+    if (!email && !userId && !workerId && !phone) {
+      return res.status(400).json({ success: false, error: 'Provide email, userId, workerId, or phone to delete.' });
+    }
+    const report = await deleteAccountAndAssociatedData({ email, userId, workerId, phone });
+    if (report.deletedWorkerIds.length > 0) {
+      const deletedSet = new Set(report.deletedWorkerIds);
+      workers = workers.filter((w) => !deletedSet.has(w.id));
+    }
+    return res.json({ success: true, report });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Could not delete account.' });
   }
 });
 

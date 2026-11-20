@@ -35,6 +35,7 @@ interface SettingsViewProps {
   userLocation: UserLocation;
   onRequestLiveGps: () => void;
   onLogout: () => void;
+  onDeleteAccount?: () => Promise<void> | void;
   onDone: () => void;
   onRefreshDirectory?: () => void;
 }
@@ -44,6 +45,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   userLocation,
   onRequestLiveGps,
   onLogout,
+  onDeleteAccount,
   onDone,
   onRefreshDirectory
 }) => {
@@ -54,6 +56,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [clearingCache, setClearingCache] = useState(false);
   const [clearedNotice, setClearedNotice] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [callHistory, setCallHistory] = useState<CallLogRecord[]>(() => getCallHistory());
 
   const SHARE_APP_URL = 'https://ais-pre-hpm4hugeyt2slmwiro2zk5-94418484178.asia-southeast1.run.app';
@@ -516,6 +520,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
               <ChevronRight className="w-4 h-4 text-red-400" />
             </button>
+
+            {user && onDeleteAccount && (
+              !confirmingDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-red-600/10 hover:bg-red-600/15 border border-red-300 text-xs font-bold text-red-700 flex items-center justify-between cursor-pointer transition-all"
+                >
+                  <span className="flex items-center gap-2">
+                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                    Delete My Account &amp; Data
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-red-500" />
+                </button>
+              ) : (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-300 space-y-2">
+                  <p className="text-[11px] font-bold text-red-800">
+                    Permanently delete your Quick Karya account, worker profile, call history, and session data?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={deletingAccount}
+                      onClick={() => setConfirmingDelete(false)}
+                      className="flex-1 py-2 rounded-lg bg-white border border-gray-300 text-xs font-bold text-gray-700 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deletingAccount}
+                      onClick={async () => {
+                        setDeletingAccount(true);
+                        try {
+                          await onDeleteAccount();
+                        } finally {
+                          setDeletingAccount(false);
+                          setConfirmingDelete(false);
+                        }
+                      }}
+                      className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-bold text-white cursor-pointer"
+                    >
+                      {deletingAccount ? 'Deleting...' : 'Confirm Delete'}
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
           </div>
         </div>
 

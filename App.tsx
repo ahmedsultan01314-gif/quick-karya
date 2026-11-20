@@ -51,11 +51,16 @@ import {
   WorkerNotification
 } from './src/types';
 import {
+  auth,
+  onAuthStateChanged,
+  signOutUser,
   saveWorkerToCloud,
   subscribeWorkersFromCloud,
   cleanAndDeduplicateWorkers,
   isGenuinePhone10,
   isMockOrTestProfile,
+  isPurgedAccountProfile,
+  deleteAccountAndAssociatedData,
   normalizePhone10,
   saveReviewToCloud,
   fetchReviewsForWorker,
@@ -237,6 +242,7 @@ function NativeApp() {
             const cleanParsed = parsed.filter(
               (item) =>
                 item &&
+                !isPurgedAccountProfile({ id: item.workerId, callerId: item.callerId }) &&
                 !isMockOrTestProfile({
                   id: item.workerId,
                   name: item.workerName,
@@ -290,8 +296,49 @@ function NativeApp() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Check persistent session on initial mount: Never ask again if verified
+  // Check persistent session on initial mount & monitor Firebase Auth for purged/deleted accounts
   useEffect(() => {
+    const clearDeletedAccountCaches = async (profile?: {
+      id?: string;
+      email?: string;
+      workerId?: string;
+    }) => {
+      try {
+        await Promise.all([
+          AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {}),
+          AsyncStorage.removeItem('quick_karya_user').catch(() => {}),
+          AsyncStorage.removeItem(SAVED_GOOGLE_ACCOUNTS_KEY).catch(() => {})
+        ]);
+        const rawLogs = await AsyncStorage.getItem(CALL_HISTORY_ASYNC_KEY).catch(() => null);
+        if (rawLogs) {
+          const parsedLogs = JSON.parse(rawLogs);
+          if (Array.isArray(parsedLogs)) {
+            const cleanLogs = parsedLogs.filter(
+              (item) =>
+                item &&
+                !isPurgedAccountProfile({ id: item.workerId, callerId: item.callerId }) &&
+                !(profile?.id && (item.callerId === profile.id || item.workerId === profile.id))
+            );
+            await AsyncStorage.setItem(CALL_HISTORY_ASYNC_KEY, JSON.stringify(cleanLogs)).catch(() => {});
+          }
+        }
+      } catch {}
+      purgeLocalStorageArtifacts({
+        email: profile?.email,
+        userId: profile?.id,
+        workerId: profile?.workerId
+      });
+      await signOutNativeGoogle().catch(() => {});
+      await signOutUser().catch(() => {});
+      if (profile?.email || profile?.id) {
+        deleteAccountAndAssociatedData({
+          email: profile.email,
+          userId: profile.id,
+          workerId: profile.workerId
+        }).catch(() => {});
+      }
+    };
+
     const checkUserSession = async () => {
       try {
         let stored: string | null = null;
@@ -312,6 +359,7 @@ function NativeApp() {
           if (
             parsed?.name &&
             parsed?.verified !== false &&
+            !isPurgedAccountProfile(parsed) &&
             !isMockOrTestProfile(parsed) &&
             (!parsed.phone || isGenuinePhone10(parsed.phone))
           ) {
@@ -326,7 +374,11 @@ function NativeApp() {
             }
             return; // Launch directly into main Home Directory screen
           } else {
-            await AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {});
+            await clearDeletedAccountCaches({
+              id: parsed?.id,
+              email: parsed?.email,
+              workerId: parsed?.workerId
+            });
           }
         }
       } catch (err) {
@@ -338,6 +390,27 @@ function NativeApp() {
     };
 
     checkUserSession();
+
+    if (auth && typeof onAuthStateChanged === 'function') {
+      const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
+        if (
+          fbUser &&
+          (isPurgedAccountProfile({ uid: fbUser.uid, email: fbUser.email }) ||
+            isMockOrTestProfile({ id: fbUser.uid, name: fbUser.displayName, email: fbUser.email }))
+        ) {
+          clearDeletedAccountCaches({
+            id: fbUser.uid,
+            email: fbUser.email || undefined
+          }).catch(() => {});
+          setCurrentUser(null);
+          setIsAuthModalOpen(true);
+          setAuthStep('google_sign_in');
+        }
+      });
+      return () => {
+        unsubscribeAuth();
+      };
+    }
   }, []);
 
   // Real Native Google Sign-In across all Android phones (opens system Google Account chooser)
@@ -348,8 +421,13 @@ function NativeApp() {
       const gUser = await performNativeGoogleSignIn();
       const cleanEmail = gUser.email.trim().toLowerCase();
       const cleanName = gUser.name.trim() || cleanEmail.split('@')[0] || 'Quick Karya User';
-      if (isMockOrTestProfile({ id: gUser.uid, name: cleanName, email: cleanEmail })) {
-        throw new Error('Test or demo accounts are blocked. Please select your genuine Google account.');
+      if (
+        isPurgedAccountProfile({ uid: gUser.uid, email: cleanEmail }) ||
+        isMockOrTestProfile({ id: gUser.uid, name: cleanName, email: cleanEmail })
+      ) {
+        await signOutNativeGoogle().catch(() => {});
+        await signOutUser().catch(() => {});
+        throw new Error('This account has been permanently removed or is blocked. Please choose another Google account.');
       }
 
       const verifiedUserObj: AppUser = {
@@ -405,6 +483,14 @@ function NativeApp() {
         authEmailMode === 'register'
           ? await signUpWithEmail(authEmail.trim(), authPassword.trim(), authFullName.trim())
           : await signInWithEmail(authEmail.trim(), authPassword.trim());
+
+      if (
+        isPurgedAccountProfile({ uid: authRes.uid, email: authRes.email }) ||
+        isMockOrTestProfile({ id: authRes.uid, name: authRes.name, email: authRes.email })
+      ) {
+        await signOutUser().catch(() => {});
+        throw new Error('This account has been permanently removed and cannot be used.');
+      }
 
       const userObj: AppUser = {
         id: authRes.uid,
@@ -474,7 +560,16 @@ function NativeApp() {
   const handleLogout = async () => {
     try {
       await signOutNativeGoogle();
-      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+      await signOutUser();
+      await Promise.all([
+        AsyncStorage.removeItem(AUTH_STORAGE_KEY),
+        AsyncStorage.removeItem('quick_karya_user'),
+        AsyncStorage.removeItem(SAVED_GOOGLE_ACCOUNTS_KEY)
+      ]);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('quick_karya_user');
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
     } catch (e) {
       console.warn('AsyncStorage logout error:', e);
     }
@@ -487,6 +582,39 @@ function NativeApp() {
     setLoginEmail('');
     setAuthStep('google_sign_in');
     setIsAuthModalOpen(true);
+  };
+
+  const handleDeleteCurrentAccount = () => {
+    if (!currentUser) return;
+    Alert.alert(
+      'Delete Account & Data?',
+      'This will permanently delete your Quick Karya account, any linked artisan profile, call history, and saved session on this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            const target = {
+              email: currentUser.email,
+              userId: currentUser.id,
+              workerId: currentUser.workerId,
+              phone: currentUser.phone
+            };
+            await deleteAccountAndAssociatedData(target).catch(() => {});
+            await Promise.all([
+              AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {}),
+              AsyncStorage.removeItem('quick_karya_user').catch(() => {}),
+              AsyncStorage.removeItem(SAVED_GOOGLE_ACCOUNTS_KEY).catch(() => {}),
+              AsyncStorage.removeItem(CALL_HISTORY_ASYNC_KEY).catch(() => {})
+            ]);
+            clearCallHistory();
+            await handleLogout();
+            Alert.alert('Account Deleted', 'Your Quick Karya account and associated data have been permanently deleted.');
+          }
+        }
+      ]
+    );
   };
 
   // Detailed Profile View & Reviews State
@@ -3453,6 +3581,16 @@ Please dispatch assistance immediately!`;
               >
                 <Text style={styles.settingsLogoutBtnText}>🚪 Switch Account / Sign Out</Text>
               </TouchableOpacity>
+              {currentUser && (
+                <TouchableOpacity
+                  style={[styles.settingsLogoutBtn, { marginTop: 10, backgroundColor: '#FEF2F2', borderColor: '#DC2626' }]}
+                  onPress={handleDeleteCurrentAccount}
+                >
+                  <Text style={[styles.settingsLogoutBtnText, { color: '#B91C1C' }]}>
+                    🗑️ Delete My Account &amp; Data
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* App Version Info */}

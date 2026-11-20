@@ -25,11 +25,16 @@ import { SettingsView } from './components/SettingsView';
 import { NotificationToast } from './components/NotificationToast';
 import { CityCoord, KNOWN_LOCATIONS } from './utils/geo';
 import {
+  auth,
+  onAuthStateChanged,
+  signOutUser,
   subscribeWorkersFromCloud,
   cleanAndDeduplicateWorkers,
   purgeLocalStorageArtifacts,
   enforceFirestoreSecurityAndCleanup,
+  deleteAccountAndAssociatedData,
   isMockOrTestProfile,
+  isPurgedAccountProfile,
   subscribeWorkerNotificationsFromCloud,
   markWorkerNotificationReadInCloud,
   normalizePhone10
@@ -59,12 +64,13 @@ export default function App() {
   const seenWorkerNotifIdsRef = React.useRef<Set<string>>(new Set());
   const hasLoadedInitialNotifsRef = React.useRef(false);
 
-  // Check persistent local user session on mount, purge mock/duplicate records, and initialize notifications
+  // Check persistent local user session & Firebase Auth on mount, purge mock/purged/duplicate records, and initialize notifications
   useEffect(() => {
     setupNotifications().catch(() => {});
     purgeLocalStorageArtifacts();
     enforceFirestoreSecurityAndCleanup().catch(() => {});
 
+    let restoredValidSession = false;
     try {
       const stored = localStorage.getItem('quick_karya_user');
       if (stored) {
@@ -73,19 +79,44 @@ export default function App() {
           parsed &&
           (parsed.phone || parsed.email) &&
           parsed.verified !== false &&
+          !isPurgedAccountProfile(parsed) &&
           !isMockOrTestProfile(parsed)
         ) {
           setCurrentUser(parsed);
           setIsAuthModalOpen(false);
-          return;
+          restoredValidSession = true;
+        } else {
+          localStorage.removeItem('quick_karya_user');
+          localStorage.removeItem('@quickkarya_user_session_v1');
         }
       }
     } catch {
       // Ignore localStorage parse errors
     }
 
-    // New user on first startup: open mandatory Google Sign-In
-    setIsAuthModalOpen(true);
+    if (!restoredValidSession) {
+      // New or cleared user on startup: open mandatory Google Sign-In
+      setIsAuthModalOpen(true);
+    }
+
+    if (auth && typeof onAuthStateChanged === 'function') {
+      const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
+        if (
+          fbUser &&
+          (isPurgedAccountProfile({ uid: fbUser.uid, email: fbUser.email }) ||
+            isMockOrTestProfile({ id: fbUser.uid, name: fbUser.displayName, email: fbUser.email }))
+        ) {
+          signOutUser().catch(() => {});
+          purgeLocalStorageArtifacts({ email: fbUser.email || undefined, userId: fbUser.uid });
+          deleteAccountAndAssociatedData({ email: fbUser.email || undefined, userId: fbUser.uid }).catch(() => {});
+          setCurrentUser(null);
+          setIsAuthModalOpen(true);
+        }
+      });
+      return () => {
+        unsubAuth();
+      };
+    }
   }, []);
 
   // User location state (defaults to Agartala, Tripura as requested benchmark)
@@ -340,8 +371,32 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('quick_karya_user');
+    signOutUser().catch(() => {});
+    try {
+      localStorage.removeItem('quick_karya_user');
+      localStorage.removeItem('@quickkarya_user_session_v1');
+    } catch {}
     setCurrentUser(null);
+    setIsAuthModalOpen(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!currentUser) return;
+    await deleteAccountAndAssociatedData({
+      email: currentUser.email,
+      userId: currentUser.id,
+      workerId: currentUser.workerId,
+      phone: currentUser.phone
+    }).catch(() => {});
+    await signOutUser().catch(() => {});
+    try {
+      localStorage.removeItem('quick_karya_user');
+      localStorage.removeItem('@quickkarya_user_session_v1');
+    } catch {}
+    setCurrentUser(null);
+    setActiveTab('home');
+    setIsAuthModalOpen(true);
+    fetchWorkers();
   };
 
   return (
@@ -430,6 +485,7 @@ export default function App() {
               userLocation={userLocation}
               onRequestLiveGps={requestLiveGps}
               onLogout={handleLogout}
+              onDeleteAccount={handleDeleteAccount}
               onDone={() => setActiveTab('home')}
               onRefreshDirectory={fetchWorkers}
             />

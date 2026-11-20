@@ -17,7 +17,10 @@ import {
   signInWithGoogle,
   signInWithEmail,
   signUpWithEmail,
-  saveUserToCloud
+  saveUserToCloud,
+  signOutUser,
+  isPurgedAccountProfile,
+  isMockOrTestProfile
 } from '../firebase';
 import { getApiUrl } from '../config';
 
@@ -66,6 +69,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         authUser = await signInWithEmail(email, password);
       }
 
+      if (
+        isPurgedAccountProfile({ uid: authUser.uid, email: authUser.email }) ||
+        isMockOrTestProfile({ id: authUser.uid, name: authUser.name, email: authUser.email })
+      ) {
+        await signOutUser().catch(() => {});
+        throw new Error('This account has been permanently removed and cannot be used.');
+      }
+
       const appUser: AppUser = {
         id: authUser.uid,
         name: authUser.name,
@@ -101,6 +112,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       // Real Google OAuth / Firebase Google Auth Provider Popup with account picker
       const gUser = await signInWithGoogle();
+
+      if (
+        isPurgedAccountProfile({ uid: gUser.uid, email: gUser.email }) ||
+        isMockOrTestProfile({ id: gUser.uid, name: gUser.name, email: gUser.email })
+      ) {
+        await signOutUser().catch(() => {});
+        throw new Error('This account was permanently deleted. Please choose another Google account.');
+      }
 
       const appUser: AppUser = {
         id: gUser.uid,

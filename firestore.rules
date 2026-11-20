@@ -73,12 +73,28 @@ service cloud.firestore {
       );
     }
 
+    function isPurgedAccountEmail(email) {
+      return email is string && email.lower() in [
+        'ahmedsultan97009@gmail.com'
+      ];
+    }
+
+    function isPurgedAccountId(id) {
+      return id is string && id in [
+        'maKX4mVZhWQD8z1tO4w4RIGzril2',
+        'google_ahmedsultan97009_gmail_com',
+        'usr_email_ahmedsultan97009_gmail_com',
+        'QK-44593'
+      ];
+    }
+
     // =========================================================
     // ENTITY VALIDATION BLUEPRINTS
     // =========================================================
 
     function isValidWorker(workerId, data) {
       return !isMockId(workerId)
+        && !isPurgedAccountId(workerId)
         && data.keys().hasAll(['id', 'name', 'category', 'experience', 'phone', 'phoneNormalized', 'city', 'pincode'])
         && data.keys().hasOnly([
           'id', 'workerId', 'name', 'category', 'subRole', 'experience', 'rating', 'reviewCount',
@@ -90,7 +106,8 @@ service cloud.firestore {
         && data.id == workerId
         && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
         && !isMockText(data.name)
-        && (!('workerId' in data) || (data.workerId is string && data.workerId.size() <= 32 && !isMockId(data.workerId)))
+        && (!('workerId' in data) || (data.workerId is string && data.workerId.size() <= 32 && !isMockId(data.workerId) && !isPurgedAccountId(data.workerId)))
+        && (!('userId' in data) || (data.userId is string && !isPurgedAccountId(data.userId)))
         && data.category is string && data.category.size() >= 2 && data.category.size() <= 64
         && data.experience is number && data.experience >= 0 && data.experience <= 70
         && data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20
@@ -109,6 +126,9 @@ service cloud.firestore {
 
     function isMockOrInvalidExistingWorker(workerId, data) {
       return isMockId(workerId)
+        || isPurgedAccountId(workerId)
+        || isPurgedAccountId(data.get('workerId', ''))
+        || isPurgedAccountId(data.get('userId', ''))
         || !('name' in data) || !(data.name is string) || data.name.size() < 2 || isMockText(data.name)
         || !('phone' in data) || !(data.phone is string) || data.phone.size() < 10
         || (('phoneNormalized' in data) && !isValidPhone10(data.phoneNormalized));
@@ -123,6 +143,7 @@ service cloud.firestore {
 
     function isValidUser(userId, data) {
       return !isMockId(userId)
+        && !isPurgedAccountId(userId)
         && data.keys().hasAll(['id', 'name', 'role', 'verified'])
         && data.keys().hasOnly([
           'id', 'phone', 'phoneNormalized', 'name', 'email', 'role', 'workerId',
@@ -135,10 +156,10 @@ service cloud.firestore {
         && data.role in ['customer', 'worker']
         && data.verified is bool
         && (('phone' in data && data.phone is string && data.phone.size() >= 10 && 'phoneNormalized' in data && isValidPhone10(data.phoneNormalized))
-            || ('email' in data && data.email is string && data.email.size() >= 5 && data.email.size() <= 160 && !isMockEmail(data.email)))
+            || ('email' in data && data.email is string && data.email.size() >= 5 && data.email.size() <= 160 && !isMockEmail(data.email) && !isPurgedAccountEmail(data.email)))
         && (!('phone' in data) || ('phoneNormalized' in data && isValidPhone10(data.phoneNormalized)))
-        && (!('email' in data) || (data.email is string && data.email.size() <= 160 && !isMockEmail(data.email)))
-        && (!('workerId' in data) || (data.workerId is string && data.workerId.size() <= 32 && !isMockId(data.workerId)));
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160 && !isMockEmail(data.email) && !isPurgedAccountEmail(data.email)))
+        && (!('workerId' in data) || (data.workerId is string && data.workerId.size() <= 32 && !isMockId(data.workerId) && !isPurgedAccountId(data.workerId)));
     }
 
     function isUserPhoneUniqueOrOwned(userId, data) {
@@ -150,6 +171,9 @@ service cloud.firestore {
 
     function isMockOrInvalidExistingUser(userId, data) {
       return isMockId(userId)
+        || isPurgedAccountId(userId)
+        || isPurgedAccountId(data.get('workerId', ''))
+        || isPurgedAccountEmail(data.get('email', ''))
         || !('name' in data) || !(data.name is string) || isMockText(data.name)
         || (('email' in data) && isMockEmail(data.email))
         || (!('phone' in data) && !('email' in data))
@@ -381,6 +405,8 @@ service cloud.firestore {
 
       allow delete: if isValidId(reviewId)
                     && (!exists(/databases/$(database)/documents/workers/$(existing().workerId))
+                        || isPurgedAccountId(existing().get('customerId', ''))
+                        || isPurgedAccountId(existing().get('workerId', ''))
                         || isMockText(existing().get('customerName', '')));
     }
 
@@ -390,14 +416,20 @@ service cloud.firestore {
       allow list: if true;
 
       allow create: if isValidId(requestId)
-                    && isValidServiceRequest(requestId, incoming());
+                    && isValidServiceRequest(requestId, incoming())
+                    && !isPurgedAccountId(incoming().customerId)
+                    && !isPurgedAccountId(incoming().workerId);
 
       allow update: if isValidId(requestId)
                     && isValidServiceRequest(requestId, incoming())
                     && incoming().customerId == existing().customerId
                     && incoming().workerId == existing().workerId;
 
-      allow delete: if false;
+      allow delete: if isValidId(requestId) && (
+        isPurgedAccountId(existing().get('customerId', ''))
+        || isPurgedAccountId(existing().get('workerId', ''))
+        || (isSignedIn() && (existing().get('customerId', '') == request.auth.uid || isAdmin()))
+      );
     }
 
     // Customer Worker Call & WhatsApp History Logs
@@ -406,7 +438,9 @@ service cloud.firestore {
       allow list: if true;
 
       allow create, update: if isValidId(logId)
-                            && isValidCallLog(logId, incoming());
+                            && isValidCallLog(logId, incoming())
+                            && !isPurgedAccountId(incoming().get('callerId', ''))
+                            && !isPurgedAccountId(incoming().workerId);
 
       allow delete: if isValidId(logId);
     }
@@ -426,6 +460,8 @@ service cloud.firestore {
 
       allow delete: if isValidId(notificationId)
                     && (isMockId(existing().get('workerId', ''))
+                        || isPurgedAccountId(existing().get('workerId', ''))
+                        || isPurgedAccountId(existing().get('customerId', ''))
                         || isMockText(existing().get('workerName', ''))
                         || isMockText(existing().get('customerName', ''))
                         || !isValidPhone10(existing().get('workerPhoneNormalized', '')));

@@ -194,6 +194,48 @@ const BLOCKED_EMAIL_PATTERNS: RegExp[] = [
   /@(example\.com|example\.org|example\.net|test\.com|mailinator\.com)$/i
 ];
 
+export const PURGED_ACCOUNT_EMAILS = new Set<string>([
+  'ahmedsultan97009@gmail.com'
+]);
+
+export const PURGED_ACCOUNT_IDS = new Set<string>([
+  'maKX4mVZhWQD8z1tO4w4RIGzril2'.toLowerCase(),
+  'google_ahmedsultan97009_gmail_com',
+  'usr_email_ahmedsultan97009_gmail_com',
+  'qk-44593'
+]);
+
+export function isPurgedAccountProfile(profile?: {
+  id?: string | null;
+  uid?: string | null;
+  workerId?: string | null;
+  userId?: string | null;
+  callerId?: string | null;
+  customerId?: string | null;
+  email?: string | null;
+} | null): boolean {
+  if (!profile) return false;
+  const emailLower = (profile.email || '').trim().toLowerCase();
+  if (emailLower && PURGED_ACCOUNT_EMAILS.has(emailLower)) {
+    return true;
+  }
+  const candidateIds = [
+    profile.id,
+    profile.uid,
+    profile.workerId,
+    profile.userId,
+    profile.callerId,
+    profile.customerId
+  ];
+  for (const rawId of candidateIds) {
+    const cleanId = (rawId || '').trim().toLowerCase();
+    if (cleanId && PURGED_ACCOUNT_IDS.has(cleanId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Normalize a raw phone string to a clean 10-digit Indian mobile number (or '' if malformed).
  */
@@ -228,14 +270,20 @@ export function isGenuinePhone10(phone?: string | null): boolean {
  */
 export function isMockOrTestProfile(profile: {
   id?: string | null;
+  uid?: string | null;
   workerId?: string | null;
+  userId?: string | null;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
 }): boolean {
   if (!profile) return true;
 
-  const lowerId = (profile.id || '').trim().toLowerCase();
+  if (isPurgedAccountProfile(profile)) {
+    return true;
+  }
+
+  const lowerId = (profile.id || profile.uid || '').trim().toLowerCase();
   const lowerWorkerId = (profile.workerId || '').trim().toLowerCase();
   const cleanName = (profile.name || '').trim();
   const cleanEmail = (profile.email || '').trim().toLowerCase();
@@ -714,6 +762,15 @@ export async function verifyFirebasePhoneOtp(
   };
 }
 
+export async function signOutUser(): Promise<void> {
+  if (!auth) return;
+  try {
+    await firebaseSignOut(auth);
+  } catch (err) {
+    console.warn('Firebase Auth signOut notice:', err);
+  }
+}
+
 export { firebaseSignOut, onAuthStateChanged };
 export type { ConfirmationResult, FirebaseUser };
 
@@ -789,14 +846,34 @@ function getUserCanonicalScore(u: Record<string, any>): number {
 /**
  * Purge mock, test, demo, and duplicate entries from browser localStorage safely.
  */
-export function purgeLocalStorageArtifacts(): number {
+export function purgeLocalStorageArtifacts(extraTarget?: {
+  email?: string;
+  userId?: string;
+  workerId?: string;
+}): number {
   let cleanedCount = 0;
+  const targetEmail = (extraTarget?.email || '').trim().toLowerCase();
+  const targetUserId = (extraTarget?.userId || '').trim();
+  const targetWorkerId = (extraTarget?.workerId || '').trim();
+  const matchesExtraTarget = (obj: any): boolean => {
+    if (!obj || typeof obj !== 'object') return false;
+    const objEmail = String(obj.email || '').trim().toLowerCase();
+    if (targetEmail && objEmail === targetEmail) return true;
+    if (targetUserId && (obj.id === targetUserId || obj.uid === targetUserId || obj.userId === targetUserId || obj.callerId === targetUserId || obj.customerId === targetUserId)) {
+      return true;
+    }
+    if (targetWorkerId && (obj.workerId === targetWorkerId || obj.id === targetWorkerId)) {
+      return true;
+    }
+    return false;
+  };
+
   try {
     if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
       return 0;
     }
 
-    // 1. Clean stored user session if mock/test or invalid phone
+    // 1. Clean stored user session if mock/test, purged email, or invalid phone
     for (const userKey of ['quick_karya_user', '@quickkarya_user_session_v1']) {
       try {
         const raw = localStorage.getItem(userKey);
@@ -805,6 +882,8 @@ export function purgeLocalStorageArtifacts(): number {
         if (
           !parsed ||
           typeof parsed !== 'object' ||
+          matchesExtraTarget(parsed) ||
+          isPurgedAccountProfile(parsed) ||
           isMockOrTestProfile({
             id: parsed.id,
             workerId: parsed.workerId,
@@ -823,32 +902,39 @@ export function purgeLocalStorageArtifacts(): number {
       }
     }
 
-    // 2. Clean call history of mock worker logs
-    try {
-      const rawLogs = localStorage.getItem('quickkarya_call_history_v1');
-      if (rawLogs) {
-        const parsedLogs = JSON.parse(rawLogs);
-        if (Array.isArray(parsedLogs)) {
-          const cleanLogs = parsedLogs.filter(
-            (item) =>
-              item &&
-              !isMockOrTestProfile({
-                id: item.workerId,
-                name: item.workerName,
-                phone: item.workerPhone
-              })
-          );
-          if (cleanLogs.length !== parsedLogs.length) {
-            cleanedCount += parsedLogs.length - cleanLogs.length;
-            localStorage.setItem('quickkarya_call_history_v1', JSON.stringify(cleanLogs));
+    // 2. Clean call history of mock/purged worker logs
+    for (const historyKey of ['quickkarya_call_history_v1', '@quickkarya_call_history_v1']) {
+      try {
+        const rawLogs = localStorage.getItem(historyKey);
+        if (rawLogs) {
+          const parsedLogs = JSON.parse(rawLogs);
+          if (Array.isArray(parsedLogs)) {
+            const cleanLogs = parsedLogs.filter(
+              (item) =>
+                item &&
+                !matchesExtraTarget(item) &&
+                !isPurgedAccountProfile({
+                  id: item.workerId,
+                  callerId: item.callerId
+                }) &&
+                !isMockOrTestProfile({
+                  id: item.workerId,
+                  name: item.workerName,
+                  phone: item.workerPhone
+                })
+            );
+            if (cleanLogs.length !== parsedLogs.length) {
+              cleanedCount += parsedLogs.length - cleanLogs.length;
+              localStorage.setItem(historyKey, JSON.stringify(cleanLogs));
+            }
           }
         }
+      } catch {
+        // ignore malformed logs
       }
-    } catch {
-      // ignore malformed logs
     }
 
-    // 3. Clean saved Google accounts of mock/test/duplicate emails
+    // 3. Clean saved Google accounts of mock/test/purged/duplicate emails
     try {
       const rawAccs = localStorage.getItem('@quickkarya_saved_google_accounts_v1');
       if (rawAccs) {
@@ -860,6 +946,8 @@ export function purgeLocalStorageArtifacts(): number {
             const emailLower = String(acc.email).trim().toLowerCase();
             if (
               seenEmails.has(emailLower) ||
+              (targetEmail && emailLower === targetEmail) ||
+              isPurgedAccountProfile({ id: acc.uid, email: emailLower }) ||
               isMockOrTestProfile({ id: acc.uid, name: acc.name, email: emailLower })
             ) {
               return false;
@@ -875,6 +963,37 @@ export function purgeLocalStorageArtifacts(): number {
       }
     } catch {
       // ignore
+    }
+
+    // 4. Clean cached workers lists of mock/purged entries
+    for (const workersKey of ['quick_karya_workers', '@quickkarya_workers_v3']) {
+      try {
+        const rawWorkers = localStorage.getItem(workersKey);
+        if (rawWorkers) {
+          const parsedWorkers = JSON.parse(rawWorkers);
+          if (Array.isArray(parsedWorkers)) {
+            const cleanWorkers = parsedWorkers.filter(
+              (w) =>
+                w &&
+                !matchesExtraTarget(w) &&
+                !isPurgedAccountProfile(w) &&
+                !isMockOrTestProfile({
+                  id: w.id,
+                  workerId: w.workerId,
+                  userId: w.userId,
+                  name: w.name,
+                  phone: w.phone
+                })
+            );
+            if (cleanWorkers.length !== parsedWorkers.length) {
+              cleanedCount += parsedWorkers.length - cleanWorkers.length;
+              localStorage.setItem(workersKey, JSON.stringify(cleanWorkers));
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
   } catch {
     // ignore environments without localStorage
@@ -1046,6 +1165,20 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
       // phoneRegistry list may be restricted when unauthenticated; non-fatal
     }
 
+    const deletedUserIds = new Set<string>();
+    const purgedWorkerIds = new Set<string>();
+
+    // Sign out active Firebase Auth user if it belongs to a permanently purged email/UID
+    if (
+      auth?.currentUser &&
+      isPurgedAccountProfile({
+        uid: auth.currentUser.uid,
+        email: auth.currentUser.email
+      })
+    ) {
+      await firebaseSignOut(auth).catch(() => {});
+    }
+
     // 3. Scan & clean /users
     try {
       const usersSnap = await getDocs(collection(activeDb, USERS_COLLECTION));
@@ -1069,6 +1202,8 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
 
         if (isMock || !data.name || (!hasPhone && !hasEmail)) {
           invalidUserIds.push(docSnap.id);
+          deletedUserIds.add(docSnap.id);
+          if (data.workerId) purgedWorkerIds.add(String(data.workerId));
           return;
         }
 
@@ -1076,6 +1211,7 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
           const phone10 = normalizePhone10(data.phone);
           if (!isGenuinePhone10(phone10)) {
             invalidUserIds.push(docSnap.id);
+            deletedUserIds.add(docSnap.id);
             return;
           }
           const group = usersByPhone.get(phone10) || [];
@@ -1097,6 +1233,7 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
         survivingUserByPhone.set(phone10, group[0]);
         for (let i = 1; i < group.length; i++) {
           duplicateUserIds.push(group[i].id);
+          deletedUserIds.add(group[i].id);
         }
       }
 
@@ -1158,18 +1295,22 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
       report.errors.push(`users cleanup notice: ${err?.message || String(err)}`);
     }
 
-    // 4. Clean mock/test/orphaned artifacts in /callLogs, /reviews, and /workerNotifications
+    // 4. Clean mock/test/purged/orphaned artifacts in /callLogs, /reviews, /serviceRequests, and /workerNotifications
     try {
       const logsSnap = await getDocs(collection(activeDb, CALL_LOGS_COLLECTION));
       for (const docSnap of logsSnap.docs) {
         const d = docSnap.data() as Record<string, any>;
         const workerId = String(d.workerId || '');
+        const callerId = String(d.callerId || '');
         const isOrphanedWorkerLog =
           workersScanSucceeded &&
           workerId.startsWith('w-') &&
           !validWorkerIds.has(workerId);
         const isMockLog =
           deletedWorkerIds.has(workerId) ||
+          purgedWorkerIds.has(workerId) ||
+          deletedUserIds.has(callerId) ||
+          isPurgedAccountProfile({ id: workerId, callerId }) ||
           isOrphanedWorkerLog ||
           isMockOrTestProfile({
             id: workerId,
@@ -1194,9 +1335,13 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
       for (const docSnap of revSnap.docs) {
         const d = docSnap.data() as Record<string, any>;
         const workerId = String(d.workerId || '');
+        const customerId = String(d.customerId || '');
         const isOrphanedReview = workersScanSucceeded && !validWorkerIds.has(workerId);
         const isMockRev =
           deletedWorkerIds.has(workerId) ||
+          purgedWorkerIds.has(workerId) ||
+          deletedUserIds.has(customerId) ||
+          isPurgedAccountProfile({ id: workerId, customerId }) ||
           isOrphanedReview ||
           isMockOrTestProfile({
             id: workerId,
@@ -1216,11 +1361,35 @@ export async function enforceFirestoreSecurityAndCleanup(options?: { force?: boo
     }
 
     try {
+      const reqSnap = await getDocs(collection(activeDb, SERVICE_REQUESTS_COLLECTION));
+      for (const docSnap of reqSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const customerId = String(d.customerId || '');
+        const workerId = String(d.workerId || '');
+        if (
+          deletedUserIds.has(customerId) ||
+          deletedWorkerIds.has(workerId) ||
+          purgedWorkerIds.has(workerId) ||
+          isPurgedAccountProfile({ id: workerId, customerId })
+        ) {
+          await deleteDoc(doc(activeDb, SERVICE_REQUESTS_COLLECTION, docSnap.id)).catch(() => {});
+        }
+      }
+    } catch {
+      // serviceRequests cleanup skipped if unavailable
+    }
+
+    try {
       const notifSnap = await getDocs(collection(activeDb, WORKER_NOTIFICATIONS_COLLECTION));
       for (const docSnap of notifSnap.docs) {
         const d = docSnap.data() as Record<string, any>;
         const workerId = String(d.workerId || '');
+        const customerId = String(d.customerId || '');
         if (
+          deletedWorkerIds.has(workerId) ||
+          purgedWorkerIds.has(workerId) ||
+          deletedUserIds.has(customerId) ||
+          isPurgedAccountProfile({ id: workerId, customerId }) ||
           isMockOrTestProfile({
             id: workerId,
             name: d.workerName,
@@ -1715,6 +1884,269 @@ export async function fetchGoogleAccountsFromCloud(): Promise<
   } catch {
     return [];
   }
+}
+
+export interface AccountDeletionReport {
+  executedAt: string;
+  target: {
+    email?: string;
+    userId?: string;
+    workerId?: string;
+    phone?: string;
+  };
+  deletedUserIds: string[];
+  deletedWorkerIds: string[];
+  deletedCallLogIds: string[];
+  deletedReviewIds: string[];
+  deletedServiceRequestIds: string[];
+  deletedNotificationIds: string[];
+  releasedPhoneLocks: string[];
+  localItemsCleaned: number;
+  signedOutAuth: boolean;
+  errors: string[];
+}
+
+/**
+ * Reusable Account & Associated Data Deletion Utility:
+ * Permanently removes a user account (matched by email, userId, workerId, or phone)
+ * along with linked worker profiles, call logs, reviews, service requests,
+ * worker notifications, phone registry locks, and local cached session artifacts.
+ */
+export async function deleteAccountAndAssociatedData(target: {
+  email?: string;
+  userId?: string;
+  workerId?: string;
+  phone?: string;
+}): Promise<AccountDeletionReport> {
+  const cleanEmail = (target.email || '').trim().toLowerCase();
+  const cleanUserId = (target.userId || '').trim();
+  const cleanWorkerId = (target.workerId || '').trim();
+  const cleanPhone10 = normalizePhone10(target.phone);
+
+  const report: AccountDeletionReport = {
+    executedAt: new Date().toISOString(),
+    target: {
+      ...(cleanEmail ? { email: cleanEmail } : {}),
+      ...(cleanUserId ? { userId: cleanUserId } : {}),
+      ...(cleanWorkerId ? { workerId: cleanWorkerId } : {}),
+      ...(cleanPhone10 ? { phone: cleanPhone10 } : {})
+    },
+    deletedUserIds: [],
+    deletedWorkerIds: [],
+    deletedCallLogIds: [],
+    deletedReviewIds: [],
+    deletedServiceRequestIds: [],
+    deletedNotificationIds: [],
+    releasedPhoneLocks: [],
+    localItemsCleaned: 0,
+    signedOutAuth: false,
+    errors: []
+  };
+
+  const matchedUserIds = new Set<string>(cleanUserId ? [cleanUserId] : []);
+  const matchedWorkerIds = new Set<string>(cleanWorkerId ? [cleanWorkerId] : []);
+  const matchedPhones10 = new Set<string>(cleanPhone10 ? [cleanPhone10] : []);
+
+  if (db) {
+    const activeDb = db;
+
+    // 1. Find & delete matching /users records
+    try {
+      const usersSnap = await getDocs(collection(activeDb, USERS_COLLECTION));
+      for (const docSnap of usersSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const docEmail = typeof d.email === 'string' ? d.email.trim().toLowerCase() : '';
+        const docPhone10 = normalizePhone10(d.phoneNormalized || d.phone);
+        const matches =
+          (cleanEmail && docEmail === cleanEmail) ||
+          (cleanUserId && (docSnap.id === cleanUserId || d.id === cleanUserId)) ||
+          (cleanWorkerId && d.workerId === cleanWorkerId) ||
+          (cleanPhone10 && docPhone10 === cleanPhone10);
+
+        if (matches) {
+          matchedUserIds.add(docSnap.id);
+          if (d.id) matchedUserIds.add(String(d.id));
+          if (d.workerId) matchedWorkerIds.add(String(d.workerId));
+          if (isGenuinePhone10(docPhone10)) matchedPhones10.add(docPhone10);
+
+          try {
+            await deleteDoc(doc(activeDb, USERS_COLLECTION, docSnap.id));
+            report.deletedUserIds.push(docSnap.id);
+          } catch (err: any) {
+            report.errors.push(`delete users/${docSnap.id}: ${err?.message || String(err)}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      report.errors.push(`scan users error: ${err?.message || String(err)}`);
+    }
+
+    // 2. Clean matching /userPhoneRegistry locks
+    for (const phone10 of matchedPhones10) {
+      if (!isGenuinePhone10(phone10)) continue;
+      try {
+        const regRef = doc(activeDb, USER_PHONE_REGISTRY_COLLECTION, phone10);
+        const regSnap = await getDoc(regRef);
+        if (regSnap.exists()) {
+          const ownerId = String(regSnap.data()?.userDocId || '');
+          if (!ownerId || matchedUserIds.has(ownerId)) {
+            await deleteDoc(regRef);
+            report.releasedPhoneLocks.push(`userPhoneRegistry/${phone10}`);
+          }
+        }
+      } catch (err: any) {
+        report.errors.push(`userPhoneRegistry/${phone10}: ${err?.message || String(err)}`);
+      }
+    }
+
+    // 3. Find & delete matching /workers records
+    try {
+      const workersSnap = await getDocs(collection(activeDb, WORKERS_COLLECTION));
+      for (const docSnap of workersSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const docPhone10 = normalizePhone10(d.phoneNormalized || d.phone);
+        const docUserId = String(d.userId || '');
+        const docWorkerCode = String(d.workerId || '');
+        const matches =
+          matchedWorkerIds.has(docSnap.id) ||
+          (docWorkerCode && matchedWorkerIds.has(docWorkerCode)) ||
+          (docUserId && matchedUserIds.has(docUserId)) ||
+          (docPhone10 && matchedPhones10.has(docPhone10));
+
+        if (matches) {
+          matchedWorkerIds.add(docSnap.id);
+          if (docWorkerCode) matchedWorkerIds.add(docWorkerCode);
+          if (isGenuinePhone10(docPhone10)) matchedPhones10.add(docPhone10);
+
+          try {
+            await deleteDoc(doc(activeDb, WORKERS_COLLECTION, docSnap.id));
+            report.deletedWorkerIds.push(docSnap.id);
+          } catch (err: any) {
+            report.errors.push(`delete workers/${docSnap.id}: ${err?.message || String(err)}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      report.errors.push(`scan workers error: ${err?.message || String(err)}`);
+    }
+
+    // 4. Clean matching /phoneRegistry locks
+    for (const phone10 of matchedPhones10) {
+      if (!isGenuinePhone10(phone10)) continue;
+      try {
+        const regRef = doc(activeDb, PHONE_REGISTRY_COLLECTION, phone10);
+        const regSnap = await getDoc(regRef);
+        if (regSnap.exists()) {
+          const ownerDocId = String(regSnap.data()?.workerDocId || '');
+          if (!ownerDocId || matchedWorkerIds.has(ownerDocId)) {
+            await deleteDoc(regRef);
+            report.releasedPhoneLocks.push(`phoneRegistry/${phone10}`);
+          }
+        }
+      } catch (err: any) {
+        report.errors.push(`phoneRegistry/${phone10}: ${err?.message || String(err)}`);
+      }
+    }
+
+    // 5. Delete associated /callLogs
+    try {
+      const logsSnap = await getDocs(collection(activeDb, CALL_LOGS_COLLECTION));
+      for (const docSnap of logsSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const callerId = String(d.callerId || '');
+        const wId = String(d.workerId || '');
+        if ((callerId && matchedUserIds.has(callerId)) || (wId && matchedWorkerIds.has(wId))) {
+          await deleteDoc(doc(activeDb, CALL_LOGS_COLLECTION, docSnap.id))
+            .then(() => report.deletedCallLogIds.push(docSnap.id))
+            .catch((err: any) => report.errors.push(`delete callLogs/${docSnap.id}: ${err?.message || err}`));
+        }
+      }
+    } catch (err: any) {
+      report.errors.push(`scan callLogs error: ${err?.message || String(err)}`);
+    }
+
+    // 6. Delete associated /reviews
+    try {
+      const revSnap = await getDocs(collection(activeDb, REVIEWS_COLLECTION));
+      for (const docSnap of revSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const customerId = String(d.customerId || '');
+        const wId = String(d.workerId || '');
+        if ((customerId && matchedUserIds.has(customerId)) || (wId && matchedWorkerIds.has(wId))) {
+          await deleteDoc(doc(activeDb, REVIEWS_COLLECTION, docSnap.id))
+            .then(() => report.deletedReviewIds.push(docSnap.id))
+            .catch((err: any) => report.errors.push(`delete reviews/${docSnap.id}: ${err?.message || err}`));
+        }
+      }
+    } catch (err: any) {
+      report.errors.push(`scan reviews error: ${err?.message || String(err)}`);
+    }
+
+    // 7. Delete associated /serviceRequests
+    try {
+      const reqSnap = await getDocs(collection(activeDb, SERVICE_REQUESTS_COLLECTION));
+      for (const docSnap of reqSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const customerId = String(d.customerId || '');
+        const wId = String(d.workerId || '');
+        if ((customerId && matchedUserIds.has(customerId)) || (wId && matchedWorkerIds.has(wId))) {
+          await deleteDoc(doc(activeDb, SERVICE_REQUESTS_COLLECTION, docSnap.id))
+            .then(() => report.deletedServiceRequestIds.push(docSnap.id))
+            .catch((err: any) => report.errors.push(`delete serviceRequests/${docSnap.id}: ${err?.message || err}`));
+        }
+      }
+    } catch (err: any) {
+      report.errors.push(`scan serviceRequests error: ${err?.message || String(err)}`);
+    }
+
+    // 8. Delete associated /workerNotifications
+    try {
+      const notifSnap = await getDocs(collection(activeDb, WORKER_NOTIFICATIONS_COLLECTION));
+      for (const docSnap of notifSnap.docs) {
+        const d = docSnap.data() as Record<string, any>;
+        const customerId = String(d.customerId || '');
+        const wId = String(d.workerId || '');
+        if ((customerId && matchedUserIds.has(customerId)) || (wId && matchedWorkerIds.has(wId))) {
+          await deleteDoc(doc(activeDb, WORKER_NOTIFICATIONS_COLLECTION, docSnap.id))
+            .then(() => report.deletedNotificationIds.push(docSnap.id))
+            .catch((err: any) => report.errors.push(`delete workerNotifications/${docSnap.id}: ${err?.message || err}`));
+        }
+      }
+    } catch (err: any) {
+      report.errors.push(`scan workerNotifications error: ${err?.message || String(err)}`);
+    }
+  }
+
+  // 9. Clean local storage cache entries matching target or purged accounts
+  report.localItemsCleaned = purgeLocalStorageArtifacts({
+    email: cleanEmail || undefined,
+    userId: cleanUserId || undefined,
+    workerId: cleanWorkerId || undefined
+  });
+
+  // 10. Clear Firebase Auth persisted user if matching
+  if (auth?.currentUser) {
+    const authEmail = (auth.currentUser.email || '').trim().toLowerCase();
+    const authUid = auth.currentUser.uid;
+    if (
+      (cleanEmail && authEmail === cleanEmail) ||
+      (cleanUserId && authUid === cleanUserId) ||
+      matchedUserIds.has(authUid) ||
+      isPurgedAccountProfile({ uid: authUid, email: authEmail })
+    ) {
+      try {
+        await auth.currentUser.delete().catch(async () => {
+          await firebaseSignOut(auth!);
+        });
+        await firebaseSignOut(auth).catch(() => {});
+        report.signedOutAuth = true;
+      } catch {
+        report.signedOutAuth = true;
+      }
+    }
+  }
+
+  return report;
 }
 
 /**
