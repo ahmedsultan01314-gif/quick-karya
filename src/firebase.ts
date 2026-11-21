@@ -32,6 +32,7 @@ import {
 import firebaseConfig from '../firebase-applet-config.json';
 import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord, WorkerNotification } from './types';
 import { getApiUrl } from './config';
+import { initFirebaseAuth } from './utils/firebaseAuthInit';
 
 // ==========================================
 // STRUCTURED FIRESTORE ERROR HANDLING
@@ -87,7 +88,7 @@ try {
 let auth: Auth | null = null;
 try {
   if (firebaseApp) {
-    auth = getAuth(firebaseApp);
+    auth = initFirebaseAuth(firebaseApp);
   }
 } catch (err) {
   console.warn('Firebase Auth initialization failed safely:', err);
@@ -443,11 +444,26 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
       };
     } catch (popupErr: any) {
       console.warn('Firebase signInWithPopup notice:', popupErr?.code, popupErr?.message);
-      if (popupErr?.code === 'auth/popup-closed-by-user') {
+      if (
+        popupErr?.code === 'auth/popup-closed-by-user' ||
+        popupErr?.code === 'auth/cancelled-popup-request'
+      ) {
         throw new Error('Google Sign-In was cancelled.');
       }
       if (popupErr?.code === 'auth/popup-blocked') {
         throw new Error('Sign-in popup was blocked. Please enable popups or use Email & Password.');
+      }
+      if (popupErr?.code === 'auth/account-exists-with-different-credential') {
+        throw new Error('An account already exists with this email. Please sign in with Email & Password.');
+      }
+      if (popupErr?.code === 'auth/operation-not-allowed') {
+        throw new Error('Google Sign-In is disabled in Firebase Authentication settings.');
+      }
+      if (popupErr?.code === 'auth/unauthorized-domain') {
+        throw new Error('This domain is not authorized for Google Sign-In in Firebase Authentication settings.');
+      }
+      if (popupErr?.code === 'auth/network-request-failed') {
+        throw new Error('Network error during Google Sign-In. Please check your internet connection.');
       }
       throw popupErr;
     }
@@ -469,6 +485,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 
   // 1. Attempt client Firebase SDK if supported
+  let firebaseNotFound = false;
   if (auth && typeof signInWithEmailAndPassword === 'function') {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -486,10 +503,25 @@ export async function signInWithEmail(email: string, password: string): Promise<
       if (firebaseErr?.code === 'auth/wrong-password' || firebaseErr?.code === 'auth/invalid-credential') {
         throw new Error('Incorrect email or password.');
       }
+      if (firebaseErr?.code === 'auth/invalid-email') {
+        throw new Error('Please enter a valid email address.');
+      }
+      if (firebaseErr?.code === 'auth/user-disabled') {
+        throw new Error('This account has been disabled.');
+      }
+      if (firebaseErr?.code === 'auth/too-many-requests') {
+        throw new Error('Too many failed sign-in attempts. Please wait a moment and try again.');
+      }
+      if (firebaseErr?.code === 'auth/network-request-failed') {
+        throw new Error('Network error during sign-in. Please check your internet connection.');
+      }
+      if (firebaseErr?.code === 'auth/user-not-found') {
+        firebaseNotFound = true;
+      }
     }
   }
 
-  // 2. Verified backend route fallback
+  // 2. Verified backend route fallback (for legacy server-registered users or when Email/Password is server-backed)
   let res: Response;
   try {
     res = await fetch(getApiUrl('/api/auth/login-email'), {
@@ -501,6 +533,9 @@ export async function signInWithEmail(email: string, password: string): Promise<
       body: JSON.stringify({ email: cleanEmail, password })
     });
   } catch {
+    if (firebaseNotFound) {
+      throw new Error('No account found with this email. Tap "Create Account" to register.');
+    }
     throw new Error('Could not connect to authentication server. Please check your network.');
   }
 
@@ -559,7 +594,16 @@ export async function signUpWithEmail(email: string, password: string, name?: st
     } catch (firebaseErr: any) {
       console.warn('Firebase createUserWithEmailAndPassword notice:', firebaseErr?.code, firebaseErr?.message);
       if (firebaseErr?.code === 'auth/email-already-in-use') {
-        throw new Error('An account already exists with this email. Please log in.');
+        throw new Error('An account already exists with this email. Please sign in instead.');
+      }
+      if (firebaseErr?.code === 'auth/weak-password') {
+        throw new Error('Password is too weak. Please use at least 6 characters.');
+      }
+      if (firebaseErr?.code === 'auth/invalid-email') {
+        throw new Error('Please enter a valid email address.');
+      }
+      if (firebaseErr?.code === 'auth/network-request-failed') {
+        throw new Error('Network error during registration. Please check your internet connection.');
       }
     }
   }

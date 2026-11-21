@@ -65,6 +65,7 @@ import {
   saveReviewToCloud,
   fetchReviewsForWorker,
   saveUserToCloud,
+  fetchUserFromCloud,
   enforceFirestoreSecurityAndCleanup,
   purgeLocalStorageArtifacts,
   signInWithEmail,
@@ -430,24 +431,37 @@ function NativeApp() {
         throw new Error('This account has been permanently removed or is blocked. Please choose another Google account.');
       }
 
+      const existingCloudUser = await fetchUserFromCloud(gUser.uid).catch(() => null);
+      const safeExisting =
+        existingCloudUser &&
+        !isPurgedAccountProfile(existingCloudUser) &&
+        !isMockOrTestProfile(existingCloudUser)
+          ? existingCloudUser
+          : null;
+
       const verifiedUserObj: AppUser = {
+        ...(safeExisting || {}),
         id: gUser.uid,
-        name: cleanName,
+        name: cleanName || safeExisting?.name || 'Quick Karya User',
         email: cleanEmail,
-        profilePhoto: gUser.photoUrl,
-        avatar: gUser.photoUrl,
+        profilePhoto: gUser.photoUrl || safeExisting?.profilePhoto,
+        avatar: gUser.photoUrl || safeExisting?.avatar,
         authProvider: 'google',
-        role: 'customer',
+        role: safeExisting?.role || 'customer',
         verified: true,
-        createdAt: new Date().toISOString()
+        createdAt: safeExisting?.createdAt || new Date().toISOString()
       };
 
       setPendingVerifiedUser(verifiedUserObj);
       setLoginName(verifiedUserObj.name);
       setLoginEmail(cleanEmail);
       setRegName(verifiedUserObj.name);
-      if (gUser.photoUrl) {
-        setRegPhoto(gUser.photoUrl);
+      if (verifiedUserObj.phone) {
+        setLoginPhone(verifiedUserObj.phone);
+        setRegPhone(verifiedUserObj.phone.replace(/[^0-9]/g, '').slice(-10));
+      }
+      if (verifiedUserObj.profilePhoto) {
+        setRegPhoto(verifiedUserObj.profilePhoto);
       }
 
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
@@ -492,16 +506,26 @@ function NativeApp() {
         throw new Error('This account has been permanently removed and cannot be used.');
       }
 
+      const existingCloudUser =
+        authEmailMode === 'login' ? await fetchUserFromCloud(authRes.uid).catch(() => null) : null;
+      const safeExisting =
+        existingCloudUser &&
+        !isPurgedAccountProfile(existingCloudUser) &&
+        !isMockOrTestProfile(existingCloudUser)
+          ? existingCloudUser
+          : null;
+
       const userObj: AppUser = {
+        ...(safeExisting || {}),
         id: authRes.uid,
-        name: authRes.name,
+        name: authRes.name || safeExisting?.name || 'Quick Karya User',
         email: authRes.email,
-        profilePhoto: authRes.photoUrl,
-        avatar: authRes.photoUrl,
+        profilePhoto: safeExisting?.profilePhoto || authRes.photoUrl,
+        avatar: safeExisting?.avatar || authRes.photoUrl,
         authProvider: 'email',
-        role: 'customer',
+        role: safeExisting?.role || 'customer',
         verified: true,
-        createdAt: new Date().toISOString()
+        createdAt: safeExisting?.createdAt || new Date().toISOString()
       };
 
       // Keep Modal open until user completes Step 2 Role Selection
@@ -509,6 +533,13 @@ function NativeApp() {
       setLoginName(userObj.name);
       setLoginEmail(userObj.email || authEmail.trim());
       setRegName(userObj.name);
+      if (userObj.phone) {
+        setLoginPhone(userObj.phone);
+        setRegPhone(userObj.phone.replace(/[^0-9]/g, '').slice(-10));
+      }
+      if (userObj.profilePhoto) {
+        setRegPhoto(userObj.profilePhoto);
+      }
 
       await saveUserToCloud(userObj).catch((e) => console.warn('Firestore user save notice:', e));
 
@@ -522,7 +553,10 @@ function NativeApp() {
 
   const handleConfirmRole = async (role: UserRole) => {
     if (!pendingVerifiedUser) return;
-    const workerId = role === 'worker' ? `QK-${Math.floor(10000 + Math.random() * 90000)}` : undefined;
+    const workerId =
+      role === 'worker'
+        ? pendingVerifiedUser.workerId || `QK-${Math.floor(10000 + Math.random() * 90000)}`
+        : undefined;
 
     const finalUser: AppUser = {
       ...pendingVerifiedUser,
@@ -537,16 +571,20 @@ function NativeApp() {
     if (finalUser.profilePhoto) setRegPhoto(finalUser.profilePhoto);
 
     try {
-      await saveUserToCloud(finalUser);
       await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalUser));
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('quick_karya_user', JSON.stringify(finalUser));
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalUser));
       }
     } catch (e) {
-      console.warn('User session save error:', e);
+      console.warn('Local user session save error:', e);
     }
 
+    saveUserToCloud(finalUser).catch((e) => {
+      console.warn('Cloud user session sync notice:', e);
+    });
+
+    setAuthError(null);
     setIsAuthModalOpen(false);
     setAuthStep('google_sign_in');
 
@@ -1094,6 +1132,7 @@ Please dispatch assistance immediately!`;
       // 0.2 If Auth Modal is active (first-time login gate)
       if (isAuthModalOpen && !currentUser) {
         if (authStep === 'role_selection') {
+          setAuthError(null);
           setAuthStep('google_sign_in');
           return true;
         }
@@ -3807,9 +3846,9 @@ Please dispatch assistance immediately!`;
 
                 {/* Primary Google Sign-In Button */}
                 <TouchableOpacity
-                  style={[styles.googleSignInBtn, authLoading && styles.authBtnDisabled]}
+                  style={[styles.googleSignInBtn, (authLoading || authEmailLoading) && styles.authBtnDisabled]}
                   onPress={() => handleNativeGoogleSignIn()}
-                  disabled={authLoading}
+                  disabled={authLoading || authEmailLoading}
                   activeOpacity={0.85}
                 >
                   <View style={styles.googleIconBadge}>
@@ -3941,9 +3980,9 @@ Please dispatch assistance immediately!`;
                     </View>
 
                     <TouchableOpacity
-                      style={[styles.emailSubmitBtn, authEmailLoading && styles.authBtnDisabled]}
+                      style={[styles.emailSubmitBtn, (authLoading || authEmailLoading) && styles.authBtnDisabled]}
                       onPress={handleNativeEmailAuthSubmit}
-                      disabled={authEmailLoading}
+                      disabled={authLoading || authEmailLoading}
                       activeOpacity={0.85}
                     >
                       <Text style={styles.emailSubmitBtnText}>
