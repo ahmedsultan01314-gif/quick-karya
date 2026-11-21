@@ -24,9 +24,6 @@ on:
           - production
           - development
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   verify-and-build:
     name: Typecheck, Lint & Bundle Verification
@@ -98,8 +95,17 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configure Android SDK & NDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          printf "sdk.dir=%s\n" "$SDK_ROOT" > android/local.properties
+          SDK_MANAGER="$(command -v sdkmanager || find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n 1 || true)"
+          if [ -n "$SDK_MANAGER" ] && [ -x "$SDK_MANAGER" ]; then
+            yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses > /dev/null 2>&1 || true
+            "$SDK_MANAGER" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+          fi
 
       - name: Install dependencies cleanly
         run: npm ci
@@ -145,29 +151,44 @@ jobs:
     needs: verify-and-build
     runs-on: ubuntu-latest
     if: >-
-      (
-        (github.event_name == 'workflow_dispatch' && inputs.trigger_eas_build == true) ||
-        (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EAS_AUTO_BUILD == 'true')
-      ) && secrets.EXPO_TOKEN != ''
+      (github.event_name == 'workflow_dispatch' && inputs.trigger_eas_build == true) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EAS_AUTO_BUILD == 'true')
 
     steps:
+      - name: Check EXPO_TOKEN availability
+        id: eas_auth
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "EXPO_TOKEN secret is not configured in GitHub Secrets; skipping EAS cloud build trigger."
+          fi
+
       - name: Checkout repository
+        if: steps.eas_auth.outputs.has_token == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Node.js
+        if: steps.eas_auth.outputs.has_token == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"
 
       - name: Set up Expo & EAS CLI
+        if: steps.eas_auth.outputs.has_token == 'true'
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install dependencies cleanly
+        if: steps.eas_auth.outputs.has_token == 'true'
         run: npm ci
 
       - name: Trigger EAS Android APK build
+        if: steps.eas_auth.outputs.has_token == 'true'
         run: npx eas-cli build --platform android --profile "${{ inputs.eas_profile || 'preview' }}" --non-interactive --no-wait
