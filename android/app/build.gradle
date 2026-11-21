@@ -180,3 +180,16 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+def rootGoogleServicesFile = file("${projectRoot}/google-services.json")
+def appGoogleServicesFile = file("google-services.json")
+if (rootGoogleServicesFile.exists()) {
+    copy {
+        from rootGoogleServicesFile
+        into "."
+    }
+}
+if (appGoogleServicesFile.exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
+

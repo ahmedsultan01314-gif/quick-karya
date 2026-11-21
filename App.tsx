@@ -467,11 +467,11 @@ function NativeApp() {
       await saveUserToCloud(verifiedUserObj).catch((e) => console.warn('Firestore user save notice:', e));
       setAuthStep('role_selection');
     } catch (err: any) {
-      const msg =
-        err?.message ||
-        'Google Sign-In failed on this device. Please try again or use Email & Password below.';
-      setAuthError(msg);
       if (!err?.isCancelled) {
+        const msg =
+          err?.message ||
+          'Google Sign-In failed on this device. Please try again or use Email & Password below.';
+        setAuthError(msg);
         Alert.alert('Google Sign-In Issue', msg);
       }
     } finally {
