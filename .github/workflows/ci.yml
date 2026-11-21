@@ -1,0 +1,90 @@
+name: Quick Karya CI & EAS Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      trigger_eas_build:
+        description: "Trigger Expo EAS Android cloud build"
+        required: false
+        default: true
+        type: boolean
+      eas_profile:
+        description: "EAS build profile"
+        required: false
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+          - development
+
+jobs:
+  verify-and-build:
+    name: Typecheck, Lint & Bundle Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies cleanly
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Lint Firestore security rules
+        run: npm run lint:rules
+
+      - name: Validate Expo configuration
+        run: npx expo config --type public > /dev/null
+
+      - name: Build web app and backend server
+        run: npm run build
+
+      - name: Verify Expo Android bundle export
+        run: |
+          npx expo export --platform android --output-dir .expo-ci-export
+          rm -rf .expo-ci-export
+
+  eas-android-build:
+    name: Expo EAS Android Cloud APK Build
+    needs: verify-and-build
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.trigger_eas_build == true) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EAS_AUTO_BUILD == 'true')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Set up Expo & EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies cleanly
+        run: npm ci
+
+      - name: Trigger EAS Android APK build
+        run: npx eas-cli build --platform android --profile "${{ inputs.eas_profile || 'preview' }}" --non-interactive --no-wait

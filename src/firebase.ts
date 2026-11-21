@@ -202,7 +202,11 @@ export const PURGED_ACCOUNT_IDS = new Set<string>([
   'maKX4mVZhWQD8z1tO4w4RIGzril2'.toLowerCase(),
   'google_ahmedsultan97009_gmail_com',
   'usr_email_ahmedsultan97009_gmail_com',
-  'qk-44593'
+  'qk-44593',
+  'w-local-1792531804413',
+  'qk-19355',
+  'w-local-1792562755168',
+  'qk-52410'
 ]);
 
 export function isPurgedAccountProfile(profile?: {

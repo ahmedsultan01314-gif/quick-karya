@@ -84,7 +84,11 @@ service cloud.firestore {
         'maKX4mVZhWQD8z1tO4w4RIGzril2',
         'google_ahmedsultan97009_gmail_com',
         'usr_email_ahmedsultan97009_gmail_com',
-        'QK-44593'
+        'QK-44593',
+        'w-local-1792531804413',
+        'QK-19355',
+        'w-local-1792562755168',
+        'QK-52410'
       ];
     }
 
@@ -327,7 +331,8 @@ service cloud.firestore {
                     && incoming().keys().hasOnly(['phone10', 'workerDocId', 'workerId', 'updatedAt'])
                     && incoming().phone10 == phone10
                     && isValidId(incoming().workerDocId)
-                    && !isMockId(incoming().workerDocId);
+                    && !isMockId(incoming().workerDocId)
+                    && !isPurgedAccountId(incoming().workerDocId);
 
       allow update: if isValidPhone10(phone10)
                     && incoming().keys().hasAll(['phone10', 'workerDocId', 'updatedAt'])

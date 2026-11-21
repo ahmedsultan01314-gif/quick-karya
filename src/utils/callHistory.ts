@@ -1,9 +1,21 @@
 import { CallLogRecord } from '../types';
 import { getApiUrl } from '../config';
-import { saveCallLogToCloud, deleteCallLogFromCloud } from '../firebase';
+import {
+  saveCallLogToCloud,
+  deleteCallLogFromCloud,
+  isMockOrTestProfile,
+  isPurgedAccountProfile
+} from '../firebase';
 
 const CALL_HISTORY_STORAGE_KEY = 'quickkarya_call_history_v1';
 export const CALL_HISTORY_UPDATED_EVENT = 'quickkarya_call_history_updated';
+
+function isCleanCallRecord(r: CallLogRecord | null | undefined): r is CallLogRecord {
+  if (!r || !r.id || !r.workerName) return false;
+  if (isPurgedAccountProfile({ id: r.workerId, callerId: r.callerId })) return false;
+  if (isMockOrTestProfile({ id: r.workerId, name: r.workerName, phone: r.workerPhone })) return false;
+  return true;
+}
 
 type CallHistoryListener = () => void;
 const listeners = new Set<CallHistoryListener>();
@@ -45,7 +57,7 @@ export function hydrateCallHistory(records: CallLogRecord[]): CallLogRecord[] {
   if (!Array.isArray(records)) return inMemoryCallHistory;
   try {
     inMemoryCallHistory = [...records]
-      .filter((r) => r && r.id && r.workerName)
+      .filter(isCleanCallRecord)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 50);
     notifyListeners();
@@ -65,9 +77,13 @@ export function getCallHistory(): CallLogRecord[] {
       if (raw) {
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
-          inMemoryCallHistory = list.sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
+          const clean = list
+            .filter(isCleanCallRecord)
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          if (clean.length !== list.length && typeof localStorage.setItem === 'function') {
+            localStorage.setItem(CALL_HISTORY_STORAGE_KEY, JSON.stringify(clean));
+          }
+          inMemoryCallHistory = clean;
           return inMemoryCallHistory;
         }
       }
@@ -76,7 +92,7 @@ export function getCallHistory(): CallLogRecord[] {
   } catch (err) {
     console.warn('Failed to parse call history:', err);
   }
-  return [...inMemoryCallHistory];
+  return inMemoryCallHistory.filter(isCleanCallRecord);
 }
 
 /**
@@ -106,6 +122,10 @@ export function addCallRecord(
     location: entry.location,
     notes: entry.notes
   };
+
+  if (!isCleanCallRecord(newRecord)) {
+    return newRecord;
+  }
 
   try {
     const existing = getCallHistory();

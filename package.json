@@ -9,8 +9,11 @@
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist server.js .expo-ci-export",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint:rules": "eslint firestore.rules",
+    "export:android": "expo export --platform android"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
