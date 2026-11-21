@@ -1,4 +1,4 @@
-name: Quick Karya CI & EAS Build
+name: Quick Karya CI & Android APK Build
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       trigger_eas_build:
-        description: "Trigger Expo EAS Android cloud build"
+        description: "Trigger Expo EAS Android cloud APK build"
         required: false
         default: true
         type: boolean
@@ -23,6 +23,9 @@ on:
           - preview
           - production
           - development
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   verify-and-build:
@@ -54,18 +57,98 @@ jobs:
       - name: Build web app and backend server
         run: npm run build
 
-      - name: Verify Expo Android bundle export
+      - name: Export Expo Android JS bundle
+        run: npx expo export --platform android --output-dir .expo-ci-export
+
+      - name: Upload Expo Android JS bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-karya-android-bundle
+          path: .expo-ci-export
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-karya-web-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
+
+  build-android-apk:
+    name: Build GitHub Actions Android APK
+    needs: verify-and-build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies cleanly
+        run: npm ci
+
+      - name: Sync google-services.json if present
         run: |
-          npx expo export --platform android --output-dir .expo-ci-export
-          rm -rf .expo-ci-export
+          if [ -f google-services.json ]; then
+            cp google-services.json android/app/google-services.json
+          fi
+
+      - name: Ensure Android release signing keystore exists for CI APK
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Android APK with Gradle
+        env:
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Upload downloadable Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-karya-android-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
 
   eas-android-build:
     name: Expo EAS Android Cloud APK Build
     needs: verify-and-build
     runs-on: ubuntu-latest
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.trigger_eas_build == true) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EAS_AUTO_BUILD == 'true')
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.trigger_eas_build == true) ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_EAS_AUTO_BUILD == 'true')
+      ) && secrets.EXPO_TOKEN != ''
 
     steps:
       - name: Checkout repository
