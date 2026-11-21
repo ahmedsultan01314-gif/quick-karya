@@ -1,5 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+
 export default ({ config } = {}) => {
   const baseConfig = config || {};
+  const googleServicesPath = path.resolve(currentDir, 'google-services.json');
+  const hasGoogleServicesFile = fs.existsSync(googleServicesPath);
+
   return {
     ...baseConfig,
     name: "Quick Karya",
@@ -53,6 +62,7 @@ export default ({ config } = {}) => {
       ...(baseConfig.android || {}),
       package: "com.quickkarya.app",
       versionCode: 1,
+      ...(hasGoogleServicesFile ? { googleServicesFile: "./google-services.json" } : {}),
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#001F3F"
