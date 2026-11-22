@@ -8,6 +8,9 @@
 export const DEPLOYED_BACKEND_URL =
   'https://ais-dev-hpm4hugeyt2slmwiro2zk5-94418484178.asia-southeast1.run.app';
 
+export const SHARED_BACKEND_URL =
+  'https://ais-pre-hpm4hugeyt2slmwiro2zk5-94418484178.asia-southeast1.run.app';
+
 export const BACKEND_BASE_URL: string = (() => {
   if (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BACKEND_URL) {
     return process.env.EXPO_PUBLIC_BACKEND_URL.replace(/\/+$/, '');
@@ -20,6 +23,31 @@ export const BACKEND_BASE_URL: string = (() => {
   }
   return DEPLOYED_BACKEND_URL;
 })();
+
+/**
+ * Ordered candidate URLs for Quick Karya's Web OAuth bridge used on Android APKs
+ * without requiring native Android keystore SHA-1 registration.
+ */
+export function getMobileGoogleAuthCandidates(): string[] {
+  const candidates: string[] = [];
+  const pushUnique = (raw?: string) => {
+    const clean = (raw || '').trim().replace(/\/+$/, '');
+    if (clean && !candidates.includes(clean)) {
+      candidates.push(clean);
+    }
+  };
+
+  if (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_GOOGLE_MOBILE_AUTH_URL) {
+    pushUnique(process.env.EXPO_PUBLIC_GOOGLE_MOBILE_AUTH_URL);
+  }
+  if (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BACKEND_URL) {
+    pushUnique(`${process.env.EXPO_PUBLIC_BACKEND_URL.replace(/\/+$/, '')}/api/auth/google-mobile`);
+  }
+  pushUnique(`${SHARED_BACKEND_URL}/api/auth/google-mobile`);
+  pushUnique(`${DEPLOYED_BACKEND_URL}/api/auth/google-mobile`);
+
+  return candidates;
+}
 
 /**
  * Returns a guaranteed absolute URL on native Android/iOS and standard URL on Web.

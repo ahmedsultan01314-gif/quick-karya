@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import firebaseConfig from './firebase-applet-config.json';
 import { CATEGORIES } from './src/data/categories';
 import { WorkerProfile, ServiceCategory, AppUser, WorkerReview, ServiceRequest, CallLogRecord, WorkerNotification } from './src/types';
 import {
@@ -519,6 +520,194 @@ app.post('/api/auth/login-email', async (req, res) => {
     console.error('Login email unexpected error:', err);
     return res.status(500).json({ success: false, error: err?.message || 'Server error during login. Please try again.' });
   }
+});
+
+// Pure Web OAuth Google Sign-In bridge for Android APK (no SHA-1 / Code 10 dependency)
+app.get('/api/auth/google-mobile', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  if (req.query.check === '1') {
+    return res.json({
+      ok: true,
+      service: 'quick-karya-google-mobile-auth',
+      projectId: firebaseConfig.projectId
+    });
+  }
+
+  const rawRedirect = typeof req.query.redirect === 'string' ? req.query.redirect.trim() : '';
+  const safeRedirect = /^(quickkarya|com\.quickkarya\.app|exp):\/\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%-]*$/.test(rawRedirect)
+    ? rawRedirect
+    : 'quickkarya://auth';
+  const rawState = typeof req.query.state === 'string' ? req.query.state : '';
+  const safeState = rawState.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+
+  const clientFirebaseConfig = {
+    apiKey: firebaseConfig.apiKey,
+    authDomain: firebaseConfig.authDomain,
+    projectId: firebaseConfig.projectId,
+    storageBucket: firebaseConfig.storageBucket,
+    messagingSenderId: firebaseConfig.messagingSenderId,
+    appId: firebaseConfig.appId
+  };
+
+  const serializeSafeJson = (val: unknown) =>
+    JSON.stringify(val).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Karya - Continue with Google</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #0B192C; color: #111827; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { width: 100%; max-width: 390px; background: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35); border: 1px solid #e5e7eb; }
+    .header { background: #001F3F; color: #ffffff; padding: 24px 20px; text-align: center; border-bottom: 3px solid #FFA500; }
+    .badge { display: inline-block; background: rgba(255,165,0,0.16); color: #FBBF24; border: 1px solid rgba(251,191,36,0.35); padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-top: 8px; }
+    .title { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: -0.02em; }
+    .subtitle { margin: 4px 0 0; font-size: 11px; font-weight: 800; color: #FBBF24; letter-spacing: 0.08em; text-transform: uppercase; }
+    .body { padding: 24px 20px; text-align: center; }
+    .desc { font-size: 13px; color: #4B5563; line-height: 1.5; margin: 0 0 20px; }
+    .google-btn { width: 100%; padding: 14px 16px; border-radius: 16px; border: 2px solid #D1D5DB; background: #ffffff; color: #111827; font-size: 15px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    .google-btn:disabled { opacity: 0.6; cursor: wait; }
+    .return-btn { display: none; width: 100%; margin-top: 12px; padding: 13px 16px; border-radius: 14px; background: #001F3F; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 800; }
+    .cancel-link { display: inline-block; margin-top: 16px; font-size: 12px; font-weight: 700; color: #6B7280; text-decoration: none; }
+    .status { display: none; margin-top: 14px; padding: 12px; border-radius: 12px; font-size: 12px; line-height: 1.45; text-align: left; }
+    .status.error { display: block; background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
+    .status.info { display: block; background: #EFF6FF; color: #1E3A8A; border: 1px solid #BFDBFE; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1 class="title">Quick Karya</h1>
+      <p class="subtitle">DIRECT ARTISAN CALL DIRECTORY</p>
+      <div class="badge">Secure Google Account Sign-In</div>
+    </div>
+    <div class="body">
+      <p class="desc" id="descText">Tap below to choose your Google account and return to Quick Karya automatically.</p>
+      <button type="button" id="googleSignInBtn" class="google-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span id="btnLabel">Select Google Account</span>
+      </button>
+      <a id="returnBtn" class="return-btn" href="#">Open Quick Karya Now</a>
+      <div id="statusBox" class="status"></div>
+      <a id="cancelLink" class="cancel-link" href="#">Cancel &amp; return to Quick Karya</a>
+    </div>
+  </div>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signInWithRedirect,
+      getRedirectResult
+    } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+
+    const FIREBASE_CONFIG = ${serializeSafeJson(clientFirebaseConfig)};
+    const REDIRECT_BASE = ${serializeSafeJson(safeRedirect)};
+    const STATE = ${serializeSafeJson(safeState)};
+
+    const btn = document.getElementById('googleSignInBtn');
+    const btnLabel = document.getElementById('btnLabel');
+    const descText = document.getElementById('descText');
+    const statusBox = document.getElementById('statusBox');
+    const returnBtn = document.getElementById('returnBtn');
+    const cancelLink = document.getElementById('cancelLink');
+
+    const buildCallbackUrl = (paramsObj) => {
+      const sep = REDIRECT_BASE.includes('?') ? '&' : '?';
+      const qs = new URLSearchParams(paramsObj).toString();
+      return REDIRECT_BASE + sep + qs;
+    };
+
+    cancelLink.href = buildCallbackUrl({ error: 'cancelled', state: STATE });
+
+    const showStatus = (kind, text) => {
+      statusBox.className = 'status ' + kind;
+      statusBox.textContent = text;
+    };
+
+    const app = initializeApp(FIREBASE_CONFIG);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    provider.addScope('profile');
+    provider.addScope('email');
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const completeSignIn = async (result) => {
+      if (!result || !result.user) return;
+      const user = result.user;
+      const oauthCred = GoogleAuthProvider.credentialFromResult(result);
+      const idToken = (oauthCred && oauthCred.idToken) ? oauthCred.idToken : '';
+      const accessToken = (oauthCred && oauthCred.accessToken) ? oauthCred.accessToken : '';
+
+      const callbackUrl = buildCallbackUrl({
+        state: STATE,
+        id_token: idToken,
+        access_token: accessToken,
+        uid: user.uid || '',
+        name: user.displayName || '',
+        email: user.email || '',
+        photo: user.photoURL || ''
+      });
+
+      descText.textContent = 'Google account verified (' + (user.email || user.displayName || 'Quick Karya User') + '). Returning to Quick Karya...';
+      btn.style.display = 'none';
+      returnBtn.href = callbackUrl;
+      returnBtn.style.display = 'block';
+      showStatus('info', 'Verified! If Quick Karya does not reopen automatically, tap "Open Quick Karya Now" above.');
+      window.location.replace(callbackUrl);
+    };
+
+    getRedirectResult(auth)
+      .then((res) => {
+        if (res && res.user) {
+          return completeSignIn(res);
+        }
+      })
+      .catch((err) => {
+        if (err && err.code) {
+          showStatus('error', err.message || 'Could not complete Google redirect sign-in.');
+        }
+      });
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btnLabel.textContent = 'Opening Google...';
+      statusBox.className = 'status';
+      try {
+        const res = await signInWithPopup(auth, provider);
+        await completeSignIn(res);
+      } catch (err) {
+        const code = (err && err.code) ? String(err.code) : '';
+        if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+          showStatus('info', 'Redirecting to Google account chooser...');
+          try {
+            await signInWithRedirect(auth, provider);
+            return;
+          } catch (redirErr) {
+            showStatus('error', (redirErr && redirErr.message) || 'Google Sign-In redirect failed.');
+          }
+        } else if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+          showStatus('info', 'Google account selection was closed. Tap "Select Google Account" to try again.');
+        } else {
+          showStatus('error', (err && err.message) || 'Unable to sign in with Google. Please try again.');
+        }
+        btn.disabled = false;
+        btnLabel.textContent = 'Select Google Account';
+      }
+    });
+  </script>
+</body>
+</html>`);
 });
 
 // Delete Account & Associated Data permanently

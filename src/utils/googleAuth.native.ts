@@ -1,15 +1,17 @@
-import {
-  GoogleSignin,
-  statusCodes,
-  isErrorWithCode,
-  isSuccessResponse,
-  isCancelledResponse
-} from '@react-native-google-signin/google-signin';
+import * as WebBrowser from 'expo-web-browser';
+import { Linking } from 'react-native';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { auth, type GoogleAuthResult } from '../firebase';
+import { getMobileGoogleAuthCandidates } from '../config';
 
-let configuredClientId: string | null = null;
+try {
+  WebBrowser.maybeCompleteAuthSession();
+} catch {
+  // Ignore on runtimes where auth session completion is unnecessary
+}
+
+const APP_REDIRECT_URI = 'quickkarya://auth';
 
 export function getGoogleWebClientId(): string {
   const envClientId =
@@ -20,32 +22,20 @@ export function getGoogleWebClientId(): string {
 }
 
 export function configureNativeGoogleSignIn(): void {
-  const webClientId = getGoogleWebClientId();
-  if (configuredClientId === webClientId && webClientId) return;
+  // Warm up Chrome Custom Tabs on Android for faster Google OAuth launch;
+  // avoids native GoogleSignin SHA-1 verification that causes Code 10.
   try {
-    if (!webClientId || !webClientId.endsWith('.apps.googleusercontent.com')) {
-      console.warn(
-        'Google Sign-In configuration error: Missing or invalid Web OAuth Client ID (expected *.apps.googleusercontent.com).'
-      );
-      return;
-    }
-    // DEFAULT_SIGN_IN already includes email, profile, and openid; omit non-URI scope literals.
-    GoogleSignin.configure({
-      webClientId,
-      offlineAccess: false
-    });
-    configuredClientId = webClientId;
-  } catch (err) {
-    console.warn('GoogleSignin.configure error:', err);
+    WebBrowser.warmUpAsync().catch(() => {});
+  } catch {
+    // ignore warm-up errors on unsupported environments
   }
 }
 
 export async function signOutNativeGoogle(): Promise<void> {
   try {
-    configureNativeGoogleSignIn();
-    await GoogleSignin.signOut().catch(() => {});
+    await WebBrowser.coolDownAsync().catch(() => {});
   } catch {
-    // ignore if not signed in
+    // ignore
   }
 }
 
@@ -55,94 +45,156 @@ function createCancelledError(message = 'Google Sign-In was cancelled.'): Error 
   return cancelErr;
 }
 
-export async function performNativeGoogleSignIn(): Promise<GoogleAuthResult> {
-  configureNativeGoogleSignIn();
+function parseCallbackParams(callbackUrl: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!callbackUrl) return result;
 
+  const [beforeHash, hashPart = ''] = callbackUrl.split('#');
+  const queryIdx = beforeHash.indexOf('?');
+  const queryPart = queryIdx >= 0 ? beforeHash.slice(queryIdx + 1) : '';
+
+  for (const segment of [queryPart, hashPart]) {
+    if (!segment) continue;
+    const params = new URLSearchParams(segment);
+    params.forEach((value, key) => {
+      if (value !== '') {
+        result[key] = value;
+      }
+    });
+  }
+  return result;
+}
+
+async function resolveReachableBridgeUrl(): Promise<string | null> {
+  const candidates = getMobileGoogleAuthCandidates();
+  for (const candidate of candidates) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    try {
+      const res = await fetch(`${candidate}?check=1`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      });
+      if (!res.ok) continue;
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) continue;
+      const data = await res.json().catch(() => null);
+      if (data?.ok === true) {
+        return candidate;
+      }
+    } catch {
+      // Try next candidate
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
+
+async function openAuthSessionWithLinkingFallback(
+  authUrl: string,
+  redirectUrl: string
+): Promise<{ type: 'success' | 'cancel' | 'dismiss'; url?: string }> {
+  let subscription: { remove?: () => void } | null = null;
+  const acceptedPrefixes = [redirectUrl, 'com.quickkarya.app://auth'];
+
+  try {
+    const linkingPromise = new Promise<{ type: 'success'; url: string }>((resolve) => {
+      subscription = Linking.addEventListener('url', (event: { url?: string }) => {
+        const incoming = event?.url || '';
+        if (acceptedPrefixes.some((prefix) => incoming.startsWith(prefix))) {
+          try {
+            WebBrowser.dismissAuthSession();
+          } catch {
+            // ignore
+          }
+          resolve({ type: 'success', url: incoming });
+        }
+      });
+    });
+
+    const browserPromise = WebBrowser.openAuthSessionAsync(authUrl, redirectUrl).then((res) => {
+      if (res.type === 'success' && 'url' in res && res.url) {
+        return { type: 'success' as const, url: res.url };
+      }
+      return { type: (res.type === 'dismiss' ? 'dismiss' : 'cancel') as 'cancel' | 'dismiss' };
+    });
+
+    return await Promise.race([browserPromise, linkingPromise]);
+  } finally {
+    try {
+      subscription?.remove?.();
+    } catch {
+      // ignore cleanup error
+    }
+  }
+}
+
+/**
+ * Pure Web OAuth + Firebase Auth flow for Android APKs.
+ * Uses Expo WebBrowser (Chrome Custom Tabs) + Firebase GoogleAuthProvider.credential(idToken)
+ * with the project's Web Client ID, eliminating native Android SHA-1 Code 10 failures.
+ */
+export async function performNativeGoogleSignIn(): Promise<GoogleAuthResult> {
   const webClientId = getGoogleWebClientId();
   if (!webClientId || !webClientId.endsWith('.apps.googleusercontent.com')) {
     throw new Error(
-      `Google OAuth Web Client ID is missing or invalid for Firebase project ${firebaseConfig.projectId}. Configure EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID or firebase-applet-config.json (oAuthClientId).`
+      `Google OAuth Web Client ID is missing for project ${firebaseConfig.projectId}. Please sign in with Email & Password below.`
     );
   }
 
-  try {
-    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-  } catch (playErr: any) {
-    if (isErrorWithCode(playErr) && playErr.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-      throw new Error(
-        'Google Play Services is not available or needs updating on this Android device. Please update Google Play Services or use Email & Password below.'
-      );
-    }
+  const bridgeUrl = await resolveReachableBridgeUrl();
+  if (!bridgeUrl) {
     throw new Error(
-      playErr?.message ||
-        'Google Play Services verification failed on this device. Please try again or use Email & Password below.'
+      'Unable to connect to the Quick Karya Google Sign-In service right now. Please check your internet connection and try again, or use Email & Password below.'
     );
   }
 
-  // Clear cached Google SDK selection so the Android account chooser always appears
-  await GoogleSignin.signOut().catch(() => {});
+  const state = `qk_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const authUrl = `${bridgeUrl}?redirect=${encodeURIComponent(APP_REDIRECT_URI)}&state=${encodeURIComponent(state)}`;
 
-  try {
-    const response = await GoogleSignin.signIn();
+  const authResult = await openAuthSessionWithLinkingFallback(authUrl, APP_REDIRECT_URI);
+  if (authResult.type !== 'success' || !authResult.url) {
+    throw createCancelledError('Google Sign-In was cancelled.');
+  }
 
-    if (isCancelledResponse(response)) {
-      throw createCancelledError('Google Sign-In was cancelled.');
-    }
+  const params = parseCallbackParams(authResult.url);
+  if (params.error === 'cancelled') {
+    throw createCancelledError('Google Sign-In was cancelled.');
+  }
+  if (params.error) {
+    throw new Error(params.error);
+  }
+  if (params.state && params.state !== state) {
+    throw new Error('Google Sign-In verification mismatch. Please try again.');
+  }
 
-    if (!isSuccessResponse(response)) {
-      throw new Error('Google Sign-In did not return a valid Google account response. Please try again.');
-    }
+  const email = (params.email || '').trim().toLowerCase();
+  if (!email) {
+    throw new Error('Could not read the email address from the selected Google account.');
+  }
 
-    const { user } = response.data;
-    let idToken = response.data.idToken;
-    if (!idToken) {
-      const tokens = await GoogleSignin.getTokens().catch(() => null);
-      idToken = tokens?.idToken || null;
-    }
+  const displayName = (params.name || email.split('@')[0] || 'Quick Karya User').trim();
+  const fallbackAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=001F3F&textColor=FFA500`;
+  const photoUrl = params.photo || fallbackAvatar;
 
-    const email = (user.email || '').trim().toLowerCase();
-    const displayName = (
-      user.name ||
-      [user.givenName, user.familyName].filter(Boolean).join(' ') ||
-      email.split('@')[0] ||
-      'Quick Karya User'
-    ).trim();
-    const fallbackAvatar = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=001F3F&textColor=FFA500`;
-    const photoUrl = user.photo || fallbackAvatar;
+  let firebaseUid = params.uid || `google_${email.replace(/[^a-z0-9]/g, '_')}`;
 
-    if (!email) {
-      throw new Error('Could not read the email address from the selected Google account.');
-    }
-
-    if (!idToken) {
-      throw new Error(
-        `Google Sign-In did not return an ID token. Verify that Web Client ID (${webClientId}) belongs to Firebase project ${firebaseConfig.projectId} and matches Firebase Authentication -> Google -> Web SDK configuration.`
-      );
-    }
-
-    if (!auth) {
-      throw new Error('Firebase Authentication is not initialized on this device.');
-    }
-
-    let firebaseUid: string;
+  if (auth && (params.id_token || params.access_token)) {
     try {
-      const credential = GoogleAuthProvider.credential(idToken);
+      const credential = GoogleAuthProvider.credential(
+        params.id_token || null,
+        params.access_token || null
+      );
       const userCred = await signInWithCredential(auth, credential);
-      firebaseUid = userCred.user.uid;
+      if (userCred?.user?.uid) {
+        firebaseUid = userCred.user.uid;
+      }
     } catch (fbErr: any) {
       const fbCode = String(fbErr?.code || '');
-      console.warn('Firebase signInWithCredential error:', fbCode, fbErr?.message);
+      console.warn('Firebase signInWithCredential notice:', fbCode, fbErr?.message);
 
-      if (fbCode === 'auth/operation-not-allowed') {
-        throw new Error(
-          `Google Sign-In provider is disabled in Firebase Console (${firebaseConfig.projectId}) -> Authentication -> Sign-in method -> Google.`
-        );
-      }
-      if (fbCode === 'auth/invalid-credential') {
-        throw new Error(
-          `Firebase rejected the Google ID token (auth/invalid-credential). Verify that the Web Client ID (${webClientId}) matches Firebase Console -> Authentication -> Sign-in method -> Google -> Web SDK configuration -> Web client ID.`
-        );
-      }
       if (fbCode === 'auth/user-disabled') {
         throw new Error('This Google account has been disabled in Firebase Authentication.');
       }
@@ -151,71 +203,28 @@ export async function performNativeGoogleSignIn(): Promise<GoogleAuthResult> {
           'An account already exists with this email using Email & Password. Please sign in with Email & Password below.'
         );
       }
-      if (fbCode === 'auth/network-request-failed') {
+      if (fbCode === 'auth/operation-not-allowed') {
         throw new Error(
-          'Network error while authenticating with Firebase. Please check your internet connection and try again.'
+          'Google Sign-In is not enabled in Firebase Authentication. Please sign in with Email & Password below.'
         );
       }
-      throw new Error(
-        fbErr?.message || 'Failed to complete Firebase Google Authentication (`signInWithCredential`).'
-      );
-    }
-
-    return {
-      uid: firebaseUid,
-      name: displayName,
-      email,
-      photoUrl
-    };
-  } catch (err: any) {
-    if (err?.isCancelled) {
-      throw err;
-    }
-
-    if (isErrorWithCode(err)) {
-      switch (err.code) {
-        case statusCodes.SIGN_IN_CANCELLED:
-          throw createCancelledError('Google Sign-In was cancelled.');
-        case statusCodes.IN_PROGRESS:
-          throw new Error('Google Sign-In is already open. Please wait a moment and try again.');
-        case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
-          throw new Error(
-            'Google Play Services is missing or outdated on this device. Please update it from Google Play Store.'
-          );
-        default:
-          break;
+      if (fbCode === 'auth/network-request-failed') {
+        throw new Error(
+          'Network error while completing Google sign-in. Please check your internet connection and try again.'
+        );
+      }
+      if (!params.uid) {
+        throw new Error(
+          fbErr?.message || 'Unable to verify Google credentials with Firebase. Please try again.'
+        );
       }
     }
-
-    const codeStr = String(err?.code ?? '');
-    const msgStr = String(err?.message ?? '');
-
-    if (codeStr === '12501') {
-      throw createCancelledError('Google Sign-In was cancelled.');
-    }
-
-    if (codeStr === '12502') {
-      throw new Error('Google Sign-In is already in progress. Please wait a moment and try again.');
-    }
-
-    if (codeStr === '10' || msgStr.includes('DEVELOPER_ERROR') || msgStr.includes('10:')) {
-      throw new Error(
-        `Google Sign-In Error Code 10 (DEVELOPER_ERROR): The EAS Android keystore SHA-1 fingerprint for com.quickkarya.app is not registered in Firebase Console (${firebaseConfig.projectId}), or google-services.json / Web Client ID (${webClientId}) is missing or mismatched.`
-      );
-    }
-
-    if (codeStr === '7' || msgStr.includes('NETWORK_ERROR')) {
-      throw new Error('Network error during Google Sign-In. Please check your internet connection and try again.');
-    }
-
-    if (codeStr === '12500' || msgStr.includes('12500')) {
-      throw new Error(
-        `Google Sign-In failed (Code 12500): Verify the OAuth consent screen support email and SHA-1 fingerprint for com.quickkarya.app in Firebase project ${firebaseConfig.projectId}.`
-      );
-    }
-
-    throw new Error(
-      err?.message || 'Unable to complete Google Sign-In on this device. Please try again or use Email & Password below.'
-    );
   }
+
+  return {
+    uid: firebaseUid,
+    name: displayName,
+    email,
+    photoUrl
+  };
 }
