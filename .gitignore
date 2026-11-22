@@ -5,6 +5,7 @@ web-build/
 coverage/
 .expo/
 .expo-ci-export/
+expo-ci-export/
 .DS_Store
 *.log
 *.tsbuildinfo
