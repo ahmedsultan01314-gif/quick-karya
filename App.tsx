@@ -486,8 +486,8 @@ function NativeApp() {
       setAuthError('Please fill in your email address and password.');
       return;
     }
-    if (authEmailMode === 'register' && !authFullName.trim()) {
-      setAuthError('Please enter your full name to create an account.');
+    if (authEmailMode === 'register' && authFullName.trim().length < 2) {
+      setAuthError('Please enter your full name (at least 2 characters) to create an account.');
       return;
     }
 
@@ -4022,7 +4022,11 @@ Please dispatch assistance immediately!`;
                     </View>
                   )}
                   <View style={styles.authVerifiedPill}>
-                    <Text style={styles.authVerifiedPillText}>✓ Google Account Linked</Text>
+                    <Text style={styles.authVerifiedPillText}>
+                      {pendingVerifiedUser?.authProvider === 'email'
+                        ? '✓ Email Account Verified'
+                        : '✓ Google Account Linked'}
+                    </Text>
                   </View>
                   <Text style={styles.authCardTitle}>Choose Your Role</Text>
                   <Text style={styles.authCardSubtitle}>

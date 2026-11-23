@@ -31,7 +31,6 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 import { WorkerProfile, AppUser, WorkerReview, ServiceRequest, CallLogRecord, WorkerNotification } from './types';
-import { getApiUrl } from './config';
 import { initFirebaseAuth } from './utils/firebaseAuthInit';
 
 // ==========================================
@@ -414,6 +413,87 @@ export interface AuthUserResult {
   photoUrl: string;
 }
 
+function ensureFirebaseAuth(): Auth | null {
+  if (auth) return auth;
+  if (!firebaseApp) {
+    try {
+      firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    } catch {
+      firebaseApp = null;
+    }
+  }
+  if (firebaseApp) {
+    try {
+      auth = initFirebaseAuth(firebaseApp);
+      return auth;
+    } catch {
+      try {
+        auth = getAuth(firebaseApp);
+        return auth;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function buildInitialsAvatar(name: string): string {
+  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || 'User')}&backgroundColor=001F3F&textColor=FFA500`;
+}
+
+function resolveDisplayName(rawName: string | null | undefined, email: string): string {
+  const trimmed = (rawName || '').trim();
+  if (trimmed.length >= 2) return trimmed;
+  const emailPrefix = (email.split('@')[0] || '').trim();
+  if (emailPrefix.length >= 2) return emailPrefix;
+  return 'Quick Karya User';
+}
+
+function mapEmailAuthError(err: any, mode: 'login' | 'register'): Error {
+  const code = String(err?.code || err?.message || '');
+
+  if (code.includes('auth/wrong-password') || code.includes('auth/invalid-credential') || code.includes('INVALID_PASSWORD') || code.includes('INVALID_LOGIN_CREDENTIALS')) {
+    return new Error('Incorrect email or password.');
+  }
+  if (code.includes('auth/user-not-found') || code.includes('EMAIL_NOT_FOUND')) {
+    return new Error('No account found with this email. Tap "Create Account" to register.');
+  }
+  if (code.includes('auth/email-already-in-use') || code.includes('EMAIL_EXISTS')) {
+    return new Error('An account already exists with this email. Please sign in instead.');
+  }
+  if (code.includes('auth/weak-password') || code.includes('WEAK_PASSWORD')) {
+    return new Error('Password is too weak. Please use at least 6 characters.');
+  }
+  if (code.includes('auth/invalid-email') || code.includes('INVALID_EMAIL')) {
+    return new Error('Please enter a valid email address.');
+  }
+  if (code.includes('auth/user-disabled') || code.includes('USER_DISABLED')) {
+    return new Error('This account has been disabled.');
+  }
+  if (code.includes('auth/operation-not-allowed') || code.includes('OPERATION_NOT_ALLOWED')) {
+    return new Error(
+      `Email/Password ${mode === 'register' ? 'Sign-Up' : 'Sign-In'} is disabled in Firebase Console. Enable "Email/Password" under Authentication -> Sign-in method for project ${firebaseConfig.projectId}.`
+    );
+  }
+  if (code.includes('auth/too-many-requests') || code.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
+    return new Error('Too many attempts. Please wait a moment and try again.');
+  }
+  if (code.includes('auth/network-request-failed')) {
+    return new Error('Network error during authentication. Please check your internet connection.');
+  }
+  if (code.includes('auth/missing-password')) {
+    return new Error('Please enter your password.');
+  }
+  if (code.includes('auth/invalid-api-key') || code.includes('API_KEY_INVALID')) {
+    return new Error(`Firebase API configuration error for project ${firebaseConfig.projectId}.`);
+  }
+
+  return new Error(
+    err?.message || (mode === 'register' ? 'Could not create account. Please try again.' : 'Could not sign in. Please try again.')
+  );
+}
+
 /**
  * Robust Google Sign-In with Account Selection
  */
@@ -425,22 +505,24 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
     prompt: 'select_account'
   });
 
+  const activeAuth = ensureFirebaseAuth();
+
   if (
     typeof window !== 'undefined' &&
     typeof window.document !== 'undefined' &&
     typeof signInWithPopup === 'function' &&
-    auth
+    activeAuth
   ) {
     try {
-      const result = await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(activeAuth, provider);
       const user = result.user;
+      const cleanEmail = user.email || '';
+      const displayName = resolveDisplayName(user.displayName, cleanEmail);
       return {
         uid: user.uid,
-        name: user.displayName || user.email?.split('@')[0] || 'Quick Karya User',
-        email: user.email || '',
-        photoUrl:
-          user.photoURL ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.displayName || 'User')}&backgroundColor=001F3F&textColor=FFA500`
+        name: displayName,
+        email: cleanEmail,
+        photoUrl: user.photoURL || buildInitialsAvatar(displayName)
       };
     } catch (popupErr: any) {
       console.warn('Firebase signInWithPopup notice:', popupErr?.code, popupErr?.message);
@@ -473,7 +555,7 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
 }
 
 /**
- * Sign In with Email & Password
+ * Sign In with Email & Password directly via Firebase Authentication
  */
 export async function signInWithEmail(email: string, password: string): Promise<AuthUserResult> {
   const cleanEmail = email.trim().toLowerCase();
@@ -483,104 +565,81 @@ export async function signInWithEmail(email: string, password: string): Promise<
   if (!password || password.length < 6) {
     throw new Error('Password must be at least 6 characters.');
   }
+  if (isPurgedAccountProfile({ email: cleanEmail }) || isMockOrTestProfile({ email: cleanEmail, name: 'Member' })) {
+    throw new Error('This account has been permanently deleted and is no longer accessible.');
+  }
 
-  // 1. Attempt client Firebase SDK if supported
-  let firebaseNotFound = false;
-  if (auth && typeof signInWithEmailAndPassword === 'function') {
+  const activeAuth = ensureFirebaseAuth();
+  if (activeAuth && typeof signInWithEmailAndPassword === 'function') {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const userCredential = await signInWithEmailAndPassword(activeAuth, cleanEmail, password);
       const u = userCredential.user;
+      const displayName = resolveDisplayName(u.displayName, cleanEmail);
       return {
         uid: u.uid,
-        name: u.displayName || cleanEmail.split('@')[0],
+        name: displayName,
         email: u.email || cleanEmail,
-        photoUrl:
-          u.photoURL ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.displayName || cleanEmail)}&backgroundColor=001F3F&textColor=FFA500`
+        photoUrl: u.photoURL || buildInitialsAvatar(displayName)
       };
     } catch (firebaseErr: any) {
-      console.warn('Firebase client signInWithEmailAndPassword notice:', firebaseErr?.code, firebaseErr?.message);
-      if (firebaseErr?.code === 'auth/wrong-password' || firebaseErr?.code === 'auth/invalid-credential') {
-        throw new Error('Incorrect email or password.');
-      }
-      if (firebaseErr?.code === 'auth/invalid-email') {
-        throw new Error('Please enter a valid email address.');
-      }
-      if (firebaseErr?.code === 'auth/user-disabled') {
-        throw new Error('This account has been disabled.');
-      }
-      if (firebaseErr?.code === 'auth/too-many-requests') {
-        throw new Error('Too many failed sign-in attempts. Please wait a moment and try again.');
-      }
-      if (firebaseErr?.code === 'auth/network-request-failed') {
-        throw new Error('Network error during sign-in. Please check your internet connection.');
-      }
-      if (firebaseErr?.code === 'auth/user-not-found') {
-        firebaseNotFound = true;
-      }
+      console.warn('Firebase signInWithEmailAndPassword notice:', firebaseErr?.code, firebaseErr?.message);
+      throw mapEmailAuthError(firebaseErr, 'login');
     }
   }
 
-  // 2. Verified backend route fallback (for legacy server-registered users or when Email/Password is server-backed)
+  // Direct Firebase Identity Toolkit REST fallback (no custom backend server)
   let res: Response;
   try {
-    res = await fetch(getApiUrl('/api/auth/login-email'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ email: cleanEmail, password })
-    });
+    res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password,
+          returnSecureToken: true
+        })
+      }
+    );
   } catch {
-    if (firebaseNotFound) {
-      throw new Error('No account found with this email. Tap "Create Account" to register.');
-    }
-    throw new Error('Could not connect to authentication server. Please check your network.');
+    throw new Error('Network error during sign-in. Please check your internet connection.');
   }
 
-  const rawText = await res.text();
-  let data: any = null;
-  try {
-    data = JSON.parse(rawText);
-  } catch {
-    console.warn('Backend login non-JSON response:', rawText.slice(0, 120));
-    if (!res.ok) {
-      throw new Error(`Server returned error code ${res.status}. Please try again.`);
-    }
-    throw new Error('Authentication response could not be verified. Please try again.');
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.localId) {
+    throw mapEmailAuthError({ code: data?.error?.message, message: data?.error?.message }, 'login');
   }
 
-  if (!res.ok || !data?.user) {
-    throw new Error(data?.error || 'Failed to sign in with email and password.');
-  }
-
-  const { user } = data;
+  const displayName = resolveDisplayName(data.displayName, cleanEmail);
   return {
-    uid: user.id,
-    name: user.name,
-    email: user.email,
-    photoUrl: user.profilePhoto || user.avatar
+    uid: String(data.localId),
+    name: displayName,
+    email: String(data.email || cleanEmail),
+    photoUrl: data.profilePicture || buildInitialsAvatar(displayName)
   };
 }
 
 /**
- * Register with Email & Password
+ * Register with Email & Password directly via Firebase Authentication
  */
 export async function signUpWithEmail(email: string, password: string, name?: string): Promise<AuthUserResult> {
   const cleanEmail = email.trim().toLowerCase();
-  const displayName = (name && name.trim()) || cleanEmail.split('@')[0];
+  const displayName = resolveDisplayName(name, cleanEmail);
   if (!cleanEmail || !cleanEmail.includes('@')) {
     throw new Error('Please enter a valid email address.');
   }
   if (!password || password.length < 6) {
     throw new Error('Password must be at least 6 characters.');
   }
+  if (isPurgedAccountProfile({ email: cleanEmail }) || isMockOrTestProfile({ email: cleanEmail, name: displayName })) {
+    throw new Error('This email account cannot be registered.');
+  }
 
-  // 1. Attempt client Firebase SDK
-  if (auth && typeof createUserWithEmailAndPassword === 'function') {
+  const activeAuth = ensureFirebaseAuth();
+  if (activeAuth && typeof createUserWithEmailAndPassword === 'function') {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const userCredential = await createUserWithEmailAndPassword(activeAuth, cleanEmail, password);
       const u = userCredential.user;
       if (typeof updateProfile === 'function') {
         await updateProfile(u, { displayName }).catch(() => {});
@@ -589,62 +648,58 @@ export async function signUpWithEmail(email: string, password: string, name?: st
         uid: u.uid,
         name: displayName,
         email: u.email || cleanEmail,
-        photoUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(displayName)}&backgroundColor=001F3F&textColor=FFA500`
+        photoUrl: u.photoURL || buildInitialsAvatar(displayName)
       };
     } catch (firebaseErr: any) {
       console.warn('Firebase createUserWithEmailAndPassword notice:', firebaseErr?.code, firebaseErr?.message);
-      if (firebaseErr?.code === 'auth/email-already-in-use') {
-        throw new Error('An account already exists with this email. Please sign in instead.');
-      }
-      if (firebaseErr?.code === 'auth/weak-password') {
-        throw new Error('Password is too weak. Please use at least 6 characters.');
-      }
-      if (firebaseErr?.code === 'auth/invalid-email') {
-        throw new Error('Please enter a valid email address.');
-      }
-      if (firebaseErr?.code === 'auth/network-request-failed') {
-        throw new Error('Network error during registration. Please check your internet connection.');
-      }
+      throw mapEmailAuthError(firebaseErr, 'register');
     }
   }
 
-  // 2. Verified backend route fallback
+  // Direct Firebase Identity Toolkit REST fallback (no custom backend server)
   let res: Response;
   try {
-    res = await fetch(getApiUrl('/api/auth/register-email'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ email: cleanEmail, password, name: displayName })
-    });
+    res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password,
+          returnSecureToken: true
+        })
+      }
+    );
   } catch {
-    throw new Error('Could not connect to authentication server. Please check your network.');
+    throw new Error('Network error during registration. Please check your internet connection.');
   }
 
-  const rawText = await res.text();
-  let data: any = null;
-  try {
-    data = JSON.parse(rawText);
-  } catch {
-    console.warn('Backend register non-JSON response:', rawText.slice(0, 120));
-    if (!res.ok) {
-      throw new Error(`Server returned error code ${res.status}. Please try again.`);
-    }
-    throw new Error('Registration response could not be verified. Please try again.');
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.localId) {
+    throw mapEmailAuthError({ code: data?.error?.message, message: data?.error?.message }, 'register');
   }
 
-  if (!res.ok || !data?.user) {
-    throw new Error(data?.error || 'Failed to register with email and password.');
+  if (data.idToken) {
+    fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idToken: data.idToken,
+          displayName,
+          returnSecureToken: false
+        })
+      }
+    ).catch(() => {});
   }
 
-  const { user } = data;
   return {
-    uid: user.id,
-    name: user.name,
-    email: user.email,
-    photoUrl: user.profilePhoto || user.avatar
+    uid: String(data.localId),
+    name: displayName,
+    email: String(data.email || cleanEmail),
+    photoUrl: buildInitialsAvatar(displayName)
   };
 }
 

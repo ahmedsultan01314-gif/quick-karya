@@ -22,7 +22,6 @@ import {
   isPurgedAccountProfile,
   isMockOrTestProfile
 } from '../firebase';
-import { getApiUrl } from '../config';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -155,38 +154,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
 
     try {
-      // Update role on backend
-      const res = await fetch(getApiUrl('/api/auth/profile'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: verifiedUser.id,
-          name: verifiedUser.name,
-          profilePhoto: verifiedUser.profilePhoto,
-          role: selectedRole
-        })
-      });
-
-      let updatedUser: AppUser = {
+      const updatedUser: AppUser = {
         ...verifiedUser,
         role: selectedRole
       };
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) updatedUser = data.user;
-      }
-
-      // Persist to Cloud Firestore and localStorage
+      // Persist directly to Cloud Firestore and localStorage
       await saveUserToCloud(updatedUser).catch((e) => console.warn('Firestore user update note:', e));
-      localStorage.setItem('quick_karya_user', JSON.stringify(updatedUser));
+      try {
+        localStorage.setItem('quick_karya_user', JSON.stringify(updatedUser));
+      } catch {}
       onLoginSuccess(updatedUser, selectedRole);
       onClose();
     } catch {
       // Fallback save locally
-      verifiedUser.role = selectedRole;
-      localStorage.setItem('quick_karya_user', JSON.stringify(verifiedUser));
-      onLoginSuccess(verifiedUser, selectedRole);
+      const fallbackUser: AppUser = { ...verifiedUser, role: selectedRole };
+      try {
+        localStorage.setItem('quick_karya_user', JSON.stringify(fallbackUser));
+      } catch {}
+      onLoginSuccess(fallbackUser, selectedRole);
       onClose();
     } finally {
       setLoading(false);
