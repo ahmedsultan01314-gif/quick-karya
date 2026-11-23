@@ -74,6 +74,17 @@ export default ({ config } = {}) => {
         "CAMERA",
         "POST_NOTIFICATIONS",
         "VIBRATE"
+      ],
+      intentFilters: [
+        {
+          action: "VIEW",
+          category: ["DEFAULT", "BROWSABLE"],
+          data: [
+            { scheme: "quickkarya" },
+            { scheme: "com.quickkarya.app" },
+            { scheme: "com.googleusercontent.apps.149463790904-u3gf07vile2kskuvad69fu7b18utm6pb" }
+          ]
+        }
       ]
     },
     web: {

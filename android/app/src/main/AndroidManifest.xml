@@ -56,6 +56,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="quickkarya"/>
         <data android:scheme="com.quickkarya.app"/>
+        <data android:scheme="com.googleusercontent.apps.149463790904-u3gf07vile2kskuvad69fu7b18utm6pb"/>
       </intent-filter>
     </activity>
   </application>
