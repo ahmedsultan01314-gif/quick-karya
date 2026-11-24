@@ -1,17 +1,15 @@
-import * as WebBrowser from 'expo-web-browser';
-import { Linking } from 'react-native';
+import {
+  GoogleSignin,
+  isCancelledResponse,
+  isErrorWithCode,
+  isSuccessResponse,
+  statusCodes
+} from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { auth, type GoogleAuthResult } from '../firebase';
 
-try {
-  WebBrowser.maybeCompleteAuthSession();
-} catch {
-  // Ignore on runtimes where auth session completion is unnecessary
-}
-
-const APP_RETURN_URL = 'quickkarya://auth';
-const ANDROID_SCHEME_REDIRECT_URI = 'com.quickkarya.app:/oauth2redirect';
+let configuredWebClientId = '';
 
 export function getGoogleWebClientId(): string {
   const envClientId =
@@ -21,38 +19,33 @@ export function getGoogleWebClientId(): string {
   return envClientId || String(firebaseConfig.oAuthClientId || '').trim();
 }
 
-export function getGoogleAndroidClientId(): string {
-  return typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
-    ? String(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID).trim()
-    : '';
-}
-
-export function getFirebaseCallbackScheme(webClientId: string): string {
-  if (webClientId && webClientId.includes('.')) {
-    return webClientId.split('.').reverse().join('.');
-  }
-  const appId = String(firebaseConfig.appId || '').trim();
-  if (appId) {
-    return `app-${appId.replace(/:/g, '-')}`;
-  }
-  return 'com.quickkarya.app';
-}
-
 export function configureNativeGoogleSignIn(): void {
-  // Warm up Chrome Custom Tabs on Android for faster Google OAuth launch;
-  // avoids native GoogleSignin SHA-1 verification that causes Code 10.
+  const webClientId = getGoogleWebClientId();
+  if (!webClientId || !webClientId.endsWith('.apps.googleusercontent.com')) {
+    return;
+  }
+  if (configuredWebClientId === webClientId) {
+    return;
+  }
+
   try {
-    WebBrowser.warmUpAsync().catch(() => {});
-  } catch {
-    // ignore warm-up errors on unsupported environments
+    GoogleSignin.configure({
+      webClientId,
+      offlineAccess: false,
+      scopes: ['profile', 'email']
+    });
+    configuredWebClientId = webClientId;
+  } catch (err) {
+    console.warn('Native GoogleSignin.configure notice:', err);
   }
 }
 
 export async function signOutNativeGoogle(): Promise<void> {
   try {
-    await WebBrowser.coolDownAsync().catch(() => {});
+    configureNativeGoogleSignIn();
+    await GoogleSignin.signOut().catch(() => {});
   } catch {
-    // ignore
+    // ignore native sign-out errors
   }
 }
 
@@ -62,222 +55,34 @@ function createCancelledError(message = 'Google Sign-In was cancelled.'): Error 
   return cancelErr;
 }
 
-function randomToken(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
-}
-
-function parseCallbackParams(callbackUrl: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  if (!callbackUrl) return result;
-
-  const [beforeHash, hashPart = ''] = callbackUrl.split('#');
-  const queryIdx = beforeHash.indexOf('?');
-  const queryPart = queryIdx >= 0 ? beforeHash.slice(queryIdx + 1) : '';
-
-  for (const segment of [queryPart, hashPart]) {
-    if (!segment) continue;
-    const params = new URLSearchParams(segment);
-    params.forEach((value, key) => {
-      if (value !== '') {
-        result[key] = value;
-      }
-    });
-  }
-  return result;
-}
-
-function extractFirebaseHandlerPayload(rawUrl: string): {
+async function signInFirebaseWithTokenRest(options: {
   idToken?: string;
   accessToken?: string;
-  linkUrl?: string;
-  error?: string;
-} {
-  const outerParams = parseCallbackParams(rawUrl);
-
-  const deepLinkUrl = outerParams.deep_link_id || rawUrl;
-  const deepLinkParams = parseCallbackParams(deepLinkUrl);
-
-  if (deepLinkParams.firebaseError) {
-    try {
-      const parsed = JSON.parse(deepLinkParams.firebaseError);
-      return { error: parsed?.message || parsed?.code || 'Firebase Google Sign-In failed.' };
-    } catch {
-      return { error: deepLinkParams.firebaseError };
-    }
-  }
-
-  const innerLinkUrl = deepLinkParams.link || deepLinkUrl;
-  const innerParams = parseCallbackParams(innerLinkUrl);
-
-  if (innerParams.error) {
-    return { error: innerParams.error_description || innerParams.error };
-  }
-
-  return {
-    idToken: innerParams.id_token || deepLinkParams.id_token || outerParams.id_token,
-    accessToken: innerParams.access_token || deepLinkParams.access_token || outerParams.access_token,
-    linkUrl: innerLinkUrl
-  };
-}
-
-function decodeBase64UrlToUtf8(input: string): string {
-  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const bytes: number[] = [];
-
-  for (let i = 0; i < padded.length; i += 4) {
-    const c1 = alphabet.indexOf(padded[i]);
-    const c2 = alphabet.indexOf(padded[i + 1]);
-    const c3 = padded[i + 2] === '=' ? -1 : alphabet.indexOf(padded[i + 2]);
-    const c4 = padded[i + 3] === '=' ? -1 : alphabet.indexOf(padded[i + 3]);
-    if (c1 < 0 || c2 < 0) break;
-
-    bytes.push((c1 << 2) | (c2 >> 4));
-    if (c3 >= 0) {
-      bytes.push(((c2 & 15) << 4) | (c3 >> 2));
-      if (c4 >= 0) {
-        bytes.push(((c3 & 3) << 6) | c4);
-      }
-    }
-  }
-
-  let percentEncoded = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    percentEncoded += `%${bytes[i].toString(16).padStart(2, '0')}`;
-  }
-  return decodeURIComponent(percentEncoded);
-}
-
-function decodeIdTokenClaims(idToken?: string): {
-  email?: string;
-  name?: string;
-  picture?: string;
-  sub?: string;
-} {
-  if (!idToken) return {};
-  try {
-    const parts = idToken.split('.');
-    if (parts.length < 2) return {};
-    const json = decodeBase64UrlToUtf8(parts[1]);
-    const payload = JSON.parse(json);
-    return {
-      email: typeof payload?.email === 'string' ? payload.email : undefined,
-      name: typeof payload?.name === 'string' ? payload.name : undefined,
-      picture: typeof payload?.picture === 'string' ? payload.picture : undefined,
-      sub: typeof payload?.sub === 'string' ? payload.sub : undefined
-    };
-  } catch {
-    return {};
-  }
-}
-
-async function openAuthSessionWithLinkingFallback(
-  authUrl: string,
-  redirectUrl: string,
-  extraPrefixes: string[] = []
-): Promise<{ type: 'success' | 'cancel' | 'dismiss'; url?: string }> {
-  let subscription: { remove?: () => void } | null = null;
-  const acceptedPrefixes = [redirectUrl, ...extraPrefixes].filter(Boolean);
-
-  try {
-    const linkingPromise = new Promise<{ type: 'success'; url: string }>((resolve) => {
-      subscription = Linking.addEventListener('url', (event: { url?: string }) => {
-        const incoming = event?.url || '';
-        if (acceptedPrefixes.some((prefix) => incoming.startsWith(prefix))) {
-          try {
-            WebBrowser.dismissAuthSession();
-          } catch {
-            // ignore
-          }
-          resolve({ type: 'success', url: incoming });
-        }
-      });
-    });
-
-    const browserPromise = WebBrowser.openAuthSessionAsync(authUrl, redirectUrl).then((res) => {
-      if (res.type === 'success' && 'url' in res && res.url) {
-        return { type: 'success' as const, url: res.url };
-      }
-      return { type: (res.type === 'dismiss' ? 'dismiss' : 'cancel') as 'cancel' | 'dismiss' };
-    });
-
-    return await Promise.race([browserPromise, linkingPromise]);
-  } finally {
-    try {
-      subscription?.remove?.();
-    } catch {
-      // ignore cleanup error
-    }
-  }
-}
-
-async function exchangeAuthCodeForTokens(params: {
-  code: string;
-  clientId: string;
-  redirectUri: string;
-  codeVerifier: string;
-}): Promise<{ idToken?: string; accessToken?: string }> {
-  const body = new URLSearchParams({
-    code: params.code,
-    client_id: params.clientId,
-    redirect_uri: params.redirectUri,
-    grant_type: 'authorization_code',
-    code_verifier: params.codeVerifier
-  }).toString();
-
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || (!data?.id_token && !data?.access_token)) {
-    throw new Error(
-      data?.error_description || data?.error || 'Could not exchange Google authorization code for tokens.'
-    );
-  }
-  return {
-    idToken: data.id_token ? String(data.id_token) : undefined,
-    accessToken: data.access_token ? String(data.access_token) : undefined
-  };
-}
-
-async function signInFirebaseWithIdpRest(options: {
-  idToken?: string;
-  accessToken?: string;
-  requestUri?: string;
 }): Promise<{
   uid: string;
   email?: string;
   displayName?: string;
   photoUrl?: string;
-  oauthIdToken?: string;
-  oauthAccessToken?: string;
 }> {
-  const authDomain = firebaseConfig.authDomain || `${firebaseConfig.projectId}.firebaseapp.com`;
   const postBodyParts: string[] = [];
   if (options.idToken) postBodyParts.push(`id_token=${encodeURIComponent(options.idToken)}`);
   if (options.accessToken) postBodyParts.push(`access_token=${encodeURIComponent(options.accessToken)}`);
   postBodyParts.push('providerId=google.com');
-
-  const payload: Record<string, unknown> = {
-    requestUri: options.requestUri || `https://${authDomain}/__/auth/handler`,
-    returnIdpCredential: true,
-    returnSecureToken: true
-  };
-  if (options.idToken || options.accessToken) {
-    payload.postBody = postBodyParts.join('&');
-  }
 
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encodeURIComponent(firebaseConfig.apiKey)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        requestUri: 'http://localhost',
+        postBody: postBodyParts.join('&'),
+        returnIdpCredential: true,
+        returnSecureToken: true
+      })
     }
   );
+
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.localId) {
     const errMsg = String(data?.error?.message || 'Unable to verify Google credentials with Firebase.');
@@ -296,158 +101,113 @@ async function signInFirebaseWithIdpRest(options: {
     uid: String(data.localId),
     email: data.email ? String(data.email) : undefined,
     displayName: data.displayName || data.fullName ? String(data.displayName || data.fullName) : undefined,
-    photoUrl: data.photoUrl ? String(data.photoUrl) : undefined,
-    oauthIdToken: data.oauthIdToken ? String(data.oauthIdToken) : undefined,
-    oauthAccessToken: data.oauthAccessToken ? String(data.oauthAccessToken) : undefined
+    photoUrl: data.photoUrl ? String(data.photoUrl) : undefined
   };
 }
 
 /**
- * Firebase Web Auth Handler OAuth flow for Android APKs.
- * Uses Firebase's pre-authorized HTTPS redirect URI (`https://pacific-eye-42ts5.firebaseapp.com/__/auth/handler`)
- * so Google Web OAuth never fails with `Error 400: redirect_uri_mismatch`, and returns the
- * resulting Google credential back into the app via Chrome Custom Tabs -> `signInWithCredential`.
+ * Native Android Google Account Picker via @react-native-google-signin/google-signin + Firebase Auth.
+ * Displays the device's system "Choose an account" sheet showing the Google accounts
+ * signed into that user's phone, then authenticates directly into Firebase Auth with signInWithCredential.
  */
 export async function performNativeGoogleSignIn(): Promise<GoogleAuthResult> {
   const webClientId = getGoogleWebClientId();
-  const androidClientId = getGoogleAndroidClientId();
-
-  if (!androidClientId && (!webClientId || !webClientId.endsWith('.apps.googleusercontent.com'))) {
+  if (!webClientId || !webClientId.endsWith('.apps.googleusercontent.com')) {
     throw new Error(
       `Google OAuth Web Client ID is missing for project ${firebaseConfig.projectId}. Please sign in with Email & Password below.`
     );
   }
 
+  configureNativeGoogleSignIn();
+
   let idToken: string | undefined;
   let accessToken: string | undefined;
-  let fallbackRequestUri: string | undefined;
+  let pickedEmail = '';
+  let pickedName = '';
+  let pickedPhoto = '';
 
-  if (androidClientId && androidClientId.endsWith('.apps.googleusercontent.com')) {
-    const state = randomToken('qk');
-    const codeVerifier = `${randomToken('qkv')}_${randomToken('pkce')}`;
-    const googleQuery = new URLSearchParams({
-      client_id: androidClientId,
-      redirect_uri: ANDROID_SCHEME_REDIRECT_URI,
-      response_type: 'code',
-      scope: 'openid profile email',
-      prompt: 'select_account',
-      code_challenge: codeVerifier,
-      code_challenge_method: 'plain',
-      state
-    }).toString();
+  try {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${googleQuery}`;
-    const authResult = await openAuthSessionWithLinkingFallback(authUrl, ANDROID_SCHEME_REDIRECT_URI, [
-      APP_RETURN_URL,
-      'com.quickkarya.app://auth'
-    ]);
+    // Clear any cached native selection so Android always opens the device's
+    // "Choose an account" picker showing all Google accounts on this phone.
+    await GoogleSignin.signOut().catch(() => {});
 
-    if (authResult.type !== 'success' || !authResult.url) {
+    const response = await GoogleSignin.signIn();
+
+    if (isCancelledResponse(response)) {
       throw createCancelledError('Google Sign-In was cancelled.');
     }
-
-    const params = parseCallbackParams(authResult.url);
-    if (params.error === 'access_denied' || params.error === 'cancelled') {
-      throw createCancelledError('Google Sign-In was cancelled.');
-    }
-    if (params.error) {
-      throw new Error(params.error_description || params.error);
-    }
-    if (params.state && params.state !== state) {
-      throw new Error('Google Sign-In state mismatch. Please try again.');
-    }
-    if (!params.code) {
-      throw new Error('Google Sign-In did not return an authorization code. Please try again.');
+    if (!isSuccessResponse(response)) {
+      throw new Error('Google Sign-In did not complete. Please try again.');
     }
 
-    const tokens = await exchangeAuthCodeForTokens({
-      code: params.code,
-      clientId: androidClientId,
-      redirectUri: ANDROID_SCHEME_REDIRECT_URI,
-      codeVerifier
-    });
-    idToken = tokens.idToken;
-    accessToken = tokens.accessToken;
-  } else {
-    // Use Firebase's authorized HTTPS redirect URI:
-    // https://pacific-eye-42ts5.firebaseapp.com/__/auth/handler
-    const authDomain = firebaseConfig.authDomain || `${firebaseConfig.projectId}.firebaseapp.com`;
-    const handlerUrl = `https://${authDomain}/__/auth/handler`;
-    const callbackScheme = getFirebaseCallbackScheme(webClientId);
-    const appCallbackUri = `${callbackScheme}://firebaseauth/link`;
-    const eventId = randomToken('qkev');
+    const googleProfile = response.data.user;
+    pickedEmail = (googleProfile?.email || '').trim().toLowerCase();
+    pickedName = (googleProfile?.name || googleProfile?.givenName || '').trim();
+    pickedPhoto = googleProfile?.photo || '';
+    idToken = response.data.idToken || undefined;
 
-    const handlerParams = new URLSearchParams({
-      apiKey: firebaseConfig.apiKey,
-      appName: '[DEFAULT]',
-      authType: 'signInViaRedirect',
-      providerId: 'google.com',
-      scopes: 'profile,email',
-      customParameters: JSON.stringify({ prompt: 'select_account' }),
-      eventId,
-      ibi: 'com.quickkarya.app',
-      clientId: webClientId,
-      appId: firebaseConfig.appId,
-      v: '12.19.0'
-    });
-
-    const startUrl = `${handlerUrl}?${handlerParams.toString()}`;
-    const authResult = await openAuthSessionWithLinkingFallback(startUrl, appCallbackUri, [
-      `${callbackScheme}://`,
-      APP_RETURN_URL,
-      'com.quickkarya.app://auth'
-    ]);
-
-    if (authResult.type !== 'success' || !authResult.url) {
-      throw createCancelledError('Google Sign-In was cancelled.');
+    if (!idToken) {
+      const tokens = await GoogleSignin.getTokens().catch(() => null);
+      idToken = tokens?.idToken || undefined;
+      accessToken = tokens?.accessToken || undefined;
+    }
+  } catch (err: any) {
+    if (err?.isCancelled) {
+      throw err;
     }
 
-    const extracted = extractFirebaseHandlerPayload(authResult.url);
-    if (extracted.error) {
-      if (extracted.error === 'access_denied' || extracted.error === 'cancelled' || extracted.error === 'user-cancelled') {
+    const rawCode = err?.code !== undefined && err?.code !== null ? String(err.code) : '';
+    const rawMessage = String(err?.message || '');
+
+    if (isErrorWithCode(err)) {
+      if (err.code === statusCodes.SIGN_IN_CANCELLED) {
         throw createCancelledError('Google Sign-In was cancelled.');
       }
-      throw new Error(extracted.error);
-    }
-
-    idToken = extracted.idToken;
-    accessToken = extracted.accessToken;
-    fallbackRequestUri = extracted.linkUrl;
-  }
-
-  if (!idToken && !accessToken && fallbackRequestUri) {
-    const restUser = await signInFirebaseWithIdpRest({ requestUri: fallbackRequestUri });
-    idToken = restUser.oauthIdToken;
-    accessToken = restUser.oauthAccessToken;
-    if (!idToken && !accessToken) {
-      const restEmail = (restUser.email || '').trim().toLowerCase();
-      if (!restEmail) {
-        throw new Error('Could not read the email address from the selected Google account.');
+      if (err.code === statusCodes.IN_PROGRESS) {
+        throw new Error('Google Sign-In is already in progress. Please wait a moment and try again.');
       }
-      const restName =
-        (restUser.displayName || '').trim().length >= 2
-          ? (restUser.displayName || '').trim()
-          : restEmail.split('@')[0] || 'Quick Karya User';
-      return {
-        uid: restUser.uid,
-        name: restName,
-        email: restEmail,
-        photoUrl:
-          restUser.photoUrl ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(restName)}&backgroundColor=001F3F&textColor=FFA500`
-      };
+      if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        throw new Error(
+          'Google Play Services is unavailable or outdated on this device. Please update Google Play Services or use Email & Password below.'
+        );
+      }
     }
+
+    if (
+      rawCode === '10' ||
+      rawCode === 'DEVELOPER_ERROR' ||
+      /developer_error|status\s*code\s*[:=]?\s*10\b|error\s*code\s*[:=]?\s*10\b|:\s*10\b/i.test(rawMessage)
+    ) {
+      throw new Error(
+        `Google Sign-In configuration error (Code 10 / DEVELOPER_ERROR). Register this Android APK's SHA-1 fingerprint for com.quickkarya.app in Firebase Console (${firebaseConfig.projectId} -> Project Settings -> Your apps -> Add fingerprint, then download google-services.json). You can also sign in right away using Email & Password below.`
+      );
+    }
+
+    if (rawCode === '12501' || /cancel/i.test(rawMessage)) {
+      throw createCancelledError('Google Sign-In was cancelled.');
+    }
+
+    if (rawCode === '7' || /network/i.test(rawMessage)) {
+      throw new Error('Network error while connecting to Google Play Services. Check your internet connection and try again.');
+    }
+
+    throw new Error(
+      rawMessage || 'Google Sign-In could not be completed on this device. Please try again or use Email & Password below.'
+    );
   }
 
   if (!idToken && !accessToken) {
-    throw new Error('Google Sign-In did not return credentials. Please try again or use Email & Password below.');
+    throw new Error(
+      `Google Sign-In did not return an ID token. Verify Web Client ID (${webClientId}) and Android SHA-1 in Firebase Console (${firebaseConfig.projectId}), or use Email & Password below.`
+    );
   }
 
-  const claims = decodeIdTokenClaims(idToken);
   let firebaseUid = '';
-  let email = (claims.email || '').trim().toLowerCase();
-  let displayName = (claims.name || '').trim();
-  let photoUrl = claims.picture || '';
+  let email = pickedEmail;
+  let displayName = pickedName;
+  let photoUrl = pickedPhoto;
 
   if (auth) {
     try {
@@ -477,15 +237,15 @@ export async function performNativeGoogleSignIn(): Promise<GoogleAuthResult> {
       }
       if (fbCode === 'auth/network-request-failed') {
         throw new Error(
-          'Network error while completing Google Sign-In. Please check your internet connection and try again.'
+          'Network error while completing Firebase Google Sign-In. Please check your internet connection and try again.'
         );
       }
       throw new Error(
-        fbErr?.message || 'Unable to verify Google credentials with Firebase. Please try again.'
+        fbErr?.message || 'Unable to complete Firebase Google Sign-In. Please try again.'
       );
     }
   } else {
-    const restUser = await signInFirebaseWithIdpRest({ idToken, accessToken, requestUri: fallbackRequestUri });
+    const restUser = await signInFirebaseWithTokenRest({ idToken, accessToken });
     firebaseUid = restUser.uid;
     email = (restUser.email || email || '').trim().toLowerCase();
     displayName = (restUser.displayName || displayName || '').trim();
