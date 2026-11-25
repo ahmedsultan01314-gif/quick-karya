@@ -122,6 +122,12 @@ jobs:
             cp google-services.json android/app/google-services.json
           fi
 
+      - name: Restore cached CI Android signing keystore
+        uses: actions/cache@v4
+        with:
+          path: android/app/debug.keystore
+          key: quick-karya-ci-debug-keystore-${{ github.repository_id }}-v1
+
       - name: Ensure Android release signing keystore exists for CI APK
         run: |
           if [ ! -f android/app/debug.keystore ]; then
@@ -136,6 +142,27 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      - name: Print Android signing SHA-1 fingerprint for Firebase
+        run: |
+          KEYSTORE_INFO="$(keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android)"
+          SHA1_FP="$(printf '%s\n' "$KEYSTORE_INFO" | sed -nE 's/^[[:space:]]*SHA-?1:[[:space:]]*([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
+          SHA256_FP="$(printf '%s\n' "$KEYSTORE_INFO" | sed -nE 's/^[[:space:]]*SHA-?256:[[:space:]]*([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
+          echo "===================================================================="
+          echo "QUICK KARYA ANDROID KEYSTORE FINGERPRINTS (ADD SHA-1 TO FIREBASE)"
+          echo "Firebase Project : pacific-eye-42ts5"
+          echo "Android Package  : com.quickkarya.app"
+          echo "SHA-1            : ${SHA1_FP}"
+          echo "SHA-256          : ${SHA256_FP}"
+          echo "===================================================================="
+          printf '%s\n' "$KEYSTORE_INFO"
+          {
+            echo "### Quick Karya Android Signing Fingerprints"
+            echo "- **Firebase Project:** \`pacific-eye-42ts5\`"
+            echo "- **Android Package:** \`com.quickkarya.app\`"
+            echo "- **Keystore SHA-1:** \`${SHA1_FP}\`"
+            echo "- **Keystore SHA-256:** \`${SHA256_FP}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build Android APK with Gradle
         env:
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
@@ -143,6 +170,54 @@ jobs:
           chmod +x android/gradlew
           cd android
           ./gradlew assembleRelease --no-daemon
+
+      - name: Verify and print built APK SHA-1 fingerprint
+        run: |
+          APK_FILE="$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)"
+          if [ -z "$APK_FILE" ] || [ ! -f "$APK_FILE" ]; then
+            echo "No release APK found under android/app/build/outputs/apk/release/"
+            exit 1
+          fi
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(command -v apksigner || find "$SDK_ROOT/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1 || true)"
+          APK_SHA1=""
+          APK_SHA256=""
+          if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
+            APKSIGNER_OUT="$("$APKSIGNER" verify --print-certs "$APK_FILE")"
+            printf '%s\n' "$APKSIGNER_OUT"
+            RAW_SHA1="$(printf '%s\n' "$APKSIGNER_OUT" | sed -nE 's/.*SHA-1 digest:[[:space:]]*([0-9A-Fa-f]+).*/\1/p' | head -n 1)"
+            RAW_SHA256="$(printf '%s\n' "$APKSIGNER_OUT" | sed -nE 's/.*SHA-256 digest:[[:space:]]*([0-9A-Fa-f]+).*/\1/p' | head -n 1)"
+            if [ -n "$RAW_SHA1" ]; then
+              APK_SHA1="$(printf '%s' "$RAW_SHA1" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
+            fi
+            if [ -n "$RAW_SHA256" ]; then
+              APK_SHA256="$(printf '%s' "$RAW_SHA256" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
+            fi
+          fi
+          if [ -z "$APK_SHA1" ]; then
+            APK_CERT_INFO="$(keytool -printcert -jarfile "$APK_FILE" 2>/dev/null || true)"
+            if [ -n "$APK_CERT_INFO" ]; then
+              printf '%s\n' "$APK_CERT_INFO"
+              APK_SHA1="$(printf '%s\n' "$APK_CERT_INFO" | sed -nE 's/^[[:space:]]*SHA-?1:[[:space:]]*([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
+              APK_SHA256="$(printf '%s\n' "$APK_CERT_INFO" | sed -nE 's/^[[:space:]]*SHA-?256:[[:space:]]*([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
+            fi
+          fi
+          if [ -z "$APK_SHA1" ]; then
+            KEYSTORE_INFO="$(keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android)"
+            APK_SHA1="$(printf '%s\n' "$KEYSTORE_INFO" | sed -nE 's/^[[:space:]]*SHA-?1:[[:space:]]*([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
+            APK_SHA256="$(printf '%s\n' "$KEYSTORE_INFO" | sed -nE 's/^[[:space:]]*SHA-?256:[[:space:]]*([0-9A-Fa-f:]+).*/\1/p' | head -n 1)"
+          fi
+          echo "===================================================================="
+          echo "BUILT APK SIGNING CERTIFICATE (COPY THIS SHA-1 INTO FIREBASE)"
+          echo "APK File : $APK_FILE"
+          echo "SHA-1    : ${APK_SHA1}"
+          echo "SHA-256  : ${APK_SHA256}"
+          echo "===================================================================="
+          {
+            echo "- **Built APK:** \`$(basename "$APK_FILE")\`"
+            echo "- **Built APK SHA-1:** \`${APK_SHA1}\`"
+            echo "- **Built APK SHA-256:** \`${APK_SHA256}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload downloadable Android APK artifact
         uses: actions/upload-artifact@v4
