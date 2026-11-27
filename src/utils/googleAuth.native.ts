@@ -11,12 +11,15 @@ import { auth, type GoogleAuthResult } from '../firebase';
 
 let configuredWebClientId = '';
 
+const DEFAULT_GOOGLE_WEB_CLIENT_ID =
+  '149463790904-u3gf07vile2kskuvad69fu7b18utm6pb.apps.googleusercontent.com';
+
 export function getGoogleWebClientId(): string {
   const envClientId =
     typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
       ? String(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID).trim()
       : '';
-  return envClientId || String(firebaseConfig.oAuthClientId || '').trim();
+  return envClientId || String(firebaseConfig.oAuthClientId || '').trim() || DEFAULT_GOOGLE_WEB_CLIENT_ID;
 }
 
 export function configureNativeGoogleSignIn(): void {
